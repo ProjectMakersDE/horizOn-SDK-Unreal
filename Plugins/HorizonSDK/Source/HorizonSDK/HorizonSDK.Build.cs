@@ -13,7 +13,10 @@ public class HorizonSDK : ModuleRules
             "Engine",
             "HTTP",
             "Json",
-            "JsonUtilities"
+            "JsonUtilities",
+            "UMG",
+            "Slate",
+            "SlateCore"
         });
     }
 }
