@@ -16,6 +16,8 @@ public class HorizonSDKEditor : ModuleRules
             "SlateCore",
             "ToolMenus",
             "DesktopPlatform",
+            "HTTP",
+            "InputCore",
             "HorizonSDK"
         });
     }
