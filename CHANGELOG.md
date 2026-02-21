@@ -1,3 +1,35 @@
+# 1.0.0 (2026-02-21)
+
+
+### Bug Fixes
+
+* resolve compilation issues from final review ([83cc639](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/83cc639839d034040cfb940f79210498aeeeaa69))
+
+
+### Features
+
+* add auth manager (signup, signin, session caching) ([701eb54](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/701eb54c9edfa1411204e0991b4942ad44adb237))
+* add Blueprint async action nodes for all SDK operations ([d3ca32e](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/d3ca32e6cad481d9f8fbd657b84ae0d4c188fc24))
+* add Blueprint function library for convenient access ([36d7eba](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/36d7ebacd3295e15f09494c050ce4bbe882e5a38))
+* add cloud save manager (JSON and binary modes) ([8c722ae](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/8c722ae1bdfb1fc36e225449943fc93a2fdf021c))
+* add data models (UserData, LeaderboardEntry, NewsEntry, NetworkResponse) ([e282b9b](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/e282b9b14cea2a1809d6cbec798e78f2a0728197))
+* add editor config importer and Tools menu entries ([383e701](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/383e701717d19d09b6567be2ab7ee2ba182bade4))
+* add editor dashboard widget with config display and connection test ([aa77972](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/aa77972a9cb9cb535bb7527d2c2598b79ab111db))
+* add example widget base class for SDK demonstration ([8345ff9](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/8345ff948b8f5a4551964d65377f2871f4d6e8d6))
+* add feedback manager with device info collection ([9dbe2b6](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/9dbe2b627ae5070d99c3d0bee5ab1d9ae8e5f976))
+* add gift code manager (validate and redeem) ([3557c77](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/3557c77884f278050053a43ce9579e957b8f0474))
+* add HTTP client with retry, rate-limiting, and host selection ([624b2ff](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/624b2ff72e30dbee257ae9cf874837951c8f7af2))
+* add leaderboard manager with caching ([9f6a1d8](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/9f6a1d8e118a9166291caa9777df95c9fc2c4c2a))
+* add news manager with 5-minute cache ([d362006](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/d36200687198d9682108dc0f3fe0322d58e983e1))
+* add remote config manager with typed getters and caching ([5f81937](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/5f8193761abbc8355b127e2e73038cafd97d5b62))
+* add session persistence via USaveGame ([8e49187](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/8e49187ea309da42d20aeeddc27068281e0a8039))
+* add shared types, enums, and delegate declarations ([ac719ef](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/ac719ef421774105114cb39457ec14b35facbe6a))
+* add UHorizonConfig developer settings ([90bedaa](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/90bedaae7e9842c911920e14384c5a6bedd92aca))
+* add UHorizonSubsystem as main SDK entry point ([d78074f](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/d78074f43f0bb42bbd8c520e88df6e43180f2bee))
+* add user log manager (server-side logging) ([9b49caa](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/9b49caa2158515a925554cd5256c6acbf2c38767))
+* scaffold HorizonSDK plugin with runtime and editor modules ([ad33b1f](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/ad33b1fa820710087f2bf2742d5452469f9d82d3))
+* wire all managers into subsystem initialization ([3afef33](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/3afef33ec1c7d584fe5ccd8cc360d8aff56b7024))
+
 # Changelog
 
 All notable changes to the horizOn SDK for Unreal Engine will be documented in this file.
