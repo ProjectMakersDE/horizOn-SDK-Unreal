@@ -106,3 +106,50 @@ There are no standalone build or test commands for this repository.
 **Runtime (HorizonSDK):** Core, CoreUObject, Engine, HTTP, Json, JsonUtilities, UMG, Slate, SlateCore
 
 **Editor (HorizonSDKEditor):** Core, CoreUObject, Engine, UnrealEd, Slate, SlateCore, ToolMenus, DesktopPlatform, HTTP, InputCore, HorizonSDK
+
+## Commit Conventions
+
+This repository uses **Conventional Commits** with **semantic-release** for automated versioning and changelog generation.
+
+### Commit Format
+
+```
+<type>(<scope>): <subject>
+
+<body>
+
+<footer>
+```
+
+### Types
+
+| Type | Description | Release |
+|------|-------------|---------|
+| `feat` | New feature | Minor (0.x.0) |
+| `fix` | Bug fix | Patch (0.0.x) |
+| `docs` | Documentation only | No release |
+| `chore` | Maintenance / tooling | No release |
+| `refactor` | Code restructuring | No release |
+| `style` | Code style / formatting | No release |
+| `test` | Test additions / changes | No release |
+| `perf` | Performance improvement | Patch (0.0.x) |
+
+### Breaking Changes
+
+Add `BREAKING CHANGE:` in the commit footer or `!` after the type to trigger a major version bump.
+
+### Examples
+
+```
+feat(auth): add Google sign-in support
+fix(http): handle 429 rate-limit response correctly
+docs: update quickstart guide with Blueprint examples
+chore(release): 1.1.0 [skip ci]
+```
+
+## CRITICAL: No AI Attribution in Commits
+
+- Never add `Co-Authored-By` lines mentioning Claude, Anthropic, or AI
+- Never mention "Claude", "Claude Code", "AI-generated", "AI-assisted", or similar in commit messages, PR descriptions, or changelogs
+- Commit messages must be clean, professional, human-authored style
+- This applies to all git operations: commits, PRs, tags, release notes
