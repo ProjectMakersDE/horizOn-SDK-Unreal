@@ -4,6 +4,8 @@
 #include "HorizonTypes.h"
 #include "HorizonUserData.generated.h"
 
+class FJsonObject;
+
 USTRUCT(BlueprintType)
 struct HORIZONSDK_API FHorizonUserData
 {

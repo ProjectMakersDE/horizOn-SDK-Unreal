@@ -3,6 +3,8 @@
 #include "CoreMinimal.h"
 #include "HorizonLeaderboardEntry.generated.h"
 
+class FJsonObject;
+
 USTRUCT(BlueprintType)
 struct HORIZONSDK_API FHorizonLeaderboardEntry
 {

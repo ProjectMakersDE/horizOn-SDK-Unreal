@@ -3,6 +3,8 @@
 #include "CoreMinimal.h"
 #include "HorizonNewsEntry.generated.h"
 
+class FJsonObject;
+
 USTRUCT(BlueprintType)
 struct HORIZONSDK_API FHorizonNewsEntry
 {

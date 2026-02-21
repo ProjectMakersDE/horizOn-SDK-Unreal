@@ -16,7 +16,8 @@ public class HorizonSDK : ModuleRules
             "JsonUtilities",
             "UMG",
             "Slate",
-            "SlateCore"
+            "SlateCore",
+            "RHI"
         });
     }
 }
