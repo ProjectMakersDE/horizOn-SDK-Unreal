@@ -4,6 +4,13 @@
 #include "HorizonSDKModule.h"
 #include "Http/HorizonHttpClient.h"
 #include "Managers/HorizonAuthManager.h"
+#include "Managers/HorizonCloudSaveManager.h"
+#include "Managers/HorizonLeaderboardManager.h"
+#include "Managers/HorizonRemoteConfigManager.h"
+#include "Managers/HorizonNewsManager.h"
+#include "Managers/HorizonGiftCodeManager.h"
+#include "Managers/HorizonFeedbackManager.h"
+#include "Managers/HorizonUserLogManager.h"
 
 // ============================================================
 // Subsystem lifecycle
@@ -21,14 +28,27 @@ void UHorizonSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 	Auth = NewObject<UHorizonAuthManager>(this);
 	Auth->Initialize(HttpClient);
 
-	// Other managers will be created here once implemented (Task 16)
-	CloudSave    = nullptr;
-	Leaderboard  = nullptr;
-	RemoteConfig = nullptr;
-	News         = nullptr;
-	GiftCodes    = nullptr;
-	Feedback     = nullptr;
-	UserLogs     = nullptr;
+	// Create all managers
+	CloudSave = NewObject<UHorizonCloudSaveManager>(this);
+	CloudSave->Initialize(HttpClient, Auth);
+
+	Leaderboard = NewObject<UHorizonLeaderboardManager>(this);
+	Leaderboard->Initialize(HttpClient, Auth);
+
+	RemoteConfig = NewObject<UHorizonRemoteConfigManager>(this);
+	RemoteConfig->Initialize(HttpClient);
+
+	News = NewObject<UHorizonNewsManager>(this);
+	News->Initialize(HttpClient);
+
+	GiftCodes = NewObject<UHorizonGiftCodeManager>(this);
+	GiftCodes->Initialize(HttpClient, Auth);
+
+	Feedback = NewObject<UHorizonFeedbackManager>(this);
+	Feedback->Initialize(HttpClient, Auth);
+
+	UserLogs = NewObject<UHorizonUserLogManager>(this);
+	UserLogs->Initialize(HttpClient, Auth);
 
 	UE_LOG(LogHorizonSDK, Log, TEXT("horizOn SDK initialized."));
 }
