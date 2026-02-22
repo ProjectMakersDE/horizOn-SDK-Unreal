@@ -1,3 +1,15 @@
+# [1.1.0](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/compare/v1.0.0...v1.1.0) (2026-02-22)
+
+
+### Bug Fixes
+
+* use AddUniqueDynamic for subsystem event handlers ([5bab6fc](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/5bab6fcea76a4b63adfa5daf9203f80ca1fe1a16))
+
+
+### Features
+
+* self-constructing demo UI for example widget ([b8c693a](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/b8c693ad8932c968da7e35c457dcdfefb0884170))
+
 # 1.0.0 (2026-02-21)
 
 

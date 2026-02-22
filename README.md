@@ -8,7 +8,7 @@
 
 [![Unreal Engine 5.5+](https://img.shields.io/badge/Unreal_Engine-5.5%2B-blue?logo=unrealengine&logoColor=white)](https://www.unrealengine.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.0.0-orange)](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/releases)
+[![Version](https://img.shields.io/badge/version-1.1.0-orange)](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/releases)
 
 Official Unreal Engine SDK for **horizOn** Backend-as-a-Service by [ProjectMakers](https://projectmakers.de).
 
