@@ -8,17 +8,22 @@
 #include "HorizonExampleWidget.generated.h"
 
 class UHorizonSubsystem;
+class UVerticalBox;
+class UEditableTextBox;
+class UTextBlock;
+class UScrollBox;
+class UButton;
 
 /**
  * Example UMG widget that demonstrates every horizOn SDK feature.
  *
- * Drop this widget (or a Blueprint subclass) into a level to quickly
- * test connectivity, authentication, cloud save, leaderboard,
- * remote config, news, gift codes, and feedback.
+ * When used directly (not subclassed in a Blueprint with a custom layout),
+ * the widget constructs its own UI in NativeConstruct() with input fields
+ * and buttons for every SDK feature plus a scrollable output log.
  *
- * Each Test*() method calls the corresponding manager, logs the
- * result into OutputLog, and broadcasts OnOutputUpdated so the
- * UI can refresh.
+ * If a Blueprint subclass provides its own widget tree layout, the
+ * auto-constructed UI is skipped. Blueprint subclasses can call the
+ * Test*() methods directly from their own buttons.
  */
 UCLASS(Blueprintable)
 class HORIZONSDK_API UHorizonExampleWidget : public UUserWidget
@@ -26,62 +31,133 @@ class HORIZONSDK_API UHorizonExampleWidget : public UUserWidget
 	GENERATED_BODY()
 
 public:
-	/** Test server connectivity (calls ConnectToServer). */
+	// --- Test methods (callable from Blueprint or the built-in UI) ---
+
 	UFUNCTION(BlueprintCallable, Category = "horizOn|Example")
 	void TestConnect();
 
-	/** Test anonymous sign-up. */
 	UFUNCTION(BlueprintCallable, Category = "horizOn|Example")
 	void TestSignUpAnonymous(const FString& DisplayName);
 
-	/** Test email sign-in. */
 	UFUNCTION(BlueprintCallable, Category = "horizOn|Example")
 	void TestSignInEmail(const FString& Email, const FString& Password);
 
-	/** Test saving string data to cloud. */
 	UFUNCTION(BlueprintCallable, Category = "horizOn|Example")
 	void TestSaveData(const FString& Data);
 
-	/** Test loading string data from cloud. */
 	UFUNCTION(BlueprintCallable, Category = "horizOn|Example")
 	void TestLoadData();
 
-	/** Test submitting a leaderboard score. */
 	UFUNCTION(BlueprintCallable, Category = "horizOn|Example")
 	void TestSubmitScore(int64 Score);
 
-	/** Test retrieving top leaderboard scores. */
 	UFUNCTION(BlueprintCallable, Category = "horizOn|Example")
 	void TestGetTopScores(int32 Limit);
 
-	/** Test fetching all remote config values. */
 	UFUNCTION(BlueprintCallable, Category = "horizOn|Example")
 	void TestGetAllConfigs();
 
-	/** Test loading news entries. */
 	UFUNCTION(BlueprintCallable, Category = "horizOn|Example")
 	void TestLoadNews(int32 Limit);
 
-	/** Test redeeming a gift code. */
 	UFUNCTION(BlueprintCallable, Category = "horizOn|Example")
 	void TestRedeemCode(const FString& Code);
 
-	/** Test submitting feedback. */
 	UFUNCTION(BlueprintCallable, Category = "horizOn|Example")
 	void TestSubmitFeedback(const FString& Title, const FString& Message);
 
-	/** Accumulated output log from all test operations. */
 	UPROPERTY(BlueprintReadOnly, Category = "horizOn|Example")
 	FString OutputLog;
 
-	/** Broadcast whenever OutputLog is updated. */
 	UPROPERTY(BlueprintAssignable, Category = "horizOn|Example")
 	FOnHorizonOutputUpdated OnOutputUpdated;
 
 protected:
-	/** Append a line to OutputLog and broadcast. */
-	void AppendOutput(const FString& Text);
+	virtual void NativeConstruct() override;
 
-	/** Get the HorizonSubsystem from the owning player's GameInstance. */
+	void AppendOutput(const FString& Text);
 	UHorizonSubsystem* GetSubsystem() const;
+
+private:
+	// --- Self-constructed UI state ---
+	bool bDefaultUIBuilt = false;
+
+	void BuildDefaultUI();
+
+	// Input field references (only valid when default UI is built)
+	UPROPERTY()
+	UEditableTextBox* DisplayNameInput = nullptr;
+
+	UPROPERTY()
+	UEditableTextBox* EmailInput = nullptr;
+
+	UPROPERTY()
+	UEditableTextBox* PasswordInput = nullptr;
+
+	UPROPERTY()
+	UEditableTextBox* SaveDataInput = nullptr;
+
+	UPROPERTY()
+	UEditableTextBox* ScoreInput = nullptr;
+
+	UPROPERTY()
+	UEditableTextBox* GiftCodeInput = nullptr;
+
+	UPROPERTY()
+	UEditableTextBox* FeedbackTitleInput = nullptr;
+
+	UPROPERTY()
+	UEditableTextBox* FeedbackMessageInput = nullptr;
+
+	UPROPERTY()
+	UTextBlock* OutputLogText = nullptr;
+
+	UPROPERTY()
+	UScrollBox* OutputScrollBox = nullptr;
+
+	// --- Button click handlers (UFUNCTION required for AddDynamic) ---
+
+	UFUNCTION()
+	void OnConnectClicked();
+
+	UFUNCTION()
+	void OnSignUpAnonymousClicked();
+
+	UFUNCTION()
+	void OnSignInEmailClicked();
+
+	UFUNCTION()
+	void OnSaveDataClicked();
+
+	UFUNCTION()
+	void OnLoadDataClicked();
+
+	UFUNCTION()
+	void OnSubmitScoreClicked();
+
+	UFUNCTION()
+	void OnGetTopScoresClicked();
+
+	UFUNCTION()
+	void OnGetAllConfigsClicked();
+
+	UFUNCTION()
+	void OnLoadNewsClicked();
+
+	UFUNCTION()
+	void OnRedeemCodeClicked();
+
+	UFUNCTION()
+	void OnSubmitFeedbackClicked();
+
+	UFUNCTION()
+	void OnClearLogClicked();
+
+	// --- UI helpers ---
+
+	UButton* CreateButton(const FString& Label);
+	UEditableTextBox* CreateInputField(const FString& HintText);
+	UTextBlock* CreateLabel(const FString& Text, int32 FontSize = 12);
+	void AddSectionHeader(UVerticalBox* Root, const FString& Text);
+	void AddRow(UVerticalBox* Root, const TArray<UWidget*>& Widgets);
 };

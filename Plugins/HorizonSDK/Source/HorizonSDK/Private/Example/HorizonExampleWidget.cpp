@@ -10,6 +10,19 @@
 #include "Managers/HorizonGiftCodeManager.h"
 #include "Managers/HorizonFeedbackManager.h"
 
+#include "Blueprint/WidgetTree.h"
+#include "Components/VerticalBox.h"
+#include "Components/VerticalBoxSlot.h"
+#include "Components/HorizontalBox.h"
+#include "Components/HorizontalBoxSlot.h"
+#include "Components/Button.h"
+#include "Components/TextBlock.h"
+#include "Components/EditableTextBox.h"
+#include "Components/ScrollBox.h"
+#include "Components/ScrollBoxSlot.h"
+#include "Components/SizeBox.h"
+#include "Components/Spacer.h"
+
 // ============================================================
 // Helpers
 // ============================================================
@@ -18,6 +31,16 @@ void UHorizonExampleWidget::AppendOutput(const FString& Text)
 {
 	OutputLog += Text + TEXT("\n");
 	OnOutputUpdated.Broadcast(OutputLog);
+
+	// Update the built-in output text if present
+	if (OutputLogText)
+	{
+		OutputLogText->SetText(FText::FromString(OutputLog));
+	}
+	if (OutputScrollBox)
+	{
+		OutputScrollBox->ScrollToEnd();
+	}
 }
 
 UHorizonSubsystem* UHorizonExampleWidget::GetSubsystem() const
@@ -31,7 +54,334 @@ UHorizonSubsystem* UHorizonExampleWidget::GetSubsystem() const
 }
 
 // ============================================================
-// Test methods
+// UI Construction
+// ============================================================
+
+void UHorizonExampleWidget::NativeConstruct()
+{
+	Super::NativeConstruct();
+
+	// Only build the default UI if no Blueprint layout was provided
+	if (WidgetTree && !bDefaultUIBuilt && GetRootWidget() == nullptr)
+	{
+		BuildDefaultUI();
+		bDefaultUIBuilt = true;
+	}
+}
+
+UButton* UHorizonExampleWidget::CreateButton(const FString& Label)
+{
+	UButton* Btn = WidgetTree->ConstructWidget<UButton>();
+
+	FButtonStyle BtnStyle;
+	FSlateBrush NormalBrush;
+	NormalBrush.TintColor = FSlateColor(FLinearColor(0.15f, 0.15f, 0.25f, 1.0f));
+	BtnStyle.SetNormal(NormalBrush);
+	FSlateBrush HoveredBrush;
+	HoveredBrush.TintColor = FSlateColor(FLinearColor(0.25f, 0.25f, 0.4f, 1.0f));
+	BtnStyle.SetHovered(HoveredBrush);
+	FSlateBrush PressedBrush;
+	PressedBrush.TintColor = FSlateColor(FLinearColor(0.1f, 0.1f, 0.18f, 1.0f));
+	BtnStyle.SetPressed(PressedBrush);
+	Btn->SetStyle(BtnStyle);
+
+	UTextBlock* BtnText = WidgetTree->ConstructWidget<UTextBlock>();
+	BtnText->SetText(FText::FromString(Label));
+
+	FSlateFontInfo Font = BtnText->GetFont();
+	Font.Size = 11;
+	BtnText->SetFont(Font);
+	BtnText->SetColorAndOpacity(FSlateColor(FLinearColor::White));
+
+	Btn->AddChild(BtnText);
+	return Btn;
+}
+
+UEditableTextBox* UHorizonExampleWidget::CreateInputField(const FString& HintText)
+{
+	UEditableTextBox* Input = WidgetTree->ConstructWidget<UEditableTextBox>();
+	Input->SetHintText(FText::FromString(HintText));
+	Input->SetMinimumDesiredWidth(140.0f);
+
+	FEditableTextBoxStyle InputStyle = Input->WidgetStyle;
+	FSlateBrush BgBrush;
+	BgBrush.TintColor = FSlateColor(FLinearColor(0.08f, 0.08f, 0.12f, 1.0f));
+	InputStyle.SetBackgroundImageNormal(BgBrush);
+	InputStyle.SetForegroundColor(FSlateColor(FLinearColor::White));
+	Input->SetStyle(InputStyle);
+
+	return Input;
+}
+
+UTextBlock* UHorizonExampleWidget::CreateLabel(const FString& Text, int32 FontSize)
+{
+	UTextBlock* Label = WidgetTree->ConstructWidget<UTextBlock>();
+	Label->SetText(FText::FromString(Text));
+
+	FSlateFontInfo Font = Label->GetFont();
+	Font.Size = FontSize;
+	Label->SetFont(Font);
+	Label->SetColorAndOpacity(FSlateColor(FLinearColor(0.8f, 0.8f, 0.85f, 1.0f)));
+
+	return Label;
+}
+
+void UHorizonExampleWidget::AddSectionHeader(UVerticalBox* Root, const FString& Text)
+{
+	UTextBlock* Header = CreateLabel(Text, 13);
+	Header->SetColorAndOpacity(FSlateColor(FLinearColor(0.91f, 0.27f, 0.38f, 1.0f)));
+
+	FSlateFontInfo Font = Header->GetFont();
+	Font.TypefaceFontName = FName("Bold");
+	Header->SetFont(Font);
+
+	UVerticalBoxSlot* Slot = Root->AddChildToVerticalBox(Header);
+	Slot->SetPadding(FMargin(0.0f, 12.0f, 0.0f, 4.0f));
+}
+
+void UHorizonExampleWidget::AddRow(UVerticalBox* Root, const TArray<UWidget*>& Widgets)
+{
+	UHorizontalBox* Row = WidgetTree->ConstructWidget<UHorizontalBox>();
+
+	for (UWidget* Widget : Widgets)
+	{
+		UHorizontalBoxSlot* HSlot = Row->AddChildToHorizontalBox(Widget);
+		HSlot->SetPadding(FMargin(0.0f, 0.0f, 6.0f, 0.0f));
+
+		// Editable text boxes fill available space
+		if (Cast<UEditableTextBox>(Widget))
+		{
+			HSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+		}
+		else
+		{
+			HSlot->SetSize(FSlateChildSize(ESlateSizeRule::Automatic));
+		}
+	}
+
+	UVerticalBoxSlot* Slot = Root->AddChildToVerticalBox(Row);
+	Slot->SetPadding(FMargin(0.0f, 2.0f, 0.0f, 2.0f));
+}
+
+void UHorizonExampleWidget::BuildDefaultUI()
+{
+	UVerticalBox* Root = WidgetTree->ConstructWidget<UVerticalBox>();
+	WidgetTree->RootWidget = Root;
+
+	// --- Title ---
+	UTextBlock* Title = CreateLabel(TEXT("horizOn SDK Demo"), 18);
+	Title->SetColorAndOpacity(FSlateColor(FLinearColor::White));
+	FSlateFontInfo TitleFont = Title->GetFont();
+	TitleFont.TypefaceFontName = FName("Bold");
+	Title->SetFont(TitleFont);
+	UVerticalBoxSlot* TitleSlot = Root->AddChildToVerticalBox(Title);
+	TitleSlot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, 8.0f));
+	TitleSlot->SetHorizontalAlignment(HAlign_Center);
+
+	// --- Connection ---
+	AddSectionHeader(Root, TEXT("Connection"));
+	UButton* ConnectBtn = CreateButton(TEXT("Connect to Server"));
+	ConnectBtn->OnClicked.AddDynamic(this, &UHorizonExampleWidget::OnConnectClicked);
+	AddRow(Root, { ConnectBtn });
+
+	// --- Authentication ---
+	AddSectionHeader(Root, TEXT("Authentication"));
+
+	DisplayNameInput = CreateInputField(TEXT("Display Name"));
+	UButton* SignUpBtn = CreateButton(TEXT("Sign Up Anonymous"));
+	SignUpBtn->OnClicked.AddDynamic(this, &UHorizonExampleWidget::OnSignUpAnonymousClicked);
+	AddRow(Root, { DisplayNameInput, SignUpBtn });
+
+	EmailInput = CreateInputField(TEXT("Email"));
+	PasswordInput = CreateInputField(TEXT("Password"));
+	UButton* SignInBtn = CreateButton(TEXT("Sign In"));
+	SignInBtn->OnClicked.AddDynamic(this, &UHorizonExampleWidget::OnSignInEmailClicked);
+	AddRow(Root, { EmailInput, PasswordInput, SignInBtn });
+
+	// --- Cloud Save ---
+	AddSectionHeader(Root, TEXT("Cloud Save"));
+
+	SaveDataInput = CreateInputField(TEXT("Data to save..."));
+	UButton* SaveBtn = CreateButton(TEXT("Save"));
+	SaveBtn->OnClicked.AddDynamic(this, &UHorizonExampleWidget::OnSaveDataClicked);
+	UButton* LoadBtn = CreateButton(TEXT("Load"));
+	LoadBtn->OnClicked.AddDynamic(this, &UHorizonExampleWidget::OnLoadDataClicked);
+	AddRow(Root, { SaveDataInput, SaveBtn, LoadBtn });
+
+	// --- Leaderboard ---
+	AddSectionHeader(Root, TEXT("Leaderboard"));
+
+	ScoreInput = CreateInputField(TEXT("Score"));
+	UButton* SubmitScoreBtn = CreateButton(TEXT("Submit Score"));
+	SubmitScoreBtn->OnClicked.AddDynamic(this, &UHorizonExampleWidget::OnSubmitScoreClicked);
+	UButton* TopScoresBtn = CreateButton(TEXT("Get Top 10"));
+	TopScoresBtn->OnClicked.AddDynamic(this, &UHorizonExampleWidget::OnGetTopScoresClicked);
+	AddRow(Root, { ScoreInput, SubmitScoreBtn, TopScoresBtn });
+
+	// --- Remote Config & News ---
+	AddSectionHeader(Root, TEXT("Remote Config & News"));
+
+	UButton* ConfigsBtn = CreateButton(TEXT("Get All Configs"));
+	ConfigsBtn->OnClicked.AddDynamic(this, &UHorizonExampleWidget::OnGetAllConfigsClicked);
+	UButton* NewsBtn = CreateButton(TEXT("Load News"));
+	NewsBtn->OnClicked.AddDynamic(this, &UHorizonExampleWidget::OnLoadNewsClicked);
+	AddRow(Root, { ConfigsBtn, NewsBtn });
+
+	// --- Gift Codes ---
+	AddSectionHeader(Root, TEXT("Gift Codes"));
+
+	GiftCodeInput = CreateInputField(TEXT("Gift Code"));
+	UButton* RedeemBtn = CreateButton(TEXT("Redeem"));
+	RedeemBtn->OnClicked.AddDynamic(this, &UHorizonExampleWidget::OnRedeemCodeClicked);
+	AddRow(Root, { GiftCodeInput, RedeemBtn });
+
+	// --- Feedback ---
+	AddSectionHeader(Root, TEXT("Feedback"));
+
+	FeedbackTitleInput = CreateInputField(TEXT("Title"));
+	FeedbackMessageInput = CreateInputField(TEXT("Message"));
+	AddRow(Root, { FeedbackTitleInput, FeedbackMessageInput });
+
+	UButton* FeedbackBtn = CreateButton(TEXT("Submit Feedback"));
+	FeedbackBtn->OnClicked.AddDynamic(this, &UHorizonExampleWidget::OnSubmitFeedbackClicked);
+	AddRow(Root, { FeedbackBtn });
+
+	// --- Output Log ---
+	AddSectionHeader(Root, TEXT("Output Log"));
+
+	OutputScrollBox = WidgetTree->ConstructWidget<UScrollBox>();
+	OutputScrollBox->SetAnimateWheelScrolling(true);
+
+	OutputLogText = WidgetTree->ConstructWidget<UTextBlock>();
+	OutputLogText->SetText(FText::FromString(OutputLog.IsEmpty() ? TEXT("Ready. Press 'Connect to Server' to begin.") : OutputLog));
+	OutputLogText->SetAutoWrapText(true);
+
+	FSlateFontInfo LogFont = OutputLogText->GetFont();
+	LogFont.Size = 10;
+	OutputLogText->SetFont(LogFont);
+	OutputLogText->SetColorAndOpacity(FSlateColor(FLinearColor(0.7f, 0.7f, 0.75f, 1.0f)));
+
+	OutputScrollBox->AddChild(OutputLogText);
+
+	USizeBox* LogSizeBox = WidgetTree->ConstructWidget<USizeBox>();
+	LogSizeBox->SetMinDesiredHeight(200.0f);
+	LogSizeBox->SetMaxDesiredHeight(400.0f);
+	LogSizeBox->AddChild(OutputScrollBox);
+
+	UVerticalBoxSlot* LogSlot = Root->AddChildToVerticalBox(LogSizeBox);
+	LogSlot->SetPadding(FMargin(0.0f, 4.0f, 0.0f, 4.0f));
+	LogSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+
+	// --- Clear button ---
+	UButton* ClearBtn = CreateButton(TEXT("Clear Log"));
+	ClearBtn->OnClicked.AddDynamic(this, &UHorizonExampleWidget::OnClearLogClicked);
+	AddRow(Root, { ClearBtn });
+}
+
+// ============================================================
+// Button Handlers
+// ============================================================
+
+void UHorizonExampleWidget::OnConnectClicked()
+{
+	TestConnect();
+}
+
+void UHorizonExampleWidget::OnSignUpAnonymousClicked()
+{
+	FString Name = DisplayNameInput ? DisplayNameInput->GetText().ToString() : TEXT("Player");
+	if (Name.IsEmpty())
+	{
+		Name = TEXT("Player");
+	}
+	TestSignUpAnonymous(Name);
+}
+
+void UHorizonExampleWidget::OnSignInEmailClicked()
+{
+	FString Email = EmailInput ? EmailInput->GetText().ToString() : TEXT("");
+	FString Password = PasswordInput ? PasswordInput->GetText().ToString() : TEXT("");
+	if (Email.IsEmpty() || Password.IsEmpty())
+	{
+		AppendOutput(TEXT("[SignIn] Please enter both email and password."));
+		return;
+	}
+	TestSignInEmail(Email, Password);
+}
+
+void UHorizonExampleWidget::OnSaveDataClicked()
+{
+	FString Data = SaveDataInput ? SaveDataInput->GetText().ToString() : TEXT("");
+	if (Data.IsEmpty())
+	{
+		AppendOutput(TEXT("[Save] Please enter data to save."));
+		return;
+	}
+	TestSaveData(Data);
+}
+
+void UHorizonExampleWidget::OnLoadDataClicked()
+{
+	TestLoadData();
+}
+
+void UHorizonExampleWidget::OnSubmitScoreClicked()
+{
+	FString ScoreStr = ScoreInput ? ScoreInput->GetText().ToString() : TEXT("0");
+	int64 Score = FCString::Atoi64(*ScoreStr);
+	TestSubmitScore(Score);
+}
+
+void UHorizonExampleWidget::OnGetTopScoresClicked()
+{
+	TestGetTopScores(10);
+}
+
+void UHorizonExampleWidget::OnGetAllConfigsClicked()
+{
+	TestGetAllConfigs();
+}
+
+void UHorizonExampleWidget::OnLoadNewsClicked()
+{
+	TestLoadNews(10);
+}
+
+void UHorizonExampleWidget::OnRedeemCodeClicked()
+{
+	FString Code = GiftCodeInput ? GiftCodeInput->GetText().ToString() : TEXT("");
+	if (Code.IsEmpty())
+	{
+		AppendOutput(TEXT("[Gift] Please enter a gift code."));
+		return;
+	}
+	TestRedeemCode(Code);
+}
+
+void UHorizonExampleWidget::OnSubmitFeedbackClicked()
+{
+	FString Title = FeedbackTitleInput ? FeedbackTitleInput->GetText().ToString() : TEXT("");
+	FString Message = FeedbackMessageInput ? FeedbackMessageInput->GetText().ToString() : TEXT("");
+	if (Title.IsEmpty() || Message.IsEmpty())
+	{
+		AppendOutput(TEXT("[Feedback] Please enter both a title and a message."));
+		return;
+	}
+	TestSubmitFeedback(Title, Message);
+}
+
+void UHorizonExampleWidget::OnClearLogClicked()
+{
+	OutputLog.Empty();
+	if (OutputLogText)
+	{
+		OutputLogText->SetText(FText::FromString(TEXT("Log cleared.")));
+	}
+	OnOutputUpdated.Broadcast(OutputLog);
+}
+
+// ============================================================
+// Test Methods
 // ============================================================
 
 void UHorizonExampleWidget::TestConnect()
@@ -47,7 +397,6 @@ void UHorizonExampleWidget::TestConnect()
 
 	TWeakObjectPtr<UHorizonExampleWidget> WeakSelf(this);
 
-	// Bind delegates before initiating connection
 	Sub->OnConnected.AddWeakLambda(this, [WeakSelf]()
 	{
 		if (UHorizonExampleWidget* Self = WeakSelf.Get())
