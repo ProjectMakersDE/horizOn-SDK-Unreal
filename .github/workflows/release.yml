@@ -69,7 +69,9 @@ jobs:
       - name: Create plugin ZIP
         run: |
           cd Plugins
-          zip -r ../horizOn-SDK-v${{ needs.release.outputs.version }}.zip HorizonSDK/
+          zip -r ../horizOn-SDK-v${{ needs.release.outputs.version }}.zip HorizonSDK/ \
+            -x '*.gitkeep' \
+            -x 'HorizonSDK/CHANGELOG.md'
 
       - name: Upload ZIP to Release
         uses: softprops/action-gh-release@v2
