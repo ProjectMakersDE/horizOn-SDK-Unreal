@@ -153,6 +153,14 @@ private:
 	UFUNCTION()
 	void OnClearLogClicked();
 
+	// --- Subsystem event handlers ---
+
+	UFUNCTION()
+	void OnServerConnected();
+
+	UFUNCTION()
+	void OnServerConnectionFailed(const FString& ErrorMessage);
+
 	// --- UI helpers ---
 
 	UButton* CreateButton(const FString& Label);

@@ -395,25 +395,20 @@ void UHorizonExampleWidget::TestConnect()
 
 	AppendOutput(TEXT("[Connect] Connecting to server..."));
 
-	TWeakObjectPtr<UHorizonExampleWidget> WeakSelf(this);
-
-	Sub->OnConnected.AddWeakLambda(this, [WeakSelf]()
-	{
-		if (UHorizonExampleWidget* Self = WeakSelf.Get())
-		{
-			Self->AppendOutput(TEXT("[Connect] SUCCESS: Connected to server."));
-		}
-	});
-
-	Sub->OnConnectionFailed.AddWeakLambda(this, [WeakSelf](const FString& ErrorMessage)
-	{
-		if (UHorizonExampleWidget* Self = WeakSelf.Get())
-		{
-			Self->AppendOutput(FString::Printf(TEXT("[Connect] FAILED: %s"), *ErrorMessage));
-		}
-	});
+	Sub->OnConnected.AddUniqueDynamic(this, &UHorizonExampleWidget::OnServerConnected);
+	Sub->OnConnectionFailed.AddUniqueDynamic(this, &UHorizonExampleWidget::OnServerConnectionFailed);
 
 	Sub->ConnectToServer();
+}
+
+void UHorizonExampleWidget::OnServerConnected()
+{
+	AppendOutput(TEXT("[Connect] SUCCESS: Connected to server."));
+}
+
+void UHorizonExampleWidget::OnServerConnectionFailed(const FString& ErrorMessage)
+{
+	AppendOutput(FString::Printf(TEXT("[Connect] FAILED: %s"), *ErrorMessage));
 }
 
 void UHorizonExampleWidget::TestSignUpAnonymous(const FString& DisplayName)
