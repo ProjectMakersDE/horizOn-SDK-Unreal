@@ -1,97 +1,10 @@
-# CLAUDE.md -- Project Memory for horizOn Unreal SDK
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
 
-This repository contains the **horizOn SDK** plugin for Unreal Engine. It is a client-side SDK that connects UE5 games to the horizOn backend-as-a-service platform. The plugin lives entirely under `Plugins/HorizonSDK/`.
-
-## Architecture
-
-The SDK uses a **UGameInstanceSubsystem + UObject managers** architecture:
-
-- **UHorizonSubsystem** is the main entry point. It is a `UGameInstanceSubsystem` that creates and owns all manager objects and the shared HTTP client on initialization.
-- Each **Manager** (Auth, CloudSave, Leaderboard, etc.) is a `UObject` created by the subsystem. Managers receive a pointer to the shared `UHorizonHttpClient` (and `UHorizonAuthManager` where authentication is required).
-- **UHorizonHttpClient** wraps `FHttpModule` with automatic retry logic, HTTP 429 rate-limit handling, and multi-host ping-based server selection.
-- **UHorizonConfig** (`UDeveloperSettings`) stores API key, hosts, timeout, retry, and log level. Editable in Project Settings.
-- **UHorizonSessionSave** (`USaveGame`) persists session tokens to disk for automatic session restoration.
-
-## Key Files and Purposes
-
-```
-Plugins/HorizonSDK/
-  HorizonSDK.uplugin                 -- Plugin descriptor
-  Source/
-    HorizonSDK/                      -- Runtime module
-      HorizonSDK.Build.cs            -- Build rules (dependencies: Core, HTTP, Json, UMG, etc.)
-      Public/
-        HorizonTypes.h               -- Shared enums, structs, delegates
-        HorizonConfig.h              -- UDeveloperSettings config class
-        HorizonSessionSave.h         -- USaveGame for session persistence
-        HorizonSubsystem.h           -- UGameInstanceSubsystem entry point
-        HorizonSDKModule.h           -- Module interface + log category
-        HorizonBlueprintLibrary.h    -- Static BP function library
-        Http/
-          HorizonHttpClient.h        -- HTTP client with retry + ping selection
-        Models/
-          HorizonUserData.h          -- User data struct
-          HorizonLeaderboardEntry.h  -- Leaderboard entry struct
-          HorizonNewsEntry.h         -- News entry struct
-          HorizonNetworkResponse.h   -- HTTP response wrapper struct
-        Managers/
-          HorizonAuthManager.h       -- Auth (anonymous, email, Google)
-          HorizonCloudSaveManager.h  -- Cloud save (JSON + binary)
-          HorizonLeaderboardManager.h -- Leaderboard (submit, top, rank, around)
-          HorizonRemoteConfigManager.h -- Remote config (typed getters)
-          HorizonNewsManager.h       -- News feed with cache
-          HorizonGiftCodeManager.h   -- Gift code validate + redeem
-          HorizonFeedbackManager.h   -- Feedback submission
-          HorizonUserLogManager.h    -- Server-side user logging
-        AsyncActions/
-          HorizonAsync_*.h           -- Blueprint async action nodes
-        Example/
-          HorizonExampleWidget.h     -- UUserWidget demo class
-      Private/
-        (mirrors Public/ structure with .cpp implementations)
-
-    HorizonSDKEditor/                -- Editor module (editor-only)
-      HorizonSDKEditor.Build.cs
-      Public/
-        HorizonSDKEditorModule.h     -- Editor module with menu registration
-      Private/
-        HorizonSDKEditorModule.cpp   -- Config importer, dashboard tab, cache clear
-        SHorizonEditorWidget.h/cpp   -- Slate dashboard widget
-```
-
-## Naming Conventions (UE5 Standard)
-
-- `F` prefix: structs (e.g., `FHorizonNetworkResponse`, `FHorizonUserData`)
-- `E` prefix: enums (e.g., `EHorizonAuthType`, `EHorizonConnectionStatus`)
-- `U` prefix: UObject-derived classes (e.g., `UHorizonSubsystem`, `UHorizonAuthManager`)
-- `S` prefix: Slate widgets (e.g., `SHorizonEditorWidget`)
-- `HORIZONSDK_API` macro: export macro for the runtime module
-- Log category: `LogHorizonSDK` (declared in `HorizonSDKModule.h`)
-
-## API Endpoint Base
-
-All API requests go through the HTTP client to endpoints under:
-```
-/api/v1/app/
-```
-
-Specific endpoint patterns:
-- Auth: `/api/v1/app/auth/signup/anonymous`, `/api/v1/app/auth/signin/email`, etc.
-- Cloud Save: `/api/v1/app/cloud-save/save`, `/api/v1/app/cloud-save/load`
-- Leaderboard: `/api/v1/app/leaderboard/submit`, `/api/v1/app/leaderboard/top`
-- Remote Config: `/api/v1/app/config`, `/api/v1/app/config/{key}`
-- News: `/api/v1/app/news`
-- Gift Codes: `/api/v1/app/gift-codes/redeem`, `/api/v1/app/gift-codes/validate`
-- Feedback: `/api/v1/app/feedback`
-- User Logs: `/api/v1/app/user-logs`
-
-## Reference SDKs
-
-Design and implementation plans are in:
-- `docs/plans/2026-02-21-horizon-unreal-sdk-design.md`
-- `docs/plans/2026-02-21-horizon-unreal-sdk-implementation.md`
+This repository contains the **horizOn SDK** plugin for Unreal Engine 5.5+. It is a client-side SDK that connects UE5 games to the horizOn backend-as-a-service platform. All plugin code lives under `Plugins/HorizonSDK/`.
 
 ## Build Notes
 
@@ -99,26 +12,94 @@ This is a plugin, not a standalone project. It cannot be compiled on its own. To
 1. Place the plugin inside an Unreal Engine 5.5+ project's `Plugins/` directory.
 2. Build the project normally through the editor or `UnrealBuildTool`.
 
-There are no standalone build or test commands for this repository.
+There are no standalone build, lint, or test commands for this repository.
 
-## Module Dependencies
+## Architecture
 
-**Runtime (HorizonSDK):** Core, CoreUObject, Engine, HTTP, Json, JsonUtilities, UMG, Slate, SlateCore
+### Subsystem + Managers Pattern
 
-**Editor (HorizonSDKEditor):** Core, CoreUObject, Engine, UnrealEd, Slate, SlateCore, ToolMenus, DesktopPlatform, HTTP, InputCore, HorizonSDK
+The SDK uses a **UGameInstanceSubsystem + UObject managers** architecture:
+
+- **UHorizonSubsystem** (`HorizonSubsystem.h/cpp`) is the single entry point. It creates and owns the HTTP client and all managers in `Initialize()`.
+- **UHorizonHttpClient** (`Http/HorizonHttpClient.h/cpp`) wraps `FHttpModule` with automatic retry, HTTP 429 rate-limit handling, and multi-host ping-based server selection. All managers share this single instance.
+- **UHorizonConfig** (`HorizonConfig.h/cpp`) is a `UDeveloperSettings` (editable in Project Settings). Access the CDO anywhere via `UHorizonConfig::Get()`.
+- **UHorizonSessionSave** (`HorizonSessionSave.h/cpp`) is a `USaveGame` that persists session tokens to disk for automatic session restoration.
+
+### Manager Initialization Pattern
+
+Managers fall into two categories based on whether they need auth context:
+
+- **Auth-independent** managers receive only `HttpClient`: `RemoteConfig`, `News`
+- **Auth-dependent** managers receive both `HttpClient` and `Auth`: `CloudSave`, `Leaderboard`, `GiftCodes`, `Feedback`, `UserLogs`
+- **Auth manager** itself receives only `HttpClient` (it IS the auth provider)
+
+See `HorizonSubsystem.cpp::Initialize()` for the exact wiring.
+
+### Two-Tier Delegate System
+
+The SDK exposes functionality through two parallel API surfaces:
+
+1. **C++ delegates** (in `HorizonTypes.h`): `FOnAuthComplete`, `FOnRequestComplete`, `FOnStringComplete`, `FOnBinaryComplete` -- used by managers directly. These are single-cast `DECLARE_DELEGATE` types.
+2. **Blueprint async actions** (in `AsyncActions/`): Each `UBlueprintAsyncActionBase` subclass wraps manager calls with `FOnAuthAsyncSuccess`/`FOnAuthAsyncFailure`-style multi-cast delegates exposed as output pins. The async action's `Activate()` calls the appropriate manager method, and the completion callback broadcasts to the Blueprint pins.
+
+### Response Flow
+
+All HTTP responses flow through `FHorizonNetworkResponse` (`Models/HorizonNetworkResponse.h`), which wraps: `bSuccess`, `StatusCode`, `ErrorMessage`, `ErrorCode` (mapped from HTTP status via `StatusToErrorCode()`), `JsonData` (C++ only), and `BinaryData`.
+
+### Adding a New Manager
+
+1. Create `UHorizonNewManager : UObject` in `Managers/` with `Initialize(UHorizonHttpClient*, [UHorizonAuthManager*])`.
+2. Add a `UPROPERTY(BlueprintReadOnly)` pointer in `UHorizonSubsystem.h`.
+3. `NewObject` + `Initialize()` it in `UHorizonSubsystem::Initialize()`.
+4. Create `UHorizonAsync_New : UBlueprintAsyncActionBase` in `AsyncActions/` with static factory `UFUNCTION`s using `meta = (BlueprintInternalUseOnly = "true", WorldContext = "WorldContextObject")`.
+5. (Optional) Add static helper functions in `UHorizonBlueprintLibrary`.
+
+### Module Structure
+
+The plugin has two modules defined in `HorizonSDK.uplugin`:
+
+- **HorizonSDK** (Runtime): depends on Core, CoreUObject, Engine, HTTP, Json, JsonUtilities, UMG, Slate, SlateCore, RHI
+- **HorizonSDKEditor** (Editor): depends on Core, CoreUObject, Engine, UnrealEd, Slate, SlateCore, ToolMenus, DesktopPlatform, HTTP, InputCore, HorizonSDK
+
+## Naming Conventions (UE5 Standard)
+
+- `F` prefix: structs (`FHorizonNetworkResponse`, `FHorizonUserData`)
+- `E` prefix: enums (`EHorizonAuthType`, `EHorizonConnectionStatus`)
+- `U` prefix: UObject-derived classes (`UHorizonSubsystem`, `UHorizonAuthManager`)
+- `S` prefix: Slate widgets (`SHorizonEditorWidget`)
+- `HORIZONSDK_API`: export macro for the runtime module
+- `LogHorizonSDK`: log category (declared in `HorizonSDKModule.h`)
+
+## API Endpoint Base
+
+All API requests go to endpoints under `/api/v1/app/`. Endpoint paths follow the pattern: `/api/v1/app/{feature}/{action}` (e.g., `/api/v1/app/auth/signup/anonymous`, `/api/v1/app/leaderboard/top`).
+
+## Reference Documents
+
+- `docs/plans/2026-02-21-horizon-unreal-sdk-design.md` -- Design decisions
+- `docs/plans/2026-02-21-horizon-unreal-sdk-implementation.md` -- Implementation plan
+
+## Release Pipeline
+
+Releases are fully automated via semantic-release on push to `main`:
+
+1. `@semantic-release/commit-analyzer` determines version bump from commit types
+2. `@semantic-release/exec` auto-updates `VersionName` in `HorizonSDK.uplugin` and the version badge in `README.md`
+3. `@semantic-release/git` commits the updated files with `chore(release): X.Y.Z [skip ci]`
+4. `@semantic-release/github` creates a GitHub release
+5. A second CI job zips `Plugins/HorizonSDK/` and uploads it as a release asset
+6. A repository dispatch triggers changelog sync to the `horizOn-Changelog` repo
+
+**Do not manually edit** `CHANGELOG.md`, the `VersionName` in `.uplugin`, or the version badge in `README.md` -- these are managed by the release pipeline.
 
 ## Commit Conventions
 
-This repository uses **Conventional Commits** with **semantic-release** for automated versioning and changelog generation.
+This repository uses **Conventional Commits** with **semantic-release** for automated versioning.
 
-### Commit Format
+### Format
 
 ```
 <type>(<scope>): <subject>
-
-<body>
-
-<footer>
 ```
 
 ### Types
@@ -127,29 +108,17 @@ This repository uses **Conventional Commits** with **semantic-release** for auto
 |------|-------------|---------|
 | `feat` | New feature | Minor (0.x.0) |
 | `fix` | Bug fix | Patch (0.0.x) |
+| `perf` | Performance improvement | Patch (0.0.x) |
 | `docs` | Documentation only | No release |
 | `chore` | Maintenance / tooling | No release |
 | `refactor` | Code restructuring | No release |
 | `style` | Code style / formatting | No release |
 | `test` | Test additions / changes | No release |
-| `perf` | Performance improvement | Patch (0.0.x) |
 
-### Breaking Changes
-
-Add `BREAKING CHANGE:` in the commit footer or `!` after the type to trigger a major version bump.
-
-### Examples
-
-```
-feat(auth): add Google sign-in support
-fix(http): handle 429 rate-limit response correctly
-docs: update quickstart guide with Blueprint examples
-chore(release): 1.1.0 [skip ci]
-```
+Add `BREAKING CHANGE:` in the footer or `!` after the type for a major version bump.
 
 ## CRITICAL: No AI Attribution in Commits
 
 - Never add `Co-Authored-By` lines mentioning Claude, Anthropic, or AI
 - Never mention "Claude", "Claude Code", "AI-generated", "AI-assisted", or similar in commit messages, PR descriptions, or changelogs
-- Commit messages must be clean, professional, human-authored style
 - This applies to all git operations: commits, PRs, tags, release notes
