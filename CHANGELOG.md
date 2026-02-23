@@ -1,3 +1,10 @@
+## [1.2.1](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/compare/v1.2.0...v1.2.1) (2026-02-23)
+
+
+### Bug Fixes
+
+* **ci:** trigger release build ([4e067ec](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/4e067ec8db98d80944cab80007f592ca60de70a3))
+
 # [1.2.0](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/compare/v1.1.0...v1.2.0) (2026-02-23)
 
 
