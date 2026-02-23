@@ -51,6 +51,14 @@ enum class EHorizonErrorCode : uint8
     Unknown
 };
 
+UENUM(BlueprintType)
+enum class EHorizonCrashType : uint8
+{
+    Crash       UMETA(DisplayName = "Crash"),
+    NonFatal    UMETA(DisplayName = "Non-Fatal"),
+    Anr         UMETA(DisplayName = "ANR")
+};
+
 // --- Dynamic Multicast Delegates (Blueprint-bindable events) ---
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnHorizonConnected);
@@ -58,6 +66,10 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnHorizonConnectionFailed, const FS
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnHorizonUserSignedIn);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnHorizonUserSignedOut);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnHorizonOutputUpdated, const FString&, OutputText);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnHorizonCrashReported, const FString&, ReportId, const FString&, GroupId);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnHorizonCrashReportFailed, const FString&, ErrorMessage);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnHorizonCrashSessionRegistered);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnHorizonBreadcrumbRecorded, const FString&, Message);
 
 // --- C++ Delegates (non-Blueprint, for manager callbacks) ---
 
@@ -65,3 +77,5 @@ DECLARE_DELEGATE_OneParam(FOnAuthComplete, bool /*bSuccess*/);
 DECLARE_DELEGATE_TwoParams(FOnRequestComplete, bool /*bSuccess*/, const FString& /*ErrorMessage*/);
 DECLARE_DELEGATE_TwoParams(FOnStringComplete, bool /*bSuccess*/, const FString& /*Data*/);
 DECLARE_DELEGATE_TwoParams(FOnBinaryComplete, bool /*bSuccess*/, const TArray<uint8>& /*Data*/);
+DECLARE_DELEGATE_ThreeParams(FOnCrashReportComplete, bool /*bSuccess*/, const FString& /*ReportId*/, const FString& /*GroupId*/);
+DECLARE_DELEGATE_OneParam(FOnCrashSessionComplete, bool /*bSuccess*/);
