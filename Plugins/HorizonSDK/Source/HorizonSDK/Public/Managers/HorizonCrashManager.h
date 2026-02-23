@@ -26,6 +26,9 @@ public:
 	/** Initialize with HTTP client and auth manager references. */
 	void Initialize(UHorizonHttpClient* InHttpClient, UHorizonAuthManager* InAuthManager);
 
+	/** Ensure crash hooks are cleaned up before GC. */
+	virtual void BeginDestroy() override;
+
 	// --- Lifecycle ---
 
 	/** Begin crash capture: registers a session, hooks engine error handlers. */
@@ -188,8 +191,9 @@ private:
 
 	private:
 		// Raw pointer: non-UObject class cannot use UPROPERTY.
-		// Lifetime safe because TUniquePtr<OutputDevice> is destroyed in StopCapture().
+		// Lifetime safe because TUniquePtr<OutputDevice> is destroyed in StopCapture()/BeginDestroy().
 		UHorizonCrashManager* Owner;
+		bool bInSerialize = false;
 	};
 
 	// --- Auto-breadcrumb handlers (bound to subsystem delegate events) ---
