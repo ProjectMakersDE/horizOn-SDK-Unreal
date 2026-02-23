@@ -11,6 +11,7 @@
 #include "Managers/HorizonGiftCodeManager.h"
 #include "Managers/HorizonFeedbackManager.h"
 #include "Managers/HorizonUserLogManager.h"
+#include "Managers/HorizonCrashManager.h"
 
 // ============================================================
 // Subsystem lifecycle
@@ -50,11 +51,25 @@ void UHorizonSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 	UserLogs = NewObject<UHorizonUserLogManager>(this);
 	UserLogs->Initialize(HttpClient, Auth);
 
+	Crashes = NewObject<UHorizonCrashManager>(this);
+	Crashes->Initialize(HttpClient, Auth);
+
+	// Wire auto-breadcrumb handlers
+	Auth->OnUserSignedIn.AddUniqueDynamic(Crashes, &UHorizonCrashManager::OnAutoUserSignedIn);
+	Auth->OnUserSignedOut.AddUniqueDynamic(Crashes, &UHorizonCrashManager::OnAutoUserSignedOut);
+	OnConnected.AddUniqueDynamic(Crashes, &UHorizonCrashManager::OnAutoConnected);
+	OnConnectionFailed.AddUniqueDynamic(Crashes, &UHorizonCrashManager::OnAutoConnectionFailed);
+
 	UE_LOG(LogHorizonSDK, Log, TEXT("horizOn SDK initialized."));
 }
 
 void UHorizonSubsystem::Deinitialize()
 {
+	if (Crashes)
+	{
+		Crashes->StopCapture();
+	}
+
 	if (IsConnected())
 	{
 		Disconnect();

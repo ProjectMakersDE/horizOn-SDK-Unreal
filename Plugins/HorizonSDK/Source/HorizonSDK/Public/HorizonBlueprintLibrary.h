@@ -36,4 +36,20 @@ public:
 	/** Returns the currently signed-in user data (empty if not signed in). */
 	UFUNCTION(BlueprintPure, Category = "horizOn", meta = (WorldContext = "WorldContextObject"))
 	static FHorizonUserData GetHorizonCurrentUser(const UObject* WorldContextObject);
+
+	/** Start crash capture and register a session. */
+	UFUNCTION(BlueprintCallable, Category = "horizOn|CrashReport", meta = (WorldContext = "WorldContextObject"))
+	static void HorizonStartCrashCapture(const UObject* WorldContextObject);
+
+	/** Stop crash capture. */
+	UFUNCTION(BlueprintCallable, Category = "horizOn|CrashReport", meta = (WorldContext = "WorldContextObject"))
+	static void HorizonStopCrashCapture(const UObject* WorldContextObject);
+
+	/** Record a breadcrumb with a type and message. */
+	UFUNCTION(BlueprintCallable, Category = "horizOn|CrashReport", meta = (WorldContext = "WorldContextObject"))
+	static void HorizonRecordBreadcrumb(const UObject* WorldContextObject, const FString& Type, const FString& Message);
+
+	/** Set a custom key-value pair for crash reports (max 10). */
+	UFUNCTION(BlueprintCallable, Category = "horizOn|CrashReport", meta = (WorldContext = "WorldContextObject"))
+	static void HorizonSetCrashCustomKey(const UObject* WorldContextObject, const FString& Key, const FString& Value);
 };
