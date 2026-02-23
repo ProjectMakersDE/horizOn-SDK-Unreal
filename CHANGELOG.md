@@ -1,3 +1,14 @@
+# [1.2.0](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/compare/v1.1.0...v1.2.0) (2026-02-23)
+
+
+### Features
+
+* **crash:** add Blueprint async actions for crash reporting ([3c5a919](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/3c5a919bdff87896f771060ffaddec9513126519))
+* **crash:** add Blueprint helper functions for crash reporting ([8560a61](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/8560a6179c0042b51f885b72374d9314d5fad282))
+* **crash:** add CrashType enum, delegates, and CrashManager header ([1d960a3](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/1d960a3d4e013be03a95dd0a82e305be9d6372df))
+* **crash:** implement CrashManager with full crash reporting logic ([d20638d](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/d20638d52f5ba95470dbf5b97496929f5ba3be55))
+* **crash:** register CrashManager in subsystem with auto-breadcrumbs ([7251ed2](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/7251ed2db776e890bd617fb8e31eebdc81b0f782))
+
 # [1.1.0](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/compare/v1.0.0...v1.1.0) (2026-02-22)
 
 

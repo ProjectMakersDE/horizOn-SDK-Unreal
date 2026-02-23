@@ -1,7 +1,7 @@
 {
     "FileVersion": 3,
     "Version": 1,
-    "VersionName": "1.1.0",
+    "VersionName": "1.2.0",
     "FriendlyName": "horizOn SDK",
     "Description": "horizOn Backend SDK for Unreal Engine. Provides authentication, cloud saves, leaderboards, remote config, news, gift codes, feedback, and server-side logging.",
     "Category": "Networking",
