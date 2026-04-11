@@ -1,3 +1,10 @@
+# [1.3.0](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/compare/v1.2.1...v1.3.0) (2026-04-11)
+
+
+### Features
+
+* add email sending manager with Blueprint async actions ([392745d](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/392745db7a6e65e288e887e10c270271d7aac5bb))
+
 ## [1.2.1](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/compare/v1.2.0...v1.2.1) (2026-02-23)
 
 
