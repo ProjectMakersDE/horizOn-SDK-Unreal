@@ -25,6 +25,7 @@ Official Unreal Engine SDK for **horizOn** Backend-as-a-Service by [ProjectMaker
 | 💬 **Feedback** | `UHorizonFeedbackManager` | Submit bug reports, feature requests, and general feedback |
 | 📊 **User Logs** | `UHorizonUserLogManager` | Server-side structured logging for analytics and debugging |
 | 💥 **Crash Reporting** | `UHorizonCrashReportManager` | Crash capture, exception tracking, breadcrumbs |
+| ✉️ **Email Sending** | `UHorizonEmailSendingManager` | Transactional emails with templates, scheduling, multi-language support |
 
 ## Requirements
 
@@ -300,6 +301,67 @@ Use the async nodes for Blueprint integration:
 | Reports per session | 20 |
 | Breadcrumbs (ring buffer) | 50 |
 | Custom keys | 10 |
+
+### Email Sending
+
+Send transactional emails to registered players. Create multi-language HTML templates with variable placeholders in the horizOn Dashboard, then trigger immediate or scheduled email delivery from your game using the SDK. Emails are sent through your own SMTP server -- horizOn handles the queue, rendering, and scheduling while you keep full control over branding and deliverability.
+
+#### C++
+
+```cpp
+// Get subsystem
+auto* Horizon = GetGameInstance()->GetSubsystem<UHorizonSubsystem>();
+
+// Send immediate email
+TMap<FString, FString> Variables;
+Variables.Add("username", "John");
+
+Horizon->EmailSending->SendEmail(
+    TEXT("user-uuid"), TEXT("welcome"), Variables, TEXT("en"),
+    FOnSendEmailComplete::CreateLambda([](bool bSuccess, const FSendEmailResponse& Response) {
+        if (bSuccess)
+            UE_LOG(LogTemp, Log, TEXT("Email queued: %s"), *Response.Id);
+    })
+);
+
+// Schedule email for later
+Horizon->EmailSending->SendEmail(
+    TEXT("user-uuid"), TEXT("reminder"), Variables, TEXT("en"),
+    TEXT("2026-04-12T09:00:00Z"),
+    FOnSendEmailComplete::CreateLambda([](bool bSuccess, const FSendEmailResponse& Response) {
+        if (bSuccess)
+            UE_LOG(LogTemp, Log, TEXT("Scheduled: %s"), *Response.ScheduledAt);
+    })
+);
+
+// Check status
+Horizon->EmailSending->GetEmailStatus(
+    EmailId,
+    FOnEmailStatusComplete::CreateLambda([](bool bSuccess, const FEmailStatusResponse& Response) {
+        if (bSuccess)
+            UE_LOG(LogTemp, Log, TEXT("Status: %s"), *Response.Status);
+    })
+);
+
+// Cancel a scheduled email
+Horizon->EmailSending->CancelEmail(
+    EmailId,
+    FOnCancelEmailComplete::CreateLambda([](bool bSuccess, const FCancelEmailResponse& Response) {
+        if (bSuccess)
+            UE_LOG(LogTemp, Log, TEXT("Cancelled: %s"), *Response.Message);
+    })
+);
+```
+
+#### Blueprints
+
+Use the async nodes for Blueprint integration:
+
+- **"Send Email"** - Send a transactional email to a user via a template
+- **"Cancel Email"** - Cancel a pending or scheduled email
+- **"Get Email Status"** - Get the current status of an email
+
+All async nodes expose **On Success** and **On Failure** execution pins.
 
 ## Events / Delegates
 

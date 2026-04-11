@@ -12,6 +12,7 @@
 #include "Managers/HorizonFeedbackManager.h"
 #include "Managers/HorizonUserLogManager.h"
 #include "Managers/HorizonCrashManager.h"
+#include "Managers/HorizonEmailSendingManager.h"
 
 // ============================================================
 // Subsystem lifecycle
@@ -53,6 +54,9 @@ void UHorizonSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 
 	Crashes = NewObject<UHorizonCrashManager>(this);
 	Crashes->Initialize(HttpClient, Auth);
+
+	EmailSending = NewObject<UHorizonEmailSendingManager>(this);
+	EmailSending->Initialize(HttpClient);
 
 	// Wire auto-breadcrumb handlers
 	Auth->OnUserSignedIn.AddUniqueDynamic(Crashes, &UHorizonCrashManager::OnAutoUserSignedIn);

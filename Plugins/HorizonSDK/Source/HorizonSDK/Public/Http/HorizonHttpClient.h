@@ -47,6 +47,7 @@ public:
 	void Get(const FString& Endpoint, bool bUseSessionToken, FOnHttpResponse OnComplete);
 	void PostJson(const TSharedRef<FJsonObject>& Body, const FString& Endpoint, bool bUseSessionToken, FOnHttpResponse OnComplete);
 	void PostBinary(const FString& Endpoint, const TArray<uint8>& Data, bool bUseSessionToken, FOnHttpResponse OnComplete);
+	void Delete(const FString& Endpoint, bool bUseSessionToken, FOnHttpResponse OnComplete);
 	void GetBinary(const FString& Endpoint, bool bUseSessionToken, FOnHttpResponse OnComplete);
 
 private:

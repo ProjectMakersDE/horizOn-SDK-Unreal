@@ -213,6 +213,13 @@ void UHorizonHttpClient::PostBinary(const FString& Endpoint, const TArray<uint8>
 	SendRequest(TEXT("POST"), Url, TEXT("application/octet-stream"), Data, bUseSessionToken, 0, OnComplete);
 }
 
+void UHorizonHttpClient::Delete(const FString& Endpoint, bool bUseSessionToken, FOnHttpResponse OnComplete)
+{
+	const FString Url = ActiveHost / Endpoint;
+	TArray<uint8> EmptyPayload;
+	SendRequest(TEXT("DELETE"), Url, TEXT("application/json"), EmptyPayload, bUseSessionToken, 0, OnComplete);
+}
+
 void UHorizonHttpClient::GetBinary(const FString& Endpoint, bool bUseSessionToken, FOnHttpResponse OnComplete)
 {
 	const FString Url = ActiveHost / Endpoint;

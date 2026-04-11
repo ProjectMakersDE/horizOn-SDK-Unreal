@@ -17,6 +17,7 @@ class UHorizonGiftCodeManager;
 class UHorizonFeedbackManager;
 class UHorizonUserLogManager;
 class UHorizonCrashManager;
+class UHorizonEmailSendingManager;
 
 /**
  * Main entry point for the horizOn SDK.
@@ -66,6 +67,9 @@ public:
 
 	UPROPERTY(BlueprintReadOnly, Category = "horizOn")
 	UHorizonCrashManager* Crashes = nullptr;
+
+	UPROPERTY(BlueprintReadOnly, Category = "horizOn")
+	UHorizonEmailSendingManager* EmailSending;
 
 	// --- Connection ---
 
