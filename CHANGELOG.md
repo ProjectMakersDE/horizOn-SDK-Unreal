@@ -1,3 +1,10 @@
+# [1.4.0](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/compare/v1.3.0...v1.4.0) (2026-04-20)
+
+
+### Features
+
+* **apple-signin:** apple sign-in support in unreal sdk ([bb8543f](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/bb8543f18fabe42028da53113b2b42d672db52b8))
+
 # [1.3.0](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/compare/v1.2.1...v1.3.0) (2026-04-11)
 
 
