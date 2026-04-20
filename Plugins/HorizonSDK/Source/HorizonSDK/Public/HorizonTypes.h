@@ -14,7 +14,8 @@ enum class EHorizonAuthType : uint8
 {
     Anonymous UMETA(DisplayName = "Anonymous"),
     Email UMETA(DisplayName = "Email"),
-    Google UMETA(DisplayName = "Google")
+    Google UMETA(DisplayName = "Google"),
+    Apple UMETA(DisplayName = "Apple")
 };
 
 UENUM(BlueprintType)

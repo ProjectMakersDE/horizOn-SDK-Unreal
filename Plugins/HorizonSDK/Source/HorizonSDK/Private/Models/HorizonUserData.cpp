@@ -11,6 +11,8 @@ void FHorizonUserData::Clear()
     AnonymousToken.Empty();
     bIsEmailVerified = false;
     bIsAnonymous = false;
+    AppleUserId.Empty();
+    bIsPrivateRelayEmail = false;
 }
 
 void FHorizonUserData::UpdateFromAuthResponse(const TSharedPtr<FJsonObject>& JsonObject)
@@ -30,10 +32,33 @@ void FHorizonUserData::UpdateFromAuthResponse(const TSharedPtr<FJsonObject>& Jso
         AnonymousToken = JsonObject->GetStringField(TEXT("anonymousToken"));
     }
 
+    // Apple-specific fields (non-breaking — default to empty/false for non-Apple users)
+    if (JsonObject->HasField(TEXT("appleUserId")))
+    {
+        AppleUserId = JsonObject->GetStringField(TEXT("appleUserId"));
+    }
+    else
+    {
+        AppleUserId.Empty();
+    }
+
+    if (JsonObject->HasField(TEXT("isPrivateRelayEmail")))
+    {
+        bIsPrivateRelayEmail = JsonObject->GetBoolField(TEXT("isPrivateRelayEmail"));
+    }
+    else
+    {
+        bIsPrivateRelayEmail = false;
+    }
+
     // Determine auth type from response
     if (bIsAnonymous)
     {
         AuthType = EHorizonAuthType::Anonymous;
+    }
+    else if (!AppleUserId.IsEmpty())
+    {
+        AuthType = EHorizonAuthType::Apple;
     }
     else if (JsonObject->HasField(TEXT("googleId")) && !JsonObject->GetStringField(TEXT("googleId")).IsEmpty())
     {

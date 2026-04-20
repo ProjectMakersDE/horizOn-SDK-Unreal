@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Unreal Plugin Language patch — injects the "Sign in with Apple" capability
+  into the generated iOS .entitlements file.  See
+  https://docs.unrealengine.com/5.5/en-US/unreal-plugin-language/ for syntax.
+
+  HorizonSDK.Build.cs registers this file via AdditionalPropertiesForReceipt.
+-->
+<root xmlns:android="http://schemas.android.com/apk/res/android">
+	<init>
+		<log text="HorizonSDK iOS UPL applied — adding Sign in with Apple entitlement."/>
+	</init>
+
+	<iosPListUpdates>
+		<!-- No Info.plist entries are required for Sign in with Apple specifically;
+		     the Bundle ID + appleBundleId match on the API key drives audience validation. -->
+	</iosPListUpdates>
+
+	<!-- Append the Apple capability to the generated <project>.entitlements file.
+	     Unreal's IOSToolChain reads the entitlements file path; appending here ensures
+	     the key is present whether the project ships a hand-authored entitlements file
+	     or relies on the auto-generated one. -->
+	<entitlementsAdditions>
+		<key>com.apple.developer.applesignin</key>
+		<array>
+			<string>Default</string>
+		</array>
+	</entitlementsAdditions>
+</root>

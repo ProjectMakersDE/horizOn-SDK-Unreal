@@ -61,6 +61,38 @@ UHorizonAsync_Auth* UHorizonAsync_Auth::RestoreSession(const UObject* WorldConte
 	return Action;
 }
 
+UHorizonAsync_Auth* UHorizonAsync_Auth::SignUpApple(const UObject* WorldContextObject, const FString& IdentityToken, const FString& FirstName, const FString& LastName, const FString& Username)
+{
+	UHorizonAsync_Auth* Action = NewObject<UHorizonAsync_Auth>();
+	Action->WorldContext = WorldContextObject;
+	Action->Operation = EAuthOp::SignUpApple;
+	Action->ParamAppleIdentityToken = IdentityToken;
+	Action->ParamAppleFirstName = FirstName;
+	Action->ParamAppleLastName = LastName;
+	Action->ParamUsername = Username;
+	Action->RegisterWithGameInstance(WorldContextObject);
+	return Action;
+}
+
+UHorizonAsync_Auth* UHorizonAsync_Auth::SignInApple(const UObject* WorldContextObject, const FString& IdentityToken)
+{
+	UHorizonAsync_Auth* Action = NewObject<UHorizonAsync_Auth>();
+	Action->WorldContext = WorldContextObject;
+	Action->Operation = EAuthOp::SignInApple;
+	Action->ParamAppleIdentityToken = IdentityToken;
+	Action->RegisterWithGameInstance(WorldContextObject);
+	return Action;
+}
+
+UHorizonAsync_Auth* UHorizonAsync_Auth::SignInWithApple(const UObject* WorldContextObject)
+{
+	UHorizonAsync_Auth* Action = NewObject<UHorizonAsync_Auth>();
+	Action->WorldContext = WorldContextObject;
+	Action->Operation = EAuthOp::SignInWithApple;
+	Action->RegisterWithGameInstance(WorldContextObject);
+	return Action;
+}
+
 // ============================================================
 // Activate
 // ============================================================
@@ -93,6 +125,15 @@ void UHorizonAsync_Auth::Activate()
 		break;
 	case EAuthOp::RestoreSession:
 		Subsystem->Auth->RestoreSession(Callback);
+		break;
+	case EAuthOp::SignUpApple:
+		Subsystem->Auth->SignUpApple(ParamAppleIdentityToken, ParamAppleFirstName, ParamAppleLastName, ParamUsername, Callback);
+		break;
+	case EAuthOp::SignInApple:
+		Subsystem->Auth->SignInApple(ParamAppleIdentityToken, Callback);
+		break;
+	case EAuthOp::SignInWithApple:
+		Subsystem->Auth->SignInWithApple(Callback);
 		break;
 	}
 }

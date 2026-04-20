@@ -35,11 +35,20 @@ struct HORIZONSDK_API FHorizonUserData
     UPROPERTY(BlueprintReadOnly, Category = "horizOn|User")
     bool bIsAnonymous = false;
 
+    /** Apple `sub` claim — empty string for non-Apple users. */
+    UPROPERTY(BlueprintReadOnly, Category = "horizOn|User")
+    FString AppleUserId;
+
+    /** True if the email is an Apple private relay alias (e.g. ...@privaterelay.appleid.com). */
+    UPROPERTY(BlueprintReadOnly, Category = "horizOn|User")
+    bool bIsPrivateRelayEmail = false;
+
     bool IsValid() const { return !UserId.IsEmpty() && !AccessToken.IsEmpty(); }
 
     void Clear();
 
     /** Populate from auth response JSON. Field names from server:
-     * userId, username, email, accessToken, anonymousToken, authStatus, isAnonymous, isVerified, googleId */
+     * userId, username, email, accessToken, anonymousToken, authStatus, isAnonymous, isVerified,
+     * googleId, appleUserId, isPrivateRelayEmail */
     void UpdateFromAuthResponse(const TSharedPtr<FJsonObject>& JsonObject);
 };

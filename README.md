@@ -16,7 +16,7 @@ Official Unreal Engine SDK for **horizOn** Backend-as-a-Service by [ProjectMaker
 
 | Feature | Manager | Description |
 |---------|---------|-------------|
-| 🔐 **Authentication** | `UHorizonAuthManager` | Anonymous, email, and Google sign-up / sign-in with session caching |
+| 🔐 **Authentication** | `UHorizonAuthManager` | Anonymous, email, Google, and Apple sign-up / sign-in with session caching |
 | 🏆 **Leaderboards** | `UHorizonLeaderboardManager` | Submit scores, retrieve top entries, rank, and surrounding entries |
 | ☁️ **Cloud Save** | `UHorizonCloudSaveManager` | Save and load player data in JSON or binary format |
 | ⚙️ **Remote Config** | `UHorizonRemoteConfigManager` | Typed key-value retrieval (string, int, float, bool) with caching |
@@ -69,7 +69,7 @@ Horizon->Auth->SignUpAnonymous(TEXT("Player1"),
 ### Blueprints
 
 1. Use the **"horizOn Connect"** async node to connect to the server.
-2. Use **"horizOn Sign Up Anonymous"** or **"horizOn Sign In Email"** to authenticate.
+2. Use **"horizOn Sign Up Anonymous"**, **"horizOn Sign In Email"**, or **"horizOn Sign In With Apple (Native)"** to authenticate.
 3. Call any feature node (Submit Score, Save Data, Load News, etc.).
 
 All async nodes expose **On Success** and **On Failure** execution pins for easy error handling.
@@ -105,6 +105,21 @@ Horizon->Auth->SignUpEmail(TEXT("user@example.com"), TEXT("password"), TEXT("Dis
 
 // Email sign-in
 Horizon->Auth->SignInEmail(TEXT("user@example.com"), TEXT("password"),
+    FOnAuthComplete::CreateLambda([](bool bSuccess) { }));
+
+// Apple sign-in (drop-in: native sheet on iOS, system browser elsewhere)
+Horizon->Auth->SignInWithApple(FOnAuthComplete::CreateLambda([](bool bSuccess)
+{
+    // On success: Horizon->Auth->GetCurrentUser() returns FHorizonUserData with
+    // AppleUserId and bIsPrivateRelayEmail populated.
+}));
+
+// Apple sign-in with a token you already obtained yourself
+Horizon->Auth->SignInApple(TEXT("eyJraWQiOi..."),
+    FOnAuthComplete::CreateLambda([](bool bSuccess) { }));
+
+// Apple sign-up — first-time user, optionally pass profile data Apple sends only on first login
+Horizon->Auth->SignUpApple(TEXT("eyJraWQiOi..."), TEXT("Jane"), TEXT("Doe"), TEXT("janed"),
     FOnAuthComplete::CreateLambda([](bool bSuccess) { }));
 
 // Check authentication state

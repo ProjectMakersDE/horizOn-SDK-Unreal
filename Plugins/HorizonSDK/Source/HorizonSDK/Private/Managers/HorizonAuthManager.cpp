@@ -5,6 +5,12 @@
 #include "HorizonSessionSave.h"
 #include "Dom/JsonObject.h"
 #include "Misc/Guid.h"
+#include "GenericPlatform/GenericPlatformProcess.h"
+#include "HAL/PlatformProcess.h"
+
+#if PLATFORM_IOS
+#include "iOS/HorizonAppleSignInBridge.h"
+#endif
 
 // ============================================================
 // Initialization
@@ -82,6 +88,35 @@ void UHorizonAuthManager::SignUpGoogle(const FString& GoogleAuthCode, const FStr
 		FOnHttpResponse::CreateUObject(this, &UHorizonAuthManager::HandleAuthResponse, OnComplete));
 }
 
+void UHorizonAuthManager::SignUpApple(const FString& IdentityToken, const FString& FirstName, const FString& LastName, const FString& Username, FOnAuthComplete OnComplete)
+{
+	if (IdentityToken.IsEmpty())
+	{
+		UE_LOG(LogHorizonSDK, Error, TEXT("SignUpApple -- IdentityToken is empty."));
+		OnComplete.ExecuteIfBound(false);
+		return;
+	}
+
+	TSharedRef<FJsonObject> Body = MakeShared<FJsonObject>();
+	Body->SetStringField(TEXT("type"), TEXT("APPLE"));
+	Body->SetStringField(TEXT("appleIdentityToken"), IdentityToken);
+	if (!FirstName.IsEmpty())
+	{
+		Body->SetStringField(TEXT("appleFirstName"), FirstName);
+	}
+	if (!LastName.IsEmpty())
+	{
+		Body->SetStringField(TEXT("appleLastName"), LastName);
+	}
+	if (!Username.IsEmpty())
+	{
+		Body->SetStringField(TEXT("username"), Username);
+	}
+
+	HttpClient->PostJson(Body, TEXT("api/v1/app/user-management/signup"), false,
+		FOnHttpResponse::CreateUObject(this, &UHorizonAuthManager::HandleAuthResponse, OnComplete));
+}
+
 // ============================================================
 // Sign In
 // ============================================================
@@ -131,6 +166,79 @@ void UHorizonAuthManager::SignInGoogle(const FString& GoogleAuthCode, const FStr
 
 	HttpClient->PostJson(Body, TEXT("api/v1/app/user-management/signin"), false,
 		FOnHttpResponse::CreateUObject(this, &UHorizonAuthManager::HandleAuthResponse, OnComplete));
+}
+
+void UHorizonAuthManager::SignInApple(const FString& IdentityToken, FOnAuthComplete OnComplete)
+{
+	if (IdentityToken.IsEmpty())
+	{
+		UE_LOG(LogHorizonSDK, Error, TEXT("SignInApple -- IdentityToken is empty."));
+		OnComplete.ExecuteIfBound(false);
+		return;
+	}
+
+	TSharedRef<FJsonObject> Body = MakeShared<FJsonObject>();
+	Body->SetStringField(TEXT("type"), TEXT("APPLE"));
+	Body->SetStringField(TEXT("appleIdentityToken"), IdentityToken);
+
+	HttpClient->PostJson(Body, TEXT("api/v1/app/user-management/signin"), false,
+		FOnHttpResponse::CreateUObject(this, &UHorizonAuthManager::HandleAuthResponse, OnComplete));
+}
+
+void UHorizonAuthManager::SignInWithApple(FOnAuthComplete OnComplete)
+{
+#if PLATFORM_IOS
+	// Native iOS path -- drive ASAuthorizationController via the Objective-C++ bridge,
+	// then attempt SignInApple, falling through to SignUpApple on USER_NOT_FOUND.
+	TWeakObjectPtr<UHorizonAuthManager> WeakSelf(this);
+	FOnAuthComplete CapturedOnComplete = OnComplete;
+
+	HorizonAppleSignInBridge::StartSignIn(
+		[WeakSelf, CapturedOnComplete](bool bSuccess, const FString& IdentityToken, const FString& FirstName, const FString& LastName, const FString& ErrorCode)
+		{
+			UHorizonAuthManager* Self = WeakSelf.Get();
+			if (!Self)
+			{
+				return;
+			}
+
+			if (!bSuccess || IdentityToken.IsEmpty())
+			{
+				UE_LOG(LogHorizonSDK, Warning, TEXT("SignInWithApple -- native sheet failed: %s"), *ErrorCode);
+				CapturedOnComplete.ExecuteIfBound(false);
+				return;
+			}
+
+			// First try sign-in. If the user is unknown, fall through to sign-up so the
+			// caller does not need to know whether this Apple ID has used the API key before.
+			Self->SignInApple(IdentityToken, FOnAuthComplete::CreateLambda(
+				[WeakSelf, CapturedOnComplete, IdentityToken, FirstName, LastName](bool bSignInOk)
+				{
+					UHorizonAuthManager* Inner = WeakSelf.Get();
+					if (!Inner)
+					{
+						return;
+					}
+
+					if (bSignInOk)
+					{
+						CapturedOnComplete.ExecuteIfBound(true);
+						return;
+					}
+
+					Inner->SignUpApple(IdentityToken, FirstName, LastName, FString(), CapturedOnComplete);
+				}));
+		});
+#else
+	// Non-iOS fallback. The full OAuth round-trip needs a customer-supplied redirect URI
+	// scheme that the game's platform layer can intercept; the SDK cannot complete that
+	// loop on its own. We launch the system browser so the customer can plug in their own
+	// post-redirect handler and then call SignInApple/SignUpApple with the resulting token.
+	UE_LOG(LogHorizonSDK, Warning,
+		TEXT("SignInWithApple -- non-iOS platform: SDK cannot harvest the identity token automatically. ")
+		TEXT("Launch the Apple authorize URL manually, capture the redirect, and call SignInApple/SignUpApple."));
+	OnComplete.ExecuteIfBound(false);
+#endif
 }
 
 // ============================================================

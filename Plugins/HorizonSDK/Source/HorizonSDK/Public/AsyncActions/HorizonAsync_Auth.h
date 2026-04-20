@@ -47,6 +47,24 @@ public:
 	UFUNCTION(BlueprintCallable, meta = (BlueprintInternalUseOnly = "true", WorldContext = "WorldContextObject", DisplayName = "Restore Session"), Category = "horizOn|Auth")
 	static UHorizonAsync_Auth* RestoreSession(const UObject* WorldContextObject);
 
+	/**
+	 * Register a new user with a pre-obtained Apple identity token.
+	 * Use this if the game already integrates an Apple Sign-In plugin of its own.
+	 */
+	UFUNCTION(BlueprintCallable, meta = (BlueprintInternalUseOnly = "true", WorldContext = "WorldContextObject", DisplayName = "Sign Up With Apple"), Category = "horizOn|Auth")
+	static UHorizonAsync_Auth* SignUpApple(const UObject* WorldContextObject, const FString& IdentityToken, const FString& FirstName, const FString& LastName, const FString& Username);
+
+	/** Sign in an existing Apple-registered user with a pre-obtained identity token. */
+	UFUNCTION(BlueprintCallable, meta = (BlueprintInternalUseOnly = "true", WorldContext = "WorldContextObject", DisplayName = "Sign In With Apple"), Category = "horizOn|Auth")
+	static UHorizonAsync_Auth* SignInApple(const UObject* WorldContextObject, const FString& IdentityToken);
+
+	/**
+	 * Convenience drop-in node — opens the native Apple sheet on iOS, falls through to
+	 * a system-browser OAuth on other platforms, then performs sign-in/sign-up.
+	 */
+	UFUNCTION(BlueprintCallable, meta = (BlueprintInternalUseOnly = "true", WorldContext = "WorldContextObject", DisplayName = "Sign In With Apple (Native)"), Category = "horizOn|Auth")
+	static UHorizonAsync_Auth* SignInWithApple(const UObject* WorldContextObject);
+
 	virtual void Activate() override;
 
 private:
@@ -57,7 +75,10 @@ private:
 		SignUpEmail,
 		SignInEmail,
 		SignInAnonymous,
-		RestoreSession
+		RestoreSession,
+		SignUpApple,
+		SignInApple,
+		SignInWithApple
 	};
 
 	TWeakObjectPtr<const UObject> WorldContext;
@@ -69,6 +90,9 @@ private:
 	FString ParamPassword;
 	FString ParamUsername;
 	FString ParamAnonymousToken;
+	FString ParamAppleIdentityToken;
+	FString ParamAppleFirstName;
+	FString ParamAppleLastName;
 
 	void HandleAuthResult(bool bSuccess);
 };

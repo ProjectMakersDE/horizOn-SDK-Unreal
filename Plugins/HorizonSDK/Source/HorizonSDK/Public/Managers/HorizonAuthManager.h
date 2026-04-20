@@ -40,6 +40,21 @@ public:
 	/** Register with a Google authorization code. */
 	void SignUpGoogle(const FString& GoogleAuthCode, const FString& RedirectUri, const FString& Username, FOnAuthComplete OnComplete);
 
+	/**
+	 * Register a new user with an Apple identity token.
+	 *
+	 * Use this overload if the game already integrates an Apple Sign-In plugin of its own
+	 * and just needs to forward the obtained token to horizOn. For a complete drop-in flow
+	 * (native iOS sheet + web fallback) call SignInWithApple() instead.
+	 *
+	 * @param IdentityToken  JWT returned by Apple after user consent. Must not be empty.
+	 * @param FirstName      Optional Apple first-login-only profile data.
+	 * @param LastName       Optional Apple first-login-only profile data.
+	 * @param Username       Optional SDK-side username override (server falls back to a derived value).
+	 * @param OnComplete     Called with true on AUTHENTICATED.
+	 */
+	void SignUpApple(const FString& IdentityToken, const FString& FirstName, const FString& LastName, const FString& Username, FOnAuthComplete OnComplete);
+
 	// --- Sign In ---
 
 	/** Sign in with email and password. */
@@ -50,6 +65,23 @@ public:
 
 	/** Sign in with a Google authorization code. */
 	void SignInGoogle(const FString& GoogleAuthCode, const FString& RedirectUri, FOnAuthComplete OnComplete);
+
+	/** Sign in an existing Apple-registered user with a pre-obtained identity token. */
+	void SignInApple(const FString& IdentityToken, FOnAuthComplete OnComplete);
+
+	/**
+	 * Convenience end-to-end flow:
+	 *  - PLATFORM_IOS: opens the native ASAuthorizationController sheet via the
+	 *    HorizonAppleSignInBridge, harvests the identity token, then calls SignInApple
+	 *    (falling through to SignUpApple on USER_NOT_FOUND).
+	 *  - All other platforms: launches the system browser to Apple's authorization page
+	 *    (Services-ID-based OAuth) via FPlatformProcess::LaunchURL. The customer's game must
+	 *    register the configured redirect URI scheme so the callback arrives back in-app.
+	 *
+	 * On any failure (no Apple plugin, no Services ID configured, user cancel, etc.) OnComplete
+	 * is invoked with bSuccess = false. The auth state is left untouched.
+	 */
+	void SignInWithApple(FOnAuthComplete OnComplete);
 
 	/** Restore a previous session from disk and verify with the server. */
 	void RestoreSession(FOnAuthComplete OnComplete);
