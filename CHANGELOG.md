@@ -1,3 +1,10 @@
+## [1.4.1](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/compare/v1.4.0...v1.4.1) (2026-05-14)
+
+
+### Bug Fixes
+
+* **sdk:** add per-feature minimal examples and Hello horizOn entry (TASK-217) ([abcb21b](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/abcb21b4755cfa7936b8239703a9cbe08de5995f))
+
 # [1.4.0](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/compare/v1.3.0...v1.4.0) (2026-04-20)
 
 
