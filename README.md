@@ -488,9 +488,10 @@ Plugins/HorizonSDK/
 │   │   ├── Public/
 │   │   │   ├── Http/            HTTP client
 │   │   │   ├── Models/          Data structs
-│   │   │   ├── Managers/        Feature managers (incl. CrashReportManager)
+│   │   │   ├── Managers/        Feature managers (incl. CrashManager)
 │   │   │   ├── AsyncActions/    Blueprint async nodes
-│   │   │   └── Example/         Example widget
+│   │   │   ├── Example/         Example widget (monolithic test UI)
+│   │   │   └── Examples/        Per-feature example actors + Hello horizOn
 │   │   └── Private/
 │   └── HorizonSDKEditor/        (Editor module)
 │       ├── Public/

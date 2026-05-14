@@ -12,6 +12,8 @@ The horizOn SDK is a fully-featured Unreal Engine plugin that connects your game
 - **Gift Codes** -- Validate and redeem promotional codes.
 - **Feedback** -- Submit bug reports, feature requests, and general feedback with optional device info.
 - **User Logs** -- Send structured log entries (info, warning, error) to the server for analytics and debugging.
+- **Crash Reporting** -- Capture crashes and non-fatal exceptions with breadcrumbs and custom keys.
+- **Email Sending** -- Trigger transactional emails through Dashboard templates, immediate or scheduled.
 
 ## Requirements
 
@@ -72,6 +74,44 @@ Open **Project Settings > Plugins > horizOn SDK** to set:
 - **Log Level** -- Control SDK log verbosity.
 
 Alternatively, use **Tools > horizOn > Import Config...** to import a JSON config file from the horizOn dashboard.
+
+## Hello horizOn
+
+The fastest way to see the SDK working end to end. `AHelloHorizonActor` runs a
+minimal flow on Play: connect, anonymous sign-up, leaderboard score submit, and
+a result message in the log and on screen.
+
+1. Enable the horizOn SDK plugin under **Edit > Plugins** and restart the editor.
+2. Set your **API Key** in **Project Settings > Plugins > horizOn SDK**.
+3. Drop **AHelloHorizonActor** into a level and press Play.
+
+Source: `Source/HorizonSDK/Public/Examples/HelloHorizon/HelloHorizonActor.h` and the matching `.cpp` under `Private/`.
+
+## Per-Feature Examples
+
+Each feature ships a small, self-contained example actor under
+`Source/HorizonSDK/Public/Examples/` (with matching `.cpp` files under
+`Private/Examples/`). Drop one into a level and press Play; it runs the minimal
+flow for that feature and logs the outcome on the `LogTemp` channel. Every actor
+header documents what it does, where to set the API key, and the expected log
+output.
+
+| Feature | Example actor |
+|---|---|
+| Auth (Anonymous + Email) | `AHorizonAuthExample` |
+| Leaderboards | `AHorizonLeaderboardExample` |
+| Cloud Save | `AHorizonCloudSaveExample` |
+| Crash Reporting | `AHorizonCrashReportingExample` |
+| User Logs | `AHorizonUserLogsExample` |
+| Remote Config | `AHorizonRemoteConfigExample` |
+| News | `AHorizonNewsExample` |
+| Email Sending | `AHorizonEmailSendingExample` |
+| Gift Codes | `AHorizonGiftCodesExample` |
+| Feedback | `AHorizonFeedbackExample` |
+
+The `AHorizonEmailSendingExample` and `AHorizonGiftCodesExample` actors expose
+editable properties (recipient user ID, template slug, gift code) that you need
+to set to real values from your horizOn Dashboard before running them.
 
 ## Documentation
 
