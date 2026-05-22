@@ -83,7 +83,11 @@ public:
 	 */
 	void SignInWithApple(FOnAuthComplete OnComplete);
 
+	/** Restore a previous anonymous session from disk and verify with the server. */
+	void RestoreAnonymousSession(FOnAuthComplete OnComplete);
+
 	/** Restore a previous session from disk and verify with the server. */
+	UE_DEPRECATED(5.5, "Use RestoreAnonymousSession instead.")
 	void RestoreSession(FOnAuthComplete OnComplete);
 
 	/** Verify the current session token is still valid server-side. */

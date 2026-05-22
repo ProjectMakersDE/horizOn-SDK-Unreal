@@ -7,6 +7,7 @@
 #include "HorizonAsync_RemoteConfig.generated.h"
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnRemoteConfigValueResult, const FString&, Value);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnRemoteConfigExistsResult, bool, bExists);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnRemoteConfigAllSuccess);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnRemoteConfigAsyncFailure, const FString&, ErrorMessage);
 
@@ -37,6 +38,69 @@ private:
 	bool bCache;
 
 	void HandleResult(bool bSuccess, const FString& Value);
+};
+
+// ============================================================
+
+/**
+ * Async Blueprint node: Get a JSON remote config value by key.
+ */
+UCLASS()
+class HORIZONSDK_API UHorizonAsync_RemoteConfigGetJson : public UBlueprintAsyncActionBase
+{
+	GENERATED_BODY()
+
+public:
+	UPROPERTY(BlueprintAssignable)
+	FOnRemoteConfigValueResult OnSuccess;
+
+	UPROPERTY(BlueprintAssignable)
+	FOnRemoteConfigAsyncFailure OnFailure;
+
+	/** Get a JSON config value by key. */
+	UFUNCTION(BlueprintCallable, meta = (BlueprintInternalUseOnly = "true", WorldContext = "WorldContextObject", DisplayName = "Get Remote Config JSON"), Category = "horizOn|RemoteConfig")
+	static UHorizonAsync_RemoteConfigGetJson* GetJson(const UObject* WorldContextObject, const FString& Key, const FString& DefaultValue, bool bUseCache);
+
+	virtual void Activate() override;
+
+private:
+	TWeakObjectPtr<const UObject> WorldContext;
+	FString ConfigKey;
+	FString DefaultValueStr;
+	bool bCache;
+
+	void HandleResult(bool bSuccess, const FString& Value);
+};
+
+// ============================================================
+
+/**
+ * Async Blueprint node: Check whether a remote config key exists.
+ */
+UCLASS()
+class HORIZONSDK_API UHorizonAsync_RemoteConfigHasKey : public UBlueprintAsyncActionBase
+{
+	GENERATED_BODY()
+
+public:
+	UPROPERTY(BlueprintAssignable)
+	FOnRemoteConfigExistsResult OnSuccess;
+
+	UPROPERTY(BlueprintAssignable)
+	FOnRemoteConfigAsyncFailure OnFailure;
+
+	/** Check whether a config key exists. */
+	UFUNCTION(BlueprintCallable, meta = (BlueprintInternalUseOnly = "true", WorldContext = "WorldContextObject", DisplayName = "Has Remote Config Key"), Category = "horizOn|RemoteConfig")
+	static UHorizonAsync_RemoteConfigHasKey* HasKey(const UObject* WorldContextObject, const FString& Key, bool bUseCache);
+
+	virtual void Activate() override;
+
+private:
+	TWeakObjectPtr<const UObject> WorldContext;
+	FString ConfigKey;
+	bool bCache;
+
+	void HandleResult(bool bSuccess, bool bExists);
 };
 
 // ============================================================

@@ -9,6 +9,7 @@
 
 DECLARE_DELEGATE_TwoParams(FOnConfigComplete, bool /*bSuccess*/, const FString& /*Value*/);
 DECLARE_DELEGATE_TwoParams(FOnAllConfigsComplete, bool /*bSuccess*/, const TMap<FString, FString>& /*Configs*/);
+DECLARE_DELEGATE_TwoParams(FOnConfigExistsComplete, bool /*bSuccess*/, bool /*bExists*/);
 
 /**
  * Remote Config Manager for the horizOn SDK.
@@ -75,6 +76,23 @@ public:
 	 * @param OnComplete   Called with (bSuccess, Value).
 	 */
 	void GetBool(const FString& Key, bool DefaultValue, bool bUseCache, TDelegate<void(bool, bool)> OnComplete);
+
+	/**
+	 * Get a config value as a JSON string after validating that it parses as JSON.
+	 * @param Key          Config key.
+	 * @param DefaultValue Returned if the key is not found or cannot be parsed as JSON.
+	 * @param bUseCache    If true, return cached value when available.
+	 * @param OnComplete   Called with (bSuccess, JsonValue).
+	 */
+	void GetJson(const FString& Key, const FString& DefaultValue, bool bUseCache, FOnConfigComplete OnComplete);
+
+	/**
+	 * Check whether a remote config key exists.
+	 * @param Key          Config key.
+	 * @param bUseCache    If true, return cached knowledge when available.
+	 * @param OnComplete   Called with (bSuccess, bExists).
+	 */
+	void HasKey(const FString& Key, bool bUseCache, FOnConfigExistsComplete OnComplete);
 
 	/** Clear the in-memory config cache. */
 	UFUNCTION(BlueprintCallable, Category = "horizOn|RemoteConfig")

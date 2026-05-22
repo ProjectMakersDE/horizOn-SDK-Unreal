@@ -19,6 +19,16 @@ UHorizonAsync_CloudSave* UHorizonAsync_CloudSave::SaveData(const UObject* WorldC
 	return Action;
 }
 
+UHorizonAsync_CloudSave* UHorizonAsync_CloudSave::SaveObject(const UObject* WorldContextObject, const TMap<FString, FString>& Data)
+{
+	UHorizonAsync_CloudSave* Action = NewObject<UHorizonAsync_CloudSave>();
+	Action->WorldContext = WorldContextObject;
+	Action->Operation = ECloudSaveOp::SaveObject;
+	Action->ObjectData = Data;
+	Action->RegisterWithGameInstance(WorldContextObject);
+	return Action;
+}
+
 UHorizonAsync_CloudSave* UHorizonAsync_CloudSave::SaveBytes(const UObject* WorldContextObject, const TArray<uint8>& Data)
 {
 	UHorizonAsync_CloudSave* Action = NewObject<UHorizonAsync_CloudSave>();
@@ -45,6 +55,9 @@ void UHorizonAsync_CloudSave::Activate()
 	{
 	case ECloudSaveOp::SaveString:
 		Subsystem->CloudSave->Save(StringData, Callback);
+		break;
+	case ECloudSaveOp::SaveObject:
+		Subsystem->CloudSave->SaveObject(ObjectData, Callback);
 		break;
 	case ECloudSaveOp::SaveBytes:
 		Subsystem->CloudSave->SaveBytes(BinaryData, Callback);

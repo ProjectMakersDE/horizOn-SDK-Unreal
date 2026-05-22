@@ -31,6 +31,14 @@ public:
 	void Save(const FString& Data, FOnRequestComplete OnComplete);
 
 	/**
+	 * Save a string dictionary to the cloud for the current user.
+	 * The dictionary is serialized as a JSON object and stored via the string save endpoint.
+	 * @param Data       Key-value data to save.
+	 * @param OnComplete Called with (bSuccess, ErrorMessage).
+	 */
+	void SaveObject(const TMap<FString, FString>& Data, FOnRequestComplete OnComplete);
+
+	/**
 	 * Load string data from the cloud for the current user.
 	 * @param OnComplete Called with (bSuccess, Data).
 	 */

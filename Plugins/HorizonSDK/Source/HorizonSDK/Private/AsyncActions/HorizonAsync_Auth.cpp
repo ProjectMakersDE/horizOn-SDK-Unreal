@@ -52,13 +52,18 @@ UHorizonAsync_Auth* UHorizonAsync_Auth::SignInAnonymous(const UObject* WorldCont
 	return Action;
 }
 
-UHorizonAsync_Auth* UHorizonAsync_Auth::RestoreSession(const UObject* WorldContextObject)
+UHorizonAsync_Auth* UHorizonAsync_Auth::RestoreAnonymousSession(const UObject* WorldContextObject)
 {
 	UHorizonAsync_Auth* Action = NewObject<UHorizonAsync_Auth>();
 	Action->WorldContext = WorldContextObject;
 	Action->Operation = EAuthOp::RestoreSession;
 	Action->RegisterWithGameInstance(WorldContextObject);
 	return Action;
+}
+
+UHorizonAsync_Auth* UHorizonAsync_Auth::RestoreSession(const UObject* WorldContextObject)
+{
+	return RestoreAnonymousSession(WorldContextObject);
 }
 
 UHorizonAsync_Auth* UHorizonAsync_Auth::SignUpApple(const UObject* WorldContextObject, const FString& IdentityToken, const FString& FirstName, const FString& LastName, const FString& Username)
@@ -124,7 +129,7 @@ void UHorizonAsync_Auth::Activate()
 		Subsystem->Auth->SignInAnonymous(ParamAnonymousToken, Callback);
 		break;
 	case EAuthOp::RestoreSession:
-		Subsystem->Auth->RestoreSession(Callback);
+		Subsystem->Auth->RestoreAnonymousSession(Callback);
 		break;
 	case EAuthOp::SignUpApple:
 		Subsystem->Auth->SignUpApple(ParamAppleIdentityToken, ParamAppleFirstName, ParamAppleLastName, ParamUsername, Callback);

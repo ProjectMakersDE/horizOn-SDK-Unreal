@@ -34,6 +34,10 @@ public:
 	UFUNCTION(BlueprintCallable, meta = (BlueprintInternalUseOnly = "true", WorldContext = "WorldContextObject", DisplayName = "Cloud Save Data"), Category = "horizOn|CloudSave")
 	static UHorizonAsync_CloudSave* SaveData(const UObject* WorldContextObject, const FString& Data);
 
+	/** Save string dictionary data to the cloud as a JSON object. */
+	UFUNCTION(BlueprintCallable, meta = (BlueprintInternalUseOnly = "true", WorldContext = "WorldContextObject", DisplayName = "Cloud Save Object"), Category = "horizOn|CloudSave")
+	static UHorizonAsync_CloudSave* SaveObject(const UObject* WorldContextObject, const TMap<FString, FString>& Data);
+
 	/** Save binary data to the cloud. */
 	UFUNCTION(BlueprintCallable, meta = (BlueprintInternalUseOnly = "true", WorldContext = "WorldContextObject", DisplayName = "Cloud Save Bytes"), Category = "horizOn|CloudSave")
 	static UHorizonAsync_CloudSave* SaveBytes(const UObject* WorldContextObject, const TArray<uint8>& Data);
@@ -44,12 +48,14 @@ private:
 	enum class ECloudSaveOp : uint8
 	{
 		SaveString,
+		SaveObject,
 		SaveBytes
 	};
 
 	TWeakObjectPtr<const UObject> WorldContext;
 	ECloudSaveOp Operation;
 	FString StringData;
+	TMap<FString, FString> ObjectData;
 	TArray<uint8> BinaryData;
 
 	void HandleSaveResult(bool bSuccess, const FString& ErrorMessage);

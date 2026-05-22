@@ -43,8 +43,12 @@ public:
 	UFUNCTION(BlueprintCallable, meta = (BlueprintInternalUseOnly = "true", WorldContext = "WorldContextObject", DisplayName = "Sign In Anonymous"), Category = "horizOn|Auth")
 	static UHorizonAsync_Auth* SignInAnonymous(const UObject* WorldContextObject, const FString& AnonymousToken);
 
+	/** Restore a previous anonymous session from disk. */
+	UFUNCTION(BlueprintCallable, meta = (BlueprintInternalUseOnly = "true", WorldContext = "WorldContextObject", DisplayName = "Restore Anonymous Session"), Category = "horizOn|Auth")
+	static UHorizonAsync_Auth* RestoreAnonymousSession(const UObject* WorldContextObject);
+
 	/** Restore a previous session from disk. */
-	UFUNCTION(BlueprintCallable, meta = (BlueprintInternalUseOnly = "true", WorldContext = "WorldContextObject", DisplayName = "Restore Session"), Category = "horizOn|Auth")
+	UFUNCTION(BlueprintCallable, meta = (BlueprintInternalUseOnly = "true", WorldContext = "WorldContextObject", DisplayName = "Restore Session", DeprecatedFunction, DeprecationMessage = "Use Restore Anonymous Session instead."), Category = "horizOn|Auth")
 	static UHorizonAsync_Auth* RestoreSession(const UObject* WorldContextObject);
 
 	/**

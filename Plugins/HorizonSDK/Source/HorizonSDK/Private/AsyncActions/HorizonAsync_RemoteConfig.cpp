@@ -50,6 +50,95 @@ void UHorizonAsync_RemoteConfigGet::HandleResult(bool bSuccess, const FString& V
 }
 
 // ============================================================
+// GetJson
+// ============================================================
+
+UHorizonAsync_RemoteConfigGetJson* UHorizonAsync_RemoteConfigGetJson::GetJson(
+	const UObject* WorldContextObject, const FString& Key, const FString& DefaultValue, bool bUseCache)
+{
+	UHorizonAsync_RemoteConfigGetJson* Action = NewObject<UHorizonAsync_RemoteConfigGetJson>();
+	Action->WorldContext = WorldContextObject;
+	Action->ConfigKey = Key;
+	Action->DefaultValueStr = DefaultValue;
+	Action->bCache = bUseCache;
+	Action->RegisterWithGameInstance(WorldContextObject);
+	return Action;
+}
+
+void UHorizonAsync_RemoteConfigGetJson::Activate()
+{
+	UHorizonSubsystem* Subsystem = UHorizonBlueprintLibrary::GetHorizonSubsystem(WorldContext.Get());
+	if (!Subsystem || !Subsystem->RemoteConfig)
+	{
+		OnFailure.Broadcast(TEXT("horizOn Subsystem or RemoteConfig manager not found."));
+		SetReadyToDestroy();
+		return;
+	}
+
+	Subsystem->RemoteConfig->GetJson(
+		ConfigKey, DefaultValueStr, bCache,
+		FOnConfigComplete::CreateUObject(this, &UHorizonAsync_RemoteConfigGetJson::HandleResult)
+	);
+}
+
+void UHorizonAsync_RemoteConfigGetJson::HandleResult(bool bSuccess, const FString& Value)
+{
+	if (bSuccess)
+	{
+		OnSuccess.Broadcast(Value);
+	}
+	else
+	{
+		OnFailure.Broadcast(Value);
+	}
+	SetReadyToDestroy();
+}
+
+// ============================================================
+// HasKey
+// ============================================================
+
+UHorizonAsync_RemoteConfigHasKey* UHorizonAsync_RemoteConfigHasKey::HasKey(
+	const UObject* WorldContextObject, const FString& Key, bool bUseCache)
+{
+	UHorizonAsync_RemoteConfigHasKey* Action = NewObject<UHorizonAsync_RemoteConfigHasKey>();
+	Action->WorldContext = WorldContextObject;
+	Action->ConfigKey = Key;
+	Action->bCache = bUseCache;
+	Action->RegisterWithGameInstance(WorldContextObject);
+	return Action;
+}
+
+void UHorizonAsync_RemoteConfigHasKey::Activate()
+{
+	UHorizonSubsystem* Subsystem = UHorizonBlueprintLibrary::GetHorizonSubsystem(WorldContext.Get());
+	if (!Subsystem || !Subsystem->RemoteConfig)
+	{
+		OnFailure.Broadcast(TEXT("horizOn Subsystem or RemoteConfig manager not found."));
+		SetReadyToDestroy();
+		return;
+	}
+
+	Subsystem->RemoteConfig->HasKey(
+		ConfigKey, bCache,
+		FOnConfigExistsComplete::CreateUObject(this, &UHorizonAsync_RemoteConfigHasKey::HandleResult)
+	);
+}
+
+void UHorizonAsync_RemoteConfigHasKey::HandleResult(bool bSuccess, bool bExists)
+{
+	if (bSuccess)
+	{
+		OnSuccess.Broadcast(bExists);
+	}
+	else
+	{
+		OnFailure.Broadcast(TEXT("Failed to check remote config key."));
+	}
+	SetReadyToDestroy();
+}
+
+// ============================================================
 // GetAllConfigs
 // ============================================================
 

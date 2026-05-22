@@ -245,12 +245,12 @@ void UHorizonAuthManager::SignInWithApple(FOnAuthComplete OnComplete)
 // Session management
 // ============================================================
 
-void UHorizonAuthManager::RestoreSession(FOnAuthComplete OnComplete)
+void UHorizonAuthManager::RestoreAnonymousSession(FOnAuthComplete OnComplete)
 {
 	UHorizonSessionSave* Save = UHorizonSessionSave::LoadFromDisk();
 	if (!Save || Save->CachedUserId.IsEmpty() || Save->CachedAccessToken.IsEmpty())
 	{
-		UE_LOG(LogHorizonSDK, Log, TEXT("RestoreSession -- No saved session found."));
+		UE_LOG(LogHorizonSDK, Log, TEXT("RestoreAnonymousSession -- No saved session found."));
 		OnComplete.ExecuteIfBound(false);
 		return;
 	}
@@ -281,15 +281,20 @@ void UHorizonAuthManager::RestoreSession(FOnAuthComplete OnComplete)
 				UE_LOG(LogHorizonSDK, Log, TEXT("Session restored for user %s."), *Self->CurrentUser.UserId);
 				Self->OnUserSignedIn.Broadcast();
 				CapturedOnComplete.ExecuteIfBound(true);
-			}
-			else
-			{
-				UE_LOG(LogHorizonSDK, Warning, TEXT("RestoreSession -- CheckAuth failed. Session cleared."));
-				Self->ClearSession();
-				CapturedOnComplete.ExecuteIfBound(false);
-			}
+				}
+				else
+				{
+					UE_LOG(LogHorizonSDK, Warning, TEXT("RestoreAnonymousSession -- CheckAuth failed. Session cleared."));
+					Self->ClearSession();
+					CapturedOnComplete.ExecuteIfBound(false);
+				}
 		}
-	));
+		));
+}
+
+void UHorizonAuthManager::RestoreSession(FOnAuthComplete OnComplete)
+{
+	RestoreAnonymousSession(OnComplete);
 }
 
 void UHorizonAuthManager::CheckAuth(FOnAuthComplete OnComplete)

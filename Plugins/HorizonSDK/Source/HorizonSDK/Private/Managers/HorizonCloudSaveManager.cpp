@@ -3,6 +3,8 @@
 #include "Managers/HorizonCloudSaveManager.h"
 #include "HorizonSDKModule.h"
 #include "Dom/JsonObject.h"
+#include "Serialization/JsonSerializer.h"
+#include "Serialization/JsonWriter.h"
 
 // ============================================================
 // Initialization
@@ -58,6 +60,25 @@ void UHorizonCloudSaveManager::Save(const FString& Data, FOnRequestComplete OnCo
 				}
 			}
 		));
+}
+
+void UHorizonCloudSaveManager::SaveObject(const TMap<FString, FString>& Data, FOnRequestComplete OnComplete)
+{
+	TSharedRef<FJsonObject> ObjectJson = MakeShared<FJsonObject>();
+	for (const TPair<FString, FString>& Pair : Data)
+	{
+		ObjectJson->SetStringField(Pair.Key, Pair.Value);
+	}
+
+	FString SerializedData;
+	TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&SerializedData);
+	if (!FJsonSerializer::Serialize(ObjectJson, Writer))
+	{
+		OnComplete.ExecuteIfBound(false, TEXT("Failed to serialize cloud save object."));
+		return;
+	}
+
+	Save(SerializedData, OnComplete);
 }
 
 void UHorizonCloudSaveManager::Load(FOnStringComplete OnComplete)

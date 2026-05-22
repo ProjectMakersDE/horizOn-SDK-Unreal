@@ -3,6 +3,9 @@
 #include "Managers/HorizonRemoteConfigManager.h"
 #include "HorizonSDKModule.h"
 #include "Dom/JsonObject.h"
+#include "Dom/JsonValue.h"
+#include "Serialization/JsonReader.h"
+#include "Serialization/JsonSerializer.h"
 
 // ============================================================
 // Initialization
@@ -251,6 +254,65 @@ void UHorizonRemoteConfigManager::GetBool(const FString& Key, bool DefaultValue,
 			{
 				CapturedOnComplete.ExecuteIfBound(bSuccess, CapturedDefault);
 			}
+		}
+		));
+}
+
+void UHorizonRemoteConfigManager::GetJson(const FString& Key, const FString& DefaultValue, bool bUseCache, FOnConfigComplete OnComplete)
+{
+	FOnConfigComplete CapturedOnComplete = OnComplete;
+	FString CapturedDefault = DefaultValue;
+
+	GetConfig(Key, bUseCache, FOnConfigComplete::CreateLambda(
+		[CapturedOnComplete, CapturedDefault, Key](bool bSuccess, const FString& Value)
+		{
+			if (!bSuccess || Value.IsEmpty())
+			{
+				CapturedOnComplete.ExecuteIfBound(bSuccess, CapturedDefault);
+				return;
+			}
+
+			TSharedRef<TJsonReader<>> ObjectReader = TJsonReaderFactory<>::Create(Value);
+			TSharedPtr<FJsonObject> ParsedObject;
+			if (FJsonSerializer::Deserialize(ObjectReader, ParsedObject) && ParsedObject.IsValid())
+			{
+				CapturedOnComplete.ExecuteIfBound(true, Value);
+				return;
+			}
+
+			TSharedRef<TJsonReader<>> ArrayReader = TJsonReaderFactory<>::Create(Value);
+			TArray<TSharedPtr<FJsonValue>> ParsedArray;
+			if (FJsonSerializer::Deserialize(ArrayReader, ParsedArray))
+			{
+				CapturedOnComplete.ExecuteIfBound(true, Value);
+				return;
+			}
+
+			UE_LOG(LogHorizonSDK, Warning, TEXT("RemoteConfig::GetJson -- Value for key '%s' is not a valid JSON object or array. Using default."), *Key);
+			CapturedOnComplete.ExecuteIfBound(true, CapturedDefault);
+		}
+	));
+}
+
+void UHorizonRemoteConfigManager::HasKey(const FString& Key, bool bUseCache, FOnConfigExistsComplete OnComplete)
+{
+	if (Key.IsEmpty())
+	{
+		OnComplete.ExecuteIfBound(false, false);
+		return;
+	}
+
+	if (bUseCache && ConfigCache.Contains(Key))
+	{
+		OnComplete.ExecuteIfBound(true, true);
+		return;
+	}
+
+	FOnConfigExistsComplete CapturedOnComplete = OnComplete;
+	GetAllConfigs(bUseCache, FOnAllConfigsComplete::CreateLambda(
+		[CapturedOnComplete, Key](bool bSuccess, const TMap<FString, FString>& Configs)
+		{
+			CapturedOnComplete.ExecuteIfBound(bSuccess, bSuccess && Configs.Contains(Key));
 		}
 	));
 }
