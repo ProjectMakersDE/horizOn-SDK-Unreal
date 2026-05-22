@@ -1,3 +1,10 @@
+# [1.5.0](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/compare/v1.4.1...v1.5.0) (2026-05-22)
+
+
+### Features
+
+* harmonize sdk multi-board APIs ([ee0fe62](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/ee0fe62de0bcb7fb7b979df1dc984f62daeb8445))
+
 ## [1.4.1](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/compare/v1.4.0...v1.4.1) (2026-05-14)
 
 
