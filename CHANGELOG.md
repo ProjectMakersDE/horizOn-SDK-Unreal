@@ -1,3 +1,10 @@
+# [1.6.0](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/compare/v1.5.0...v1.6.0) (2026-06-24)
+
+
+### Features
+
+* **localization:** add HorizonLocalizationManager, async actions and example ([87e2433](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/87e2433edce0a87dcda98df815eb2c593efa20d2))
+
 # [1.5.0](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/compare/v1.4.1...v1.5.0) (2026-05-22)
 
 
