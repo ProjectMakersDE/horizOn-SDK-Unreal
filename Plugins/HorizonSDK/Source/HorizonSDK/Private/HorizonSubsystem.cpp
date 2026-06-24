@@ -7,6 +7,7 @@
 #include "Managers/HorizonCloudSaveManager.h"
 #include "Managers/HorizonLeaderboardManager.h"
 #include "Managers/HorizonRemoteConfigManager.h"
+#include "Managers/HorizonLocalizationManager.h"
 #include "Managers/HorizonNewsManager.h"
 #include "Managers/HorizonGiftCodeManager.h"
 #include "Managers/HorizonFeedbackManager.h"
@@ -39,6 +40,9 @@ void UHorizonSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 
 	RemoteConfig = NewObject<UHorizonRemoteConfigManager>(this);
 	RemoteConfig->Initialize(HttpClient);
+
+	Localization = NewObject<UHorizonLocalizationManager>(this);
+	Localization->Initialize(HttpClient);
 
 	News = NewObject<UHorizonNewsManager>(this);
 	News->Initialize(HttpClient);

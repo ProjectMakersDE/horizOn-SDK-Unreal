@@ -12,6 +12,7 @@ class UHorizonAuthManager;
 class UHorizonCloudSaveManager;
 class UHorizonLeaderboardManager;
 class UHorizonRemoteConfigManager;
+class UHorizonLocalizationManager;
 class UHorizonNewsManager;
 class UHorizonGiftCodeManager;
 class UHorizonFeedbackManager;
@@ -52,6 +53,9 @@ public:
 
 	UPROPERTY(BlueprintReadOnly, Category = "horizOn")
 	UHorizonRemoteConfigManager* RemoteConfig;
+
+	UPROPERTY(BlueprintReadOnly, Category = "horizOn")
+	UHorizonLocalizationManager* Localization;
 
 	UPROPERTY(BlueprintReadOnly, Category = "horizOn")
 	UHorizonNewsManager* News;

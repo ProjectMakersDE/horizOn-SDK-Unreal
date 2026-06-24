@@ -20,6 +20,7 @@ Official Unreal Engine SDK for **horizOn** Backend-as-a-Service by [ProjectMaker
 | 🏆 **Leaderboards** | `UHorizonLeaderboardManager` | Submit scores, retrieve top entries, rank, and surrounding entries |
 | ☁️ **Cloud Save** | `UHorizonCloudSaveManager` | Save and load player data in JSON or binary format |
 | ⚙️ **Remote Config** | `UHorizonRemoteConfigManager` | Typed key-value retrieval (string, int, float, bool) with caching |
+| 🌐 **Localization** | `UHorizonLocalizationManager` | Translated strings in 15 languages with an active language and caching |
 | 📰 **News** | `UHorizonNewsManager` | In-game news feed with language filtering and TTL cache |
 | 🎁 **Gift Codes** | `UHorizonGiftCodeManager` | Validate and redeem promotional codes |
 | 💬 **Feedback** | `UHorizonFeedbackManager` | Submit bug reports, feature requests, and general feedback |
@@ -194,6 +195,28 @@ Horizon->RemoteConfig->GetBool(TEXT("maintenance_mode"), false,
 // Get all configs
 Horizon->RemoteConfig->GetAllConfigs(
     FOnConfigMapComplete::CreateLambda([](bool bSuccess, const TMap<FString, FString>& Configs) { }));
+```
+
+### Localization
+
+```cpp
+// The active language defaults to the system language (if one of the 15
+// supported codes: en, de, es, fr, it, pt, nl, pl, ru, ja, zh, ar, ko, tr, id),
+// otherwise "en". Change it at runtime (clears the translation cache):
+Horizon->Localization->SetLanguage(TEXT("de"));
+
+// Get a single translation. An empty language uses the active language.
+// The server falls back to English when a key has no translation.
+Horizon->Localization->GetLocalization(TEXT("welcome_message"), TEXT(""),
+    FOnLocalizationComplete::CreateLambda([](bool bSuccess, const FString& Value) { }));
+
+// Get all translations for a language
+Horizon->Localization->GetAllLocalizations(TEXT("de"),
+    FOnAllLocalizationsComplete::CreateLambda([](bool bSuccess, const TMap<FString, FString>& Translations) { }));
+
+// List the available language codes
+Horizon->Localization->GetAvailableLanguages(
+    FOnLanguagesComplete::CreateLambda([](bool bSuccess, const TArray<FString>& Languages) { }));
 ```
 
 ### News
