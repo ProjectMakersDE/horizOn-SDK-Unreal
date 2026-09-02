@@ -1,0 +1,17 @@
+name: Transport Test
+
+on:
+  push:
+    branches: [develop]
+  pull_request:
+    branches: [develop]
+
+jobs:
+  transport-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run leaderboard transport contract
+        run: bash Tests/run_transport_test.sh
