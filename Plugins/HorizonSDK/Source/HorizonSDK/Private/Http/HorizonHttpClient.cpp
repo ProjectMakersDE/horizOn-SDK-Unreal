@@ -3,6 +3,7 @@
 #include "Http/HorizonHttpClient.h"
 #include "HorizonConfig.h"
 #include "HorizonSDKModule.h"
+#include "Transport/HorizonLeaderboardTransportContract.h"
 
 #include "HttpModule.h"
 #include "Interfaces/IHttpRequest.h"
@@ -333,7 +334,11 @@ void UHorizonHttpClient::ApplyHeaders(
 	const FString& ContentType,
 	bool bUseSessionToken) const
 {
-	Request->SetHeader(TEXT("X-API-Key"), ApiKey);
+	for (const auto& Header : HorizonTransportContract::BuildHeaders(
+		TCHAR_TO_UTF8(*ApiKey), TCHAR_TO_UTF8(*SessionToken), bUseSessionToken))
+	{
+		Request->SetHeader(UTF8_TO_TCHAR(Header.first.c_str()), UTF8_TO_TCHAR(Header.second.c_str()));
+	}
 	Request->SetHeader(TEXT("Content-Type"), ContentType);
 
 	// For binary GET requests, also set the Accept header
@@ -342,10 +347,6 @@ void UHorizonHttpClient::ApplyHeaders(
 		Request->SetHeader(TEXT("Accept"), TEXT("application/octet-stream"));
 	}
 
-	if (bUseSessionToken && !SessionToken.IsEmpty())
-	{
-		Request->SetHeader(TEXT("Authorization"), FString::Printf(TEXT("Bearer %s"), *SessionToken));
-	}
 }
 
 // ============================================================

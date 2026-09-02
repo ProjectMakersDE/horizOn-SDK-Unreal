@@ -2,8 +2,11 @@
 
 #include "Managers/HorizonLeaderboardManager.h"
 #include "HorizonSDKModule.h"
+#include "Transport/HorizonLeaderboardTransportContract.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
+#include "Serialization/JsonReader.h"
+#include "Serialization/JsonSerializer.h"
 
 namespace
 {
@@ -52,7 +55,7 @@ void UHorizonLeaderboardManager::Initialize(UHorizonHttpClient* InHttpClient, UH
 
 void UHorizonLeaderboardManager::SubmitScore(int64 Score, FOnRequestComplete OnComplete, const FString& Metadata, const FString& BoardKey)
 {
-	if (!AuthManager || !AuthManager->IsSignedIn())
+	if (!AuthManager || !HttpClient)
 	{
 		UE_LOG(LogHorizonSDK, Warning, TEXT("Leaderboard::SubmitScore -- User is not signed in."));
 		OnComplete.ExecuteIfBound(false, TEXT("User is not signed in."));
@@ -60,25 +63,33 @@ void UHorizonLeaderboardManager::SubmitScore(int64 Score, FOnRequestComplete OnC
 	}
 
 	const FString UserId = AuthManager->GetCurrentUser().UserId;
-	const FString NormalizedBoardKey = NormalizeBoardKey(BoardKey);
-
-	TSharedRef<FJsonObject> Body = MakeShared<FJsonObject>();
-	Body->SetStringField(TEXT("userId"), UserId);
-	Body->SetNumberField(TEXT("score"), static_cast<double>(Score));
-	if (!NormalizedBoardKey.IsEmpty())
+	const HorizonTransportContract::FLeaderboardSubmitPlan Plan =
+		HorizonTransportContract::BuildLeaderboardSubmitPlan(
+			TCHAR_TO_UTF8(*UserId),
+			TCHAR_TO_UTF8(*HttpClient->GetSessionToken()),
+			Score,
+			TCHAR_TO_UTF8(*BoardKey),
+			TCHAR_TO_UTF8(*Metadata));
+	if (!Plan.bShouldSend)
 	{
-		Body->SetStringField(TEXT("leaderboardKey"), NormalizedBoardKey);
+		UE_LOG(LogHorizonSDK, Warning, TEXT("Leaderboard::SubmitScore -- User is not signed in."));
+		OnComplete.ExecuteIfBound(false, TEXT("User is not signed in."));
+		return;
 	}
-	if (!Metadata.IsEmpty())
+
+	TSharedPtr<FJsonObject> ParsedBody;
+	const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(UTF8_TO_TCHAR(Plan.BodyJson.c_str()));
+	if (!FJsonSerializer::Deserialize(Reader, ParsedBody) || !ParsedBody.IsValid())
 	{
-		Body->SetStringField(TEXT("metadata"), Metadata);
+		OnComplete.ExecuteIfBound(false, TEXT("Failed to build leaderboard request."));
+		return;
 	}
 
 	TWeakObjectPtr<UHorizonLeaderboardManager> WeakSelf(this);
 	FOnRequestComplete CapturedOnComplete = OnComplete;
-	const FString Endpoint = BuildLeaderboardEndpoint(NormalizedBoardKey, TEXT("submit"));
+	const FString Endpoint = UTF8_TO_TCHAR(Plan.Endpoint.c_str());
 
-	HttpClient->PostJson(Body, Endpoint, true,
+	HttpClient->PostJson(ParsedBody.ToSharedRef(), Endpoint, Plan.bUseSessionToken,
 		FOnHttpResponse::CreateLambda(
 			[WeakSelf, CapturedOnComplete](const FHorizonNetworkResponse& Response)
 			{
