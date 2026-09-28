@@ -531,7 +531,7 @@ Plugins/HorizonSDK/
 
 ## Support
 
-- 📖 **Documentation**: [docs.horizon.pm](https://docs.horizon.pm)
+- 📖 **Documentation**: [horizon.pm/quickstart](https://horizon.pm/quickstart)
 - 💬 **Discord**: [discord.gg/horizOn](https://discord.gg/JFmaXtguku)
 - 🐛 **Issues**: [GitHub Issues](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/issues)
 
