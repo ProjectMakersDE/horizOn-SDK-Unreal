@@ -25,7 +25,7 @@ Official Unreal Engine SDK for **horizOn** Backend-as-a-Service by [ProjectMaker
 | 🎁 **Gift Codes** | `UHorizonGiftCodeManager` | Validate and redeem promotional codes |
 | 💬 **Feedback** | `UHorizonFeedbackManager` | Submit bug reports, feature requests, and general feedback |
 | 📊 **User Logs** | `UHorizonUserLogManager` | Server-side structured logging for analytics and debugging |
-| 💥 **Crash Reporting** | `UHorizonCrashReportManager` | Crash capture, exception tracking, breadcrumbs |
+| 💥 **Crash Reporting** | `UHorizonCrashManager` | Crash capture, exception tracking, breadcrumbs |
 | ✉️ **Email Sending** | `UHorizonEmailSendingManager` | Transactional emails with templates, scheduling, multi-language support |
 
 ## Requirements
@@ -53,13 +53,13 @@ Official Unreal Engine SDK for **horizOn** Backend-as-a-Service by [ProjectMaker
 // Get the subsystem from any Actor or UObject with world context
 UHorizonSubsystem* Horizon = GetGameInstance()->GetSubsystem<UHorizonSubsystem>();
 
+// Listen for the connection result (OnConnected must be a UFUNCTION)
+Horizon->OnConnected.AddDynamic(this, &AMyActor::OnConnected);
+
 // Connect to the backend
 Horizon->ConnectToServer();
 
-// Listen for connection result
-Horizon->OnConnected.AddDynamic(this, &AMyActor::OnConnected);
-
-// Sign up anonymously
+// In AMyActor::OnConnected(): sign up anonymously
 Horizon->Auth->SignUpAnonymous(TEXT("Player1"),
     FOnAuthComplete::CreateLambda([](bool bSuccess)
     {
@@ -69,9 +69,9 @@ Horizon->Auth->SignUpAnonymous(TEXT("Player1"),
 
 ### Blueprints
 
-1. Use the **"horizOn Connect"** async node to connect to the server.
-2. Use **"horizOn Sign Up Anonymous"**, **"horizOn Sign In Email"**, or **"horizOn Sign In With Apple (Native)"** to authenticate.
-3. Call any feature node (Submit Score, Save Data, Load News, etc.).
+1. Use the **"Connect to horizOn Server"** async node to connect to the server.
+2. Use **"Sign Up Anonymous"**, **"Sign In Email"**, or **"Sign In With Apple (Native)"** to authenticate.
+3. Call any feature node (**"Submit Leaderboard Score"**, **"Cloud Save Data"**, **"Load News"**, etc.).
 
 All async nodes expose **On Success** and **On Failure** execution pins for easy error handling.
 
@@ -86,11 +86,11 @@ UHorizonSubsystem* Horizon = GetGameInstance()->GetSubsystem<UHorizonSubsystem>(
 Horizon->ConnectToServer();
 
 // Check status
-Horizon->IsConnected();    // Returns true if connected
-Horizon->GetActiveHost();  // Returns current server URL
+Horizon->IsConnected();          // Returns true if connected
+Horizon->GetConnectionStatus();  // Returns EHorizonConnectionStatus
 
-// Disconnect
-Horizon->DisconnectFromServer();
+// Disconnect and clear session state
+Horizon->Disconnect();
 ```
 
 ### Authentication
@@ -126,7 +126,7 @@ Horizon->Auth->SignUpApple(TEXT("eyJraWQiOi..."), TEXT("Jane"), TEXT("Doe"), TEX
 // Check authentication state
 if (Horizon->Auth->IsSignedIn())
 {
-    FHorizonUser User = Horizon->Auth->GetCurrentUser();
+    FHorizonUserData User = Horizon->Auth->GetCurrentUser();
     UE_LOG(LogTemp, Log, TEXT("Welcome, %s!"), *User.DisplayName);
 }
 
@@ -141,17 +141,17 @@ Horizon->Auth->SignOut();
 Horizon->Leaderboard->SubmitScore(12500,
     FOnRequestComplete::CreateLambda([](bool bSuccess, const FString& Error) { }));
 
-// Get top players
-Horizon->Leaderboard->GetTop(10,
-    FOnLeaderboardComplete::CreateLambda([](bool bSuccess, const TArray<FHorizonLeaderboardEntry>& Entries) { }));
+// Get top players (second argument: use the local cache)
+Horizon->Leaderboard->GetTop(10, true,
+    FOnLeaderboardEntriesComplete::CreateLambda([](bool bSuccess, const TArray<FHorizonLeaderboardEntry>& Entries) { }));
 
 // Get your rank
-Horizon->Leaderboard->GetRank(
-    FOnLeaderboardEntryComplete::CreateLambda([](bool bSuccess, const FHorizonLeaderboardEntry& Entry) { }));
+Horizon->Leaderboard->GetRank(true,
+    FOnLeaderboardRankComplete::CreateLambda([](bool bSuccess, const FHorizonLeaderboardEntry& Entry) { }));
 
 // Get players around your rank
-Horizon->Leaderboard->GetAround(5,
-    FOnLeaderboardComplete::CreateLambda([](bool bSuccess, const TArray<FHorizonLeaderboardEntry>& Entries) { }));
+Horizon->Leaderboard->GetAround(5, true,
+    FOnLeaderboardEntriesComplete::CreateLambda([](bool bSuccess, const TArray<FHorizonLeaderboardEntry>& Entries) { }));
 ```
 
 ### Cloud Saves
@@ -159,12 +159,12 @@ Horizon->Leaderboard->GetAround(5,
 ```cpp
 // Save JSON object
 FString SaveData = TEXT("{\"level\": 5, \"coins\": 1000}");
-Horizon->CloudSave->SaveData(SaveData,
+Horizon->CloudSave->Save(SaveData,
     FOnRequestComplete::CreateLambda([](bool bSuccess, const FString& Error) { }));
 
 // Load JSON object
-Horizon->CloudSave->LoadData(
-    FOnCloudSaveComplete::CreateLambda([](bool bSuccess, const FString& Data) { }));
+Horizon->CloudSave->Load(
+    FOnStringComplete::CreateLambda([](bool bSuccess, const FString& Data) { }));
 
 // Save binary data
 TArray<uint8> Bytes = /* your data */;
@@ -173,28 +173,29 @@ Horizon->CloudSave->SaveBytes(Bytes,
 
 // Load binary data
 Horizon->CloudSave->LoadBytes(
-    FOnCloudSaveBytesComplete::CreateLambda([](bool bSuccess, const TArray<uint8>& Data) { }));
+    FOnBinaryComplete::CreateLambda([](bool bSuccess, const TArray<uint8>& Data) { }));
 ```
 
 ### Remote Config
 
 ```cpp
-// Get typed values with defaults
-Horizon->RemoteConfig->GetConfig(TEXT("game_version"),
-    FOnStringComplete::CreateLambda([](bool bSuccess, const FString& Value) { }));
+// Get a raw value (Key, bUseCache, callback)
+Horizon->RemoteConfig->GetConfig(TEXT("game_version"), true,
+    FOnConfigComplete::CreateLambda([](bool bSuccess, const FString& Value) { }));
 
-Horizon->RemoteConfig->GetInt(TEXT("max_level"), 100,
-    FOnIntComplete::CreateLambda([](bool bSuccess, int32 Value) { }));
+// Get typed values with defaults (Key, DefaultValue, bUseCache, callback)
+Horizon->RemoteConfig->GetInt(TEXT("max_level"), 100, true,
+    TDelegate<void(bool, int32)>::CreateLambda([](bool bSuccess, int32 Value) { }));
 
-Horizon->RemoteConfig->GetFloat(TEXT("difficulty"), 1.0f,
-    FOnFloatComplete::CreateLambda([](bool bSuccess, float Value) { }));
+Horizon->RemoteConfig->GetFloat(TEXT("difficulty"), 1.0f, true,
+    TDelegate<void(bool, float)>::CreateLambda([](bool bSuccess, float Value) { }));
 
-Horizon->RemoteConfig->GetBool(TEXT("maintenance_mode"), false,
-    FOnBoolComplete::CreateLambda([](bool bSuccess, bool bValue) { }));
+Horizon->RemoteConfig->GetBool(TEXT("maintenance_mode"), false, true,
+    TDelegate<void(bool, bool)>::CreateLambda([](bool bSuccess, bool bValue) { }));
 
 // Get all configs
-Horizon->RemoteConfig->GetAllConfigs(
-    FOnConfigMapComplete::CreateLambda([](bool bSuccess, const TMap<FString, FString>& Configs) { }));
+Horizon->RemoteConfig->GetAllConfigs(true,
+    FOnAllConfigsComplete::CreateLambda([](bool bSuccess, const TMap<FString, FString>& Configs) { }));
 ```
 
 ### Localization
@@ -222,7 +223,8 @@ Horizon->Localization->GetAvailableLanguages(
 ### News
 
 ```cpp
-Horizon->News->LoadNews(20, TEXT("en"),
+// Limit, language code, bUseCache, callback
+Horizon->News->LoadNews(20, TEXT("en"), true,
     FOnNewsComplete::CreateLambda([](bool bSuccess, const TArray<FHorizonNewsEntry>& Entries)
     {
         for (const auto& Entry : Entries)
@@ -237,15 +239,15 @@ Horizon->News->LoadNews(20, TEXT("en"),
 ```cpp
 // Validate
 Horizon->GiftCodes->Validate(TEXT("ABCD-1234"),
-    FOnBoolComplete::CreateLambda([](bool bSuccess, bool bValid) { }));
+    FOnGiftCodeValidateComplete::CreateLambda([](bool bRequestSuccess, bool bValid) { }));
 
 // Redeem
 Horizon->GiftCodes->Redeem(TEXT("ABCD-1234"),
-    FOnGiftCodeComplete::CreateLambda([](bool bSuccess, const FHorizonGiftCodeResult& Result)
+    FOnGiftCodeRedeemComplete::CreateLambda([](bool bSuccess, const FString& GiftData, const FString& Message)
     {
-        if (bSuccess && Result.bSuccess)
+        if (bSuccess)
         {
-            // Parse Result.GiftData for rewards
+            // Parse GiftData for rewards
         }
     }));
 ```
@@ -261,8 +263,8 @@ Horizon->Feedback->ReportBug(TEXT("Crash on level 5"), TEXT("Game crashes when o
 Horizon->Feedback->RequestFeature(TEXT("Dark mode"), TEXT("Please add dark mode option"),
     FOnRequestComplete::CreateLambda([](bool bSuccess, const FString& Error) { }));
 
-// General feedback with email and device info
-Horizon->Feedback->Submit(TEXT("Title"), TEXT("Message"), TEXT("GENERAL"),
+// General feedback with email and device info (Title, Category, Message, Email, bIncludeDeviceInfo, callback)
+Horizon->Feedback->Submit(TEXT("Title"), TEXT("GENERAL"), TEXT("Message"),
     TEXT("email@example.com"), true,
     FOnRequestComplete::CreateLambda([](bool bSuccess, const FString& Error) { }));
 ```
@@ -270,14 +272,16 @@ Horizon->Feedback->Submit(TEXT("Title"), TEXT("Message"), TEXT("GENERAL"),
 ### User Logs
 
 ```cpp
-Horizon->UserLogs->Info(TEXT("Tutorial completed"));
-Horizon->UserLogs->Warn(TEXT("Low memory detected"));
-Horizon->UserLogs->Error(TEXT("Failed to load asset"), TEXT("ERR_001"));
+// Message, callback, optional error code
+Horizon->UserLogs->Info(TEXT("Tutorial completed"),
+    FOnUserLogComplete::CreateLambda([](bool bSuccess, const FString& LogId, const FString& CreatedAt) { }));
+Horizon->UserLogs->Warn(TEXT("Low memory detected"), FOnUserLogComplete());
+Horizon->UserLogs->Error(TEXT("Failed to load asset"), FOnUserLogComplete(), TEXT("ERR_001"));
 ```
 
 ### Crash Reporting
 
-Track crashes, non-fatal exceptions, and breadcrumbs to monitor game stability. The `UHorizonCrashReportManager` can automatically capture engine-level crashes when capture is active.
+Track crashes, non-fatal exceptions, and breadcrumbs to monitor game stability. The `UHorizonCrashManager` can automatically capture engine-level crashes when capture is active.
 
 #### C++
 
@@ -322,14 +326,14 @@ bool bCapturing = Horizon->Crashes->IsCapturing();
 
 #### Blueprints
 
-Use the async nodes for Blueprint integration:
+Use these Blueprint nodes (async nodes are marked):
 
-- **"horizOn Record Exception"** - Reports a non-fatal exception
-- **"horizOn Report Crash"** - Reports a fatal crash
-- **"horizOn Record Breadcrumb"** - Adds context breadcrumb
-- **"horizOn Start Crash Capture"** - Begins automatic capture
-- **"horizOn Stop Crash Capture"** - Stops automatic capture
-- **"horizOn Set Crash Custom Key"** - Sets report metadata
+- **"Record Exception"** (async) - Reports a non-fatal exception
+- **"Report Crash"** (async) - Reports a fatal crash
+- **"Horizon Record Breadcrumb"** - Adds context breadcrumb
+- **"Horizon Start Crash Capture"** - Begins automatic capture
+- **"Horizon Stop Crash Capture"** - Stops automatic capture
+- **"Horizon Set Crash Custom Key"** - Sets report metadata
 
 #### Limits
 
@@ -408,28 +412,22 @@ All async nodes expose **On Success** and **On Failure** execution pins.
 ```cpp
 // Connection
 Horizon->OnConnected.AddDynamic(this, &AMyActor::OnConnected);
-Horizon->OnDisconnected.AddDynamic(this, &AMyActor::OnDisconnected);
+Horizon->OnConnectionFailed.AddDynamic(this, &AMyActor::OnConnectionFailed);
 
 // Authentication
-Horizon->Auth->OnSignInComplete.AddDynamic(this, &AMyActor::OnSignedIn);
-Horizon->Auth->OnSignInFailed.AddDynamic(this, &AMyActor::OnSignInFailed);
-
-// Leaderboard
-Horizon->Leaderboard->OnScoreSubmitted.AddDynamic(this, &AMyActor::OnScoreSubmitted);
-
-// Cloud Save
-Horizon->CloudSave->OnDataSaved.AddDynamic(this, &AMyActor::OnDataSaved);
-Horizon->CloudSave->OnDataLoaded.AddDynamic(this, &AMyActor::OnDataLoaded);
+Horizon->Auth->OnUserSignedIn.AddDynamic(this, &AMyActor::OnSignedIn);
+Horizon->Auth->OnUserSignedOut.AddDynamic(this, &AMyActor::OnSignedOut);
 
 // Crash Reporting
 Horizon->Crashes->OnCrashReported.AddDynamic(this, &AMyActor::OnCrashReported);
 Horizon->Crashes->OnCrashReportFailed.AddDynamic(this, &AMyActor::OnCrashReportFailed);
 Horizon->Crashes->OnSessionRegistered.AddDynamic(this, &AMyActor::OnSessionRegistered);
+Horizon->Crashes->OnBreadcrumbRecorded.AddDynamic(this, &AMyActor::OnBreadcrumbRecorded);
 ```
 
 ### Blueprint Events
 
-All async nodes expose **On Success** and **On Failure** execution pins. For event-driven patterns, use the **Event Dispatchers** exposed on each manager component.
+All async nodes expose **On Success** and **On Failure** execution pins. For event-driven patterns, bind to the event dispatchers on the subsystem (On Connected, On Connection Failed), the Auth manager (On User Signed In, On User Signed Out) and the Crashes manager.
 
 ## Configuration Options
 
@@ -438,7 +436,7 @@ Open **Project Settings > Plugins > horizOn SDK** to configure:
 | Option | Default | Description |
 |--------|---------|-------------|
 | API Key | - | Your horizOn API key |
-| Backend Hosts | `["https://horizon.pm"]` | Backend server URL(s). Single host skips ping; multiple hosts use latency-based selection. |
+| Backend Hosts | empty | Backend server URL(s), for example `https://horizon.pm`. Must be set (or imported) before connecting. Single host skips ping; multiple hosts use latency-based selection. |
 | Connection Timeout | 10 | HTTP request timeout in seconds |
 | Max Retries | 3 | Retry count for failed requests |
 | Retry Delay | 1.0 | Delay between retries in seconds |
