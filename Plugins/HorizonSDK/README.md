@@ -4,10 +4,11 @@ The horizOn SDK is a fully-featured Unreal Engine plugin that connects your game
 
 ## Features
 
-- **Authentication** -- Anonymous, email, and Google sign-up / sign-in with automatic session caching.
+- **Authentication** -- Anonymous, email, Google, and Apple sign-up / sign-in with automatic session caching.
 - **Cloud Save** -- Save and load player data in JSON (string) or binary format.
 - **Leaderboard** -- Submit scores, retrieve top entries, player rank, and surrounding entries with in-memory caching.
 - **Remote Config** -- Typed key-value retrieval (string, int, float, bool) with cache support.
+- **Localization** -- Translated strings in 15 languages with an active language and caching.
 - **News** -- Fetch and display in-game news entries with language filtering and 5-minute TTL cache.
 - **Gift Codes** -- Validate and redeem promotional codes.
 - **Feedback** -- Submit bug reports, feature requests, and general feedback with optional device info.
@@ -104,6 +105,7 @@ output.
 | Crash Reporting | `AHorizonCrashReportingExample` |
 | User Logs | `AHorizonUserLogsExample` |
 | Remote Config | `AHorizonRemoteConfigExample` |
+| Localization | `AHorizonLocalizationExample` |
 | News | `AHorizonNewsExample` |
 | Email Sending | `AHorizonEmailSendingExample` |
 | Gift Codes | `AHorizonGiftCodesExample` |
