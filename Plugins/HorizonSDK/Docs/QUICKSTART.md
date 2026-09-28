@@ -69,8 +69,8 @@ void AMyGameMode::OnHorizonConnected()
 
 ### Blueprints
 
-1. Place an **"horizOn Connect"** async node.
-2. From the **On Success** pin, place an **"horizOn Sign Up Anonymous"** node.
+1. Place a **"Connect to horizOn Server"** async node.
+2. From the **On Success** pin, place a **"Sign Up Anonymous"** node.
 3. You are now connected and authenticated.
 
 ## 5. Use Features
@@ -79,14 +79,14 @@ Once connected and signed in, call any manager method:
 
 | Feature       | C++ Manager                   | Blueprint Node             |
 |---------------|-------------------------------|----------------------------|
-| Cloud Save    | `Horizon->CloudSave->Save()`  | horizOn Save Data          |
-| Cloud Load    | `Horizon->CloudSave->Load()`  | horizOn Load Data          |
-| Leaderboard   | `Horizon->Leaderboard->SubmitScore()` | horizOn Submit Score |
-| Remote Config | `Horizon->RemoteConfig->GetAllConfigs()` | horizOn Get All Configs |
-| News          | `Horizon->News->LoadNews()`   | horizOn Load News          |
-| Gift Codes    | `Horizon->GiftCodes->Redeem()`| horizOn Redeem Gift Code   |
-| Feedback      | `Horizon->Feedback->Submit()` | horizOn Submit Feedback    |
-| User Logs     | `Horizon->UserLogs->Info()`   | horizOn Create User Log    |
+| Cloud Save    | `Horizon->CloudSave->Save()`  | Cloud Save Data            |
+| Cloud Load    | `Horizon->CloudSave->Load()`  | Cloud Load Data            |
+| Leaderboard   | `Horizon->Leaderboard->SubmitScore()` | Submit Leaderboard Score |
+| Remote Config | `Horizon->RemoteConfig->GetAllConfigs()` | Get All Remote Configs |
+| News          | `Horizon->News->LoadNews()`   | Load News                  |
+| Gift Codes    | `Horizon->GiftCodes->Redeem()`| Redeem Gift Code           |
+| Feedback      | `Horizon->Feedback->Submit()` | Submit Feedback            |
+| User Logs     | `Horizon->UserLogs->Info()`   | none (C++ only)            |
 
 All async operations use callbacks (C++) or output execution pins (Blueprints) for success and failure handling.
 
@@ -95,5 +95,5 @@ All async operations use callbacks (C++) or output execution pins (Blueprints) f
 - **"HttpClient not initialized"** -- Make sure you call `ConnectToServer()` before any other operation.
 - **Authentication required** -- Cloud Save, Leaderboard, Gift Codes, and User Logs require the player to be signed in first.
 - **Multiple hosts** -- If you configure multiple backend hosts, the SDK automatically pings each one and selects the fastest.
-- **Session caching** -- The SDK saves session tokens to disk. Returning players are automatically re-authenticated via `RestoreSession()`.
+- **Session caching** -- The SDK saves session tokens to disk. Call `Horizon->Auth->RestoreAnonymousSession()` (Blueprint: **"Restore Anonymous Session"**) to sign a returning anonymous player back in.
 - **Clear cache** -- Use **Tools > horizOn > Clear Session Cache** in the editor to wipe local session data.
