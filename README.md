@@ -389,9 +389,12 @@ Horizon->ValidatedActions->SubmitValidatedWithHash(18250, Hash, TEXT("wave_10"),
   ticket's board), `Earned` (`TArray<FHorizonEarnedValue>`, server-owned values of a later
   release; current servers ignore it).
 - The manager keeps the started run: `GetCurrentRun()`, `HasActiveRun()`, `DiscardRun()`.
-  A ticket is single use: after an accepted run, any 422 rejection and 403
-  `SCORE_LIMIT_REACHED` the current run is cleared. On network errors, 401, 404, 429 and 5xx
-  the run stays and you may submit again with the same ticket. Sign-out clears the run.
+  A ticket is single use: after an accepted run, the ticket codes (`TICKET_*`), every rule
+  or value rejection (422) and 403 `SCORE_LIMIT_REACHED` the current run is cleared. The
+  server checks the board and the request before it touches the ticket, so the run stays on
+  `LEADERBOARD_NOT_FOUND`, `LEADERBOARD_MISMATCH`, `SCORE_REQUIRED` and
+  `PLAYER_NAME_REQUIRED` (fix the call and submit again), and also on network errors, 401,
+  429 and 5xx. Sign-out clears the run.
 - `GetLastErrorCode()` returns the code of the last failed call.
 - An accepted run with a board clears the leaderboard cache, like `SubmitScore`.
 

@@ -38,6 +38,12 @@ namespace HorizonTransportContract
 	/** A 404 without a server code (for example a simpleServer) means the feature is missing. */
 	constexpr const char* ValidatedCodeNotSupported = "NOT_SUPPORTED";
 
+	/** Server codes the SDK acts on (the full list is in the README). */
+	constexpr const char* ValidatedCodeLeaderboardMismatch = "LEADERBOARD_MISMATCH";
+	constexpr const char* ValidatedCodeScoreLimitReached = "SCORE_LIMIT_REACHED";
+	constexpr const char* ValidatedCodeRunRateLimited = "RUN_RATE_LIMITED";
+	constexpr const char* ValidatedCodeRunCapacityReached = "RUN_CAPACITY_REACHED";
+
 	namespace ValidatedActionsDetail
 	{
 		inline std::uint32_t RotateRight(std::uint32_t Value, unsigned int Bits)
@@ -343,9 +349,14 @@ namespace HorizonTransportContract
 
 	/**
 	 * True when a finished submit used up the ticket, so the SDK clears the current run:
-	 * success (2xx), every 422 (ticket and rule rejections) and 403 SCORE_LIMIT_REACHED.
-	 * On network errors (status 0), 400, 401, 403 (other codes), 404, 429 and 5xx the run
-	 * stays and the game may retry with the same ticket.
+	 * success (2xx), the 422 ticket codes (TICKET_INVALID, TICKET_EXPIRED, TICKET_FOREIGN,
+	 * TICKET_CONSUMED), every 422 rule or value rejection (the server consumes the ticket with
+	 * status REJECTED) and 403 SCORE_LIMIT_REACHED (consumed, status FAILED).
+	 *
+	 * The server checks the board (404 LEADERBOARD_NOT_FOUND, 422 LEADERBOARD_MISMATCH),
+	 * 400 SCORE_REQUIRED and 400 PLAYER_NAME_REQUIRED before it touches the ticket, so the run
+	 * stays for those and the game may resubmit with a corrected board, score or name. The run
+	 * also stays on network errors (status 0), other 400, 401, other 403, 404, 429 and 5xx.
 	 */
 	inline bool ShouldClearRunAfterSubmit(int StatusCode, const std::string& ServerErrorCode)
 	{
@@ -355,9 +366,9 @@ namespace HorizonTransportContract
 		}
 		if (StatusCode == 422)
 		{
-			return true;
+			return ServerErrorCode != ValidatedCodeLeaderboardMismatch;
 		}
-		return StatusCode == 403 && ServerErrorCode == "SCORE_LIMIT_REACHED";
+		return StatusCode == 403 && ServerErrorCode == ValidatedCodeScoreLimitReached;
 	}
 
 	/**
@@ -366,7 +377,7 @@ namespace HorizonTransportContract
 	 */
 	inline bool IsNonRetryableRateLimitCode(const std::string& ServerErrorCode)
 	{
-		return ServerErrorCode == "RUN_RATE_LIMITED" || ServerErrorCode == "RUN_CAPACITY_REACHED";
+		return ServerErrorCode == ValidatedCodeRunRateLimited || ServerErrorCode == ValidatedCodeRunCapacityReached;
 	}
 
 	/**

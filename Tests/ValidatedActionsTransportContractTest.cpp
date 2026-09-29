@@ -135,7 +135,15 @@ int main()
 	Require(!ShouldClearRunAfterSubmit(401, "SESSION_REQUIRED"), "401 must keep the run");
 	Require(!ShouldClearRunAfterSubmit(403, "SESSION_FORBIDDEN"), "other 403 must keep the run");
 	Require(!ShouldClearRunAfterSubmit(404, "PLAYER_NOT_FOUND"), "404 must keep the run");
-	Require(!ShouldClearRunAfterSubmit(400, "PLAYER_NAME_REQUIRED"), "400 must keep the run");
+	Require(ShouldClearRunAfterSubmit(422, "TICKET_INVALID"), "TICKET_INVALID must clear the current run");
+	Require(ShouldClearRunAfterSubmit(422, "TICKET_FOREIGN"), "TICKET_FOREIGN must clear the current run");
+	Require(ShouldClearRunAfterSubmit(422, "TICKET_CONSUMED"), "TICKET_CONSUMED must clear the current run");
+	Require(ShouldClearRunAfterSubmit(422, "INSUFFICIENT_BALANCE"), "value rejection must clear the current run");
+	// Checked before the ticket is consumed: the game may resubmit with the same ticket.
+	Require(!ShouldClearRunAfterSubmit(422, "LEADERBOARD_MISMATCH"), "LEADERBOARD_MISMATCH must keep the run");
+	Require(!ShouldClearRunAfterSubmit(404, "LEADERBOARD_NOT_FOUND"), "LEADERBOARD_NOT_FOUND must keep the run");
+	Require(!ShouldClearRunAfterSubmit(400, "SCORE_REQUIRED"), "SCORE_REQUIRED must keep the run");
+	Require(!ShouldClearRunAfterSubmit(400, "PLAYER_NAME_REQUIRED"), "PLAYER_NAME_REQUIRED must keep the run");
 	Require(!ShouldClearRunAfterSubmit(429, "RUN_RATE_LIMITED"), "429 must keep the run");
 	Require(!ShouldClearRunAfterSubmit(503, "VALIDATED_ACTIONS_UNAVAILABLE"), "503 must keep the run");
 

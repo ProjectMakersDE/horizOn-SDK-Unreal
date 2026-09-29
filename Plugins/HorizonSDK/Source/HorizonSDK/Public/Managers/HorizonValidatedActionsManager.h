@@ -38,8 +38,10 @@ DECLARE_DELEGATE_FourParams(FOnValidatedSubmitComplete, bool /*bSuccess*/, const
  * key before anything is written and answers with a machine readable `code` on rejection.
  *
  * The manager keeps the started run as the current run. A submit that used up the ticket
- * (accepted, any 422 rejection, 403 SCORE_LIMIT_REACHED) clears it; on network errors,
- * 401, 404, 429 and 5xx the run stays and the game may retry with the same ticket.
+ * (accepted, 422 TICKET_* codes, 422 rule and value rejections, 403 SCORE_LIMIT_REACHED)
+ * clears it. Checks the server runs before it touches the ticket keep the run, so the game
+ * may retry with the same ticket: 404 LEADERBOARD_NOT_FOUND, 422 LEADERBOARD_MISMATCH,
+ * 400 SCORE_REQUIRED, 400 PLAYER_NAME_REQUIRED, and also network errors, 401, 429 and 5xx.
  * The run is also cleared on sign-out and when another player signs in.
  *
  * Every call needs a signed-in player and sends the player session (Authorization: Bearer).
