@@ -6,6 +6,7 @@
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "Models/HorizonUserData.h"
 #include "Models/HorizonPlayerProfile.h"
+#include "Models/HorizonValidatedActions.h"
 #include "HorizonBlueprintLibrary.generated.h"
 
 class UHorizonSubsystem;
@@ -71,4 +72,10 @@ public:
 	/** Cosmetic IDs unlocked by the last successful "Redeem Gift Code" (empty when the code had no grants). */
 	UFUNCTION(BlueprintPure, Category = "horizOn|GiftCode", meta = (WorldContext = "WorldContextObject"))
 	static TArray<FString> GetHorizonLastGrantedUnlocks(const UObject* WorldContextObject);
+
+	// --- Validated Actions (TASK-883) ---
+
+	/** The current validated run (empty before "Start Validated Run" and after its submit, a discard or sign-out). */
+	UFUNCTION(BlueprintPure, Category = "horizOn|ValidatedActions", meta = (WorldContext = "WorldContextObject"))
+	static FHorizonValidatedRun GetHorizonCurrentValidatedRun(const UObject* WorldContextObject);
 };

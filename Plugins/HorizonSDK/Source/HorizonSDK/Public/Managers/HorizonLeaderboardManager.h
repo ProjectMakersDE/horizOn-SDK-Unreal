@@ -78,6 +78,16 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "horizOn|Leaderboard")
 	void ClearCache();
 
+	/**
+	 * Error code of the last failed SubmitScore, empty after a success (the OnComplete
+	 * signature is unchanged). "VALIDATED_SUBMIT_REQUIRED" means the board accepts
+	 * validated runs only (FHorizonLeaderboardBoard::bValidatedOnly): nothing was written,
+	 * the SDK does not retry, submit through ValidatedActions->SubmitValidated instead.
+	 * Otherwise the server `code`, "SESSION_REQUIRED" or the HTTP mapping.
+	 */
+	UFUNCTION(BlueprintPure, Category = "horizOn|Leaderboard")
+	FString GetLastSubmitErrorCode() const { return LastSubmitErrorCode; }
+
 private:
 	UPROPERTY()
 	UHorizonHttpClient* HttpClient;
@@ -90,6 +100,9 @@ private:
 
 	/** Cache for the current user's rank, keyed by board. */
 	TMap<FString, FHorizonLeaderboardEntry> RankCache;
+
+	/** See GetLastSubmitErrorCode(). */
+	FString LastSubmitErrorCode;
 
 	/** Parse an array of leaderboard entries from a JSON "entries" field. */
 	static TArray<FHorizonLeaderboardEntry> ParseEntries(const TSharedPtr<FJsonObject>& JsonData);

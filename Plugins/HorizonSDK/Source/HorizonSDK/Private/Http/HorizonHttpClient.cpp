@@ -4,6 +4,7 @@
 #include "HorizonConfig.h"
 #include "HorizonSDKModule.h"
 #include "Transport/HorizonLeaderboardTransportContract.h"
+#include "Transport/HorizonValidatedActionsTransportContract.h"
 
 #include "HttpModule.h"
 #include "Interfaces/IHttpRequest.h"
@@ -310,6 +311,16 @@ void UHorizonHttpClient::SendRequest(
 							RetryAfter = Parsed;
 						}
 					}
+				}
+
+				// Validated Actions run limits (RUN_RATE_LIMITED, RUN_CAPACITY_REACHED) can mean a wait
+				// of up to an hour: deliver them right away instead of retrying.
+				if (HorizonTransportContract::IsNonRetryableRateLimitCode(TCHAR_TO_UTF8(*Response.ServerErrorCode)))
+				{
+					UE_LOG(LogHorizonSDK, Warning, TEXT("Rate limited (429, %s) on %s %s. Not retried: %s"),
+						*Response.ServerErrorCode, *CapturedVerb, *CapturedUrl, *Response.ErrorMessage);
+					CapturedOnComplete.ExecuteIfBound(Response);
+					return;
 				}
 
 				if (RetryCount < Self->MaxRetryAttempts)

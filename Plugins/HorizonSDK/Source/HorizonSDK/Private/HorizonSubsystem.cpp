@@ -15,6 +15,7 @@
 #include "Managers/HorizonCrashManager.h"
 #include "Managers/HorizonEmailSendingManager.h"
 #include "Managers/HorizonPlayerProfileManager.h"
+#include "Managers/HorizonValidatedActionsManager.h"
 
 // ============================================================
 // Subsystem lifecycle
@@ -68,6 +69,12 @@ void UHorizonSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 
 	// A gift code redeem that grants unlocks clears the cached player profile.
 	GiftCodes->SetPlayerProfileManager(PlayerProfile);
+
+	ValidatedActions = NewObject<UHorizonValidatedActionsManager>(this);
+	ValidatedActions->Initialize(HttpClient, Auth);
+
+	// An accepted validated run with a board clears the leaderboard cache (like SubmitScore).
+	ValidatedActions->SetLeaderboardManager(Leaderboard);
 
 	// Wire auto-breadcrumb handlers
 	Auth->OnUserSignedIn.AddUniqueDynamic(Crashes, &UHorizonCrashManager::OnAutoUserSignedIn);

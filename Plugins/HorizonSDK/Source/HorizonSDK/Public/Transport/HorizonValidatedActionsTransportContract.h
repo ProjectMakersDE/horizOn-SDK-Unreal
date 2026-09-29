@@ -1,0 +1,389 @@
+// Copyright (c) 2025-2026 horizOn. All rights reserved.
+
+#pragma once
+
+#include "Transport/HorizonLeaderboardTransportContract.h"
+
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
+#include <string>
+#include <vector>
+
+/**
+ * Engine free transport contract of Validated Actions (TASK-883, Part 1).
+ *
+ * Holds everything that decides what goes over the wire so it can be compiled and
+ * checked without the engine: the SHA-256 input log hash, the local pre-checks
+ * (SESSION_REQUIRED, NO_ACTIVE_RUN, INVALID_INPUT_LOG_HASH), the request bodies of
+ * start run and submit, and the rules for keeping or clearing the current run.
+ *
+ * Part 2 (player state, GET .../state) and Part 3 (evidence upload, PUT
+ * .../runs/{runId}/evidence) add their plans to this file.
+ */
+namespace HorizonTransportContract
+{
+	/** Length of a SHA-256 hash as hex characters. */
+	constexpr std::size_t InputLogHashLength = 64;
+
+	/** Endpoints of Part 1. */
+	constexpr const char* ValidatedStartRunEndpoint = "/api/v1/app/validated-actions/runs";
+	constexpr const char* ValidatedSubmitEndpoint = "/api/v1/app/validated-actions/submit";
+
+	/** Local error codes (no request is sent). */
+	constexpr const char* ValidatedCodeSessionRequired = "SESSION_REQUIRED";
+	constexpr const char* ValidatedCodeNoActiveRun = "NO_ACTIVE_RUN";
+	constexpr const char* ValidatedCodeInvalidInputLogHash = "INVALID_INPUT_LOG_HASH";
+
+	/** A 404 without a server code (for example a simpleServer) means the feature is missing. */
+	constexpr const char* ValidatedCodeNotSupported = "NOT_SUPPORTED";
+
+	namespace ValidatedActionsDetail
+	{
+		inline std::uint32_t RotateRight(std::uint32_t Value, unsigned int Bits)
+		{
+			return (Value >> Bits) | (Value << (32u - Bits));
+		}
+
+		/** One SHA-256 compression round over a 64 byte block (FIPS 180-4, section 6.2.2). */
+		inline void Sha256ProcessBlock(std::uint32_t (&State)[8], const std::uint8_t* Block)
+		{
+			static const std::uint32_t RoundConstants[64] = {
+				0x428a2f98u, 0x71374491u, 0xb5c0fbcfu, 0xe9b5dba5u, 0x3956c25bu, 0x59f111f1u, 0x923f82a4u, 0xab1c5ed5u,
+				0xd807aa98u, 0x12835b01u, 0x243185beu, 0x550c7dc3u, 0x72be5d74u, 0x80deb1feu, 0x9bdc06a7u, 0xc19bf174u,
+				0xe49b69c1u, 0xefbe4786u, 0x0fc19dc6u, 0x240ca1ccu, 0x2de92c6fu, 0x4a7484aau, 0x5cb0a9dcu, 0x76f988dau,
+				0x983e5152u, 0xa831c66du, 0xb00327c8u, 0xbf597fc7u, 0xc6e00bf3u, 0xd5a79147u, 0x06ca6351u, 0x14292967u,
+				0x27b70a85u, 0x2e1b2138u, 0x4d2c6dfcu, 0x53380d13u, 0x650a7354u, 0x766a0abbu, 0x81c2c92eu, 0x92722c85u,
+				0xa2bfe8a1u, 0xa81a664bu, 0xc24b8b70u, 0xc76c51a3u, 0xd192e819u, 0xd6990624u, 0xf40e3585u, 0x106aa070u,
+				0x19a4c116u, 0x1e376c08u, 0x2748774cu, 0x34b0bcb5u, 0x391c0cb3u, 0x4ed8aa4au, 0x5b9cca4fu, 0x682e6ff3u,
+				0x748f82eeu, 0x78a5636fu, 0x84c87814u, 0x8cc70208u, 0x90befffau, 0xa4506cebu, 0xbef9a3f7u, 0xc67178f2u
+			};
+
+			std::uint32_t Schedule[64];
+			for (std::size_t Index = 0; Index < 16; ++Index)
+			{
+				Schedule[Index] =
+					(static_cast<std::uint32_t>(Block[Index * 4]) << 24)
+					| (static_cast<std::uint32_t>(Block[Index * 4 + 1]) << 16)
+					| (static_cast<std::uint32_t>(Block[Index * 4 + 2]) << 8)
+					| static_cast<std::uint32_t>(Block[Index * 4 + 3]);
+			}
+			for (std::size_t Index = 16; Index < 64; ++Index)
+			{
+				const std::uint32_t Sigma0 = RotateRight(Schedule[Index - 15], 7)
+					^ RotateRight(Schedule[Index - 15], 18) ^ (Schedule[Index - 15] >> 3);
+				const std::uint32_t Sigma1 = RotateRight(Schedule[Index - 2], 17)
+					^ RotateRight(Schedule[Index - 2], 19) ^ (Schedule[Index - 2] >> 10);
+				Schedule[Index] = Schedule[Index - 16] + Sigma0 + Schedule[Index - 7] + Sigma1;
+			}
+
+			std::uint32_t A = State[0];
+			std::uint32_t B = State[1];
+			std::uint32_t C = State[2];
+			std::uint32_t D = State[3];
+			std::uint32_t E = State[4];
+			std::uint32_t F = State[5];
+			std::uint32_t G = State[6];
+			std::uint32_t H = State[7];
+
+			for (std::size_t Index = 0; Index < 64; ++Index)
+			{
+				const std::uint32_t BigSigma1 = RotateRight(E, 6) ^ RotateRight(E, 11) ^ RotateRight(E, 25);
+				const std::uint32_t Choose = (E & F) ^ (~E & G);
+				const std::uint32_t Temp1 = H + BigSigma1 + Choose + RoundConstants[Index] + Schedule[Index];
+				const std::uint32_t BigSigma0 = RotateRight(A, 2) ^ RotateRight(A, 13) ^ RotateRight(A, 22);
+				const std::uint32_t Majority = (A & B) ^ (A & C) ^ (B & C);
+				const std::uint32_t Temp2 = BigSigma0 + Majority;
+
+				H = G;
+				G = F;
+				F = E;
+				E = D + Temp1;
+				D = C;
+				C = B;
+				B = A;
+				A = Temp1 + Temp2;
+			}
+
+			State[0] += A;
+			State[1] += B;
+			State[2] += C;
+			State[3] += D;
+			State[4] += E;
+			State[5] += F;
+			State[6] += G;
+			State[7] += H;
+		}
+	}
+
+	/**
+	 * SHA-256 of raw bytes as 64 lower case hex characters.
+	 *
+	 * Self-contained on purpose: the engine has no portable SHA-256 in Core
+	 * (FGenericPlatformMisc::GetSHA256Signature is not implemented on every platform,
+	 * the OpenSSL hasher lives in the optional PlatformCrypto plugin). A plain
+	 * implementation gives the same hash on every target and can be checked without
+	 * the engine.
+	 */
+	inline std::string Sha256Hex(const std::uint8_t* Data, std::size_t Length)
+	{
+		std::uint32_t State[8] = {
+			0x6a09e667u, 0xbb67ae85u, 0x3c6ef372u, 0xa54ff53au,
+			0x510e527fu, 0x9b05688cu, 0x1f83d9abu, 0x5be0cd19u
+		};
+
+		std::size_t Offset = 0;
+		while (Length - Offset >= 64)
+		{
+			ValidatedActionsDetail::Sha256ProcessBlock(State, Data + Offset);
+			Offset += 64;
+		}
+
+		// Padding: 0x80, zeros, then the message length in bits as 64 bit big endian.
+		const std::size_t Remaining = Length - Offset;
+		std::uint8_t Tail[128] = {};
+		if (Remaining > 0)
+		{
+			std::memcpy(Tail, Data + Offset, Remaining);
+		}
+		Tail[Remaining] = 0x80;
+		const std::size_t TailLength = Remaining < 56 ? 64 : 128;
+		const std::uint64_t BitLength = static_cast<std::uint64_t>(Length) * 8u;
+		for (std::size_t Index = 0; Index < 8; ++Index)
+		{
+			Tail[TailLength - 1 - Index] = static_cast<std::uint8_t>(BitLength >> (8 * Index));
+		}
+		ValidatedActionsDetail::Sha256ProcessBlock(State, Tail);
+		if (TailLength == 128)
+		{
+			ValidatedActionsDetail::Sha256ProcessBlock(State, Tail + 64);
+		}
+
+		static const char HexDigits[] = "0123456789abcdef";
+		std::string Hex;
+		Hex.reserve(InputLogHashLength);
+		for (const std::uint32_t Word : State)
+		{
+			for (int Shift = 28; Shift >= 0; Shift -= 4)
+			{
+				Hex.push_back(HexDigits[(Word >> Shift) & 0xFu]);
+			}
+		}
+		return Hex;
+	}
+
+	/** SHA-256 hash of an input log (the same bytes are uploaded as evidence in Part 3). */
+	inline std::string ComputeInputLogHash(const std::vector<std::uint8_t>& InputLog)
+	{
+		return Sha256Hex(InputLog.empty() ? nullptr : InputLog.data(), InputLog.size());
+	}
+
+	/** True for exactly 64 hex characters (upper case accepted, like the server). */
+	inline bool IsValidInputLogHash(const std::string& Hash)
+	{
+		if (Hash.size() != InputLogHashLength)
+		{
+			return false;
+		}
+		for (const unsigned char Character : Hash)
+		{
+			const bool bHex = (Character >= '0' && Character <= '9')
+				|| (Character >= 'a' && Character <= 'f')
+				|| (Character >= 'A' && Character <= 'F');
+			if (!bHex)
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+
+	/** Lower case copy of a hash, so every SDK sends the same spelling. */
+	inline std::string NormalizeInputLogHash(const std::string& Hash)
+	{
+		std::string Result = Hash;
+		for (char& Character : Result)
+		{
+			if (Character >= 'A' && Character <= 'F')
+			{
+				Character = static_cast<char>(Character - 'A' + 'a');
+			}
+		}
+		return Result;
+	}
+
+	/** One earned (positive) or spent (negative) value of a run. Sent from Part 1 on, used by Part 2 servers. */
+	struct FValidatedEarnedValue
+	{
+		std::string Key;
+		std::int64_t Amount = 0;
+	};
+
+	/**
+	 * Request plan of a Validated Actions call. When a local check fails, bShouldSend
+	 * stays false and ErrorCode / ErrorMessage explain why; nothing reaches the server.
+	 */
+	struct FValidatedRequestPlan
+	{
+		bool bShouldSend = false;
+		bool bUseSessionToken = true;
+		std::string Verb;
+		std::string Endpoint;
+		std::string BodyJson;
+		std::string ErrorCode;
+		std::string ErrorMessage;
+	};
+
+	inline FValidatedRequestPlan ValidatedFailedPlan(const char* ErrorCode, const std::string& ErrorMessage)
+	{
+		FValidatedRequestPlan Plan;
+		Plan.ErrorCode = ErrorCode;
+		Plan.ErrorMessage = ErrorMessage;
+		return Plan;
+	}
+
+	/**
+	 * POST /api/v1/app/validated-actions/runs: `{"userId", "leaderboardKey"}`.
+	 * An empty (or blank) LeaderboardKey is omitted: the ticket is not bound to a board.
+	 */
+	inline FValidatedRequestPlan BuildValidatedStartRunPlan(
+		const std::string& UserId,
+		const std::string& SessionToken,
+		const std::string& LeaderboardKey)
+	{
+		if (UserId.empty() || SessionToken.empty())
+		{
+			return ValidatedFailedPlan(ValidatedCodeSessionRequired, "A signed-in player is required.");
+		}
+
+		const std::string NormalizedKey = Trim(LeaderboardKey);
+
+		FValidatedRequestPlan Plan;
+		Plan.bShouldSend = true;
+		Plan.Verb = "POST";
+		Plan.Endpoint = ValidatedStartRunEndpoint;
+		Plan.BodyJson = "{\"userId\":\"" + EscapeJson(UserId) + "\"";
+		if (!NormalizedKey.empty())
+		{
+			Plan.BodyJson += ",\"leaderboardKey\":\"" + EscapeJson(NormalizedKey) + "\"";
+		}
+		Plan.BodyJson += "}";
+		return Plan;
+	}
+
+	/**
+	 * POST /api/v1/app/validated-actions/submit:
+	 * `{"userId", "ticket", "inputLogHash", "score", "stage", "leaderboardKey", "earned"}`.
+	 * `score` is always sent (the server ignores it for a run without board); `stage`,
+	 * `leaderboardKey` and `earned` are omitted when empty.
+	 *
+	 * Local checks in this order: SESSION_REQUIRED (no user or session token),
+	 * NO_ACTIVE_RUN (no ticket), INVALID_INPUT_LOG_HASH (not 64 hex characters).
+	 */
+	inline FValidatedRequestPlan BuildValidatedSubmitPlan(
+		const std::string& UserId,
+		const std::string& SessionToken,
+		const std::string& Ticket,
+		const std::string& InputLogHash,
+		std::int64_t Score,
+		const std::string& Stage,
+		const std::string& LeaderboardKey,
+		const std::vector<FValidatedEarnedValue>& Earned)
+	{
+		if (UserId.empty() || SessionToken.empty())
+		{
+			return ValidatedFailedPlan(ValidatedCodeSessionRequired, "A signed-in player is required.");
+		}
+		if (Ticket.empty())
+		{
+			return ValidatedFailedPlan(ValidatedCodeNoActiveRun, "No active run: call StartRun first.");
+		}
+		if (!IsValidInputLogHash(InputLogHash))
+		{
+			return ValidatedFailedPlan(ValidatedCodeInvalidInputLogHash,
+				"The input log hash must be 64 hex characters (SHA-256).");
+		}
+
+		const std::string NormalizedStage = Trim(Stage);
+		const std::string NormalizedKey = Trim(LeaderboardKey);
+
+		FValidatedRequestPlan Plan;
+		Plan.bShouldSend = true;
+		Plan.Verb = "POST";
+		Plan.Endpoint = ValidatedSubmitEndpoint;
+		Plan.BodyJson = "{\"userId\":\"" + EscapeJson(UserId) + "\""
+			+ ",\"ticket\":\"" + EscapeJson(Ticket) + "\""
+			+ ",\"inputLogHash\":\"" + NormalizeInputLogHash(InputLogHash) + "\""
+			+ ",\"score\":" + std::to_string(Score);
+		if (!NormalizedStage.empty())
+		{
+			Plan.BodyJson += ",\"stage\":\"" + EscapeJson(NormalizedStage) + "\"";
+		}
+		if (!NormalizedKey.empty())
+		{
+			Plan.BodyJson += ",\"leaderboardKey\":\"" + EscapeJson(NormalizedKey) + "\"";
+		}
+		if (!Earned.empty())
+		{
+			Plan.BodyJson += ",\"earned\":[";
+			for (std::size_t Index = 0; Index < Earned.size(); ++Index)
+			{
+				if (Index > 0)
+				{
+					Plan.BodyJson += ",";
+				}
+				Plan.BodyJson += "{\"key\":\"" + EscapeJson(Earned[Index].Key) + "\",\"amount\":"
+					+ std::to_string(Earned[Index].Amount) + "}";
+			}
+			Plan.BodyJson += "]";
+		}
+		Plan.BodyJson += "}";
+		return Plan;
+	}
+
+	/**
+	 * True when a finished submit used up the ticket, so the SDK clears the current run:
+	 * success (2xx), every 422 (ticket and rule rejections) and 403 SCORE_LIMIT_REACHED.
+	 * On network errors (status 0), 400, 401, 403 (other codes), 404, 429 and 5xx the run
+	 * stays and the game may retry with the same ticket.
+	 */
+	inline bool ShouldClearRunAfterSubmit(int StatusCode, const std::string& ServerErrorCode)
+	{
+		if (StatusCode >= 200 && StatusCode < 300)
+		{
+			return true;
+		}
+		if (StatusCode == 422)
+		{
+			return true;
+		}
+		return StatusCode == 403 && ServerErrorCode == "SCORE_LIMIT_REACHED";
+	}
+
+	/**
+	 * 429 codes whose wait can be up to an hour: the HTTP client must not retry them
+	 * automatically (a 429 without code keeps the normal Retry-After handling).
+	 */
+	inline bool IsNonRetryableRateLimitCode(const std::string& ServerErrorCode)
+	{
+		return ServerErrorCode == "RUN_RATE_LIMITED" || ServerErrorCode == "RUN_CAPACITY_REACHED";
+	}
+
+	/**
+	 * Error code shown for a failed Validated Actions request: the server `code` when
+	 * present, NOT_SUPPORTED for a 404 without code (the backend lacks the feature),
+	 * otherwise the SDK's HTTP mapping passed in as FallbackCode.
+	 */
+	inline std::string MapValidatedErrorCode(int StatusCode, const std::string& ServerErrorCode, const std::string& FallbackCode)
+	{
+		if (!ServerErrorCode.empty())
+		{
+			return ServerErrorCode;
+		}
+		if (StatusCode == 404)
+		{
+			return ValidatedCodeNotSupported;
+		}
+		return FallbackCode;
+	}
+}

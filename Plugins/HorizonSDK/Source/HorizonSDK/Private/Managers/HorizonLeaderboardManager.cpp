@@ -58,6 +58,7 @@ void UHorizonLeaderboardManager::SubmitScore(int64 Score, FOnRequestComplete OnC
 	if (!AuthManager || !HttpClient)
 	{
 		UE_LOG(LogHorizonSDK, Warning, TEXT("Leaderboard::SubmitScore -- User is not signed in."));
+		LastSubmitErrorCode = TEXT("SESSION_REQUIRED");
 		OnComplete.ExecuteIfBound(false, TEXT("User is not signed in."));
 		return;
 	}
@@ -72,6 +73,7 @@ void UHorizonLeaderboardManager::SubmitScore(int64 Score, FOnRequestComplete OnC
 	if (!Plan.bShouldSend)
 	{
 		UE_LOG(LogHorizonSDK, Warning, TEXT("Leaderboard::SubmitScore -- User is not signed in."));
+		LastSubmitErrorCode = TEXT("SESSION_REQUIRED");
 		OnComplete.ExecuteIfBound(false, TEXT("User is not signed in."));
 		return;
 	}
@@ -80,6 +82,7 @@ void UHorizonLeaderboardManager::SubmitScore(int64 Score, FOnRequestComplete OnC
 	const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(UTF8_TO_TCHAR(Plan.BodyJson.c_str()));
 	if (!FJsonSerializer::Deserialize(Reader, ParsedBody) || !ParsedBody.IsValid())
 	{
+		LastSubmitErrorCode = TEXT("INVALID_REQUEST");
 		OnComplete.ExecuteIfBound(false, TEXT("Failed to build leaderboard request."));
 		return;
 	}
@@ -101,12 +104,16 @@ void UHorizonLeaderboardManager::SubmitScore(int64 Score, FOnRequestComplete OnC
 				if (Response.bSuccess)
 				{
 					UE_LOG(LogHorizonSDK, Log, TEXT("Leaderboard::SubmitScore -- Score submitted successfully."));
+					Self->LastSubmitErrorCode.Empty();
 					Self->ClearCache();
 					CapturedOnComplete.ExecuteIfBound(true, TEXT(""));
 				}
 				else
 				{
-					UE_LOG(LogHorizonSDK, Warning, TEXT("Leaderboard::SubmitScore -- Failed: %s"), *Response.ErrorMessage);
+					// 403 VALIDATED_SUBMIT_REQUIRED: "validated only" board, nothing written, not retried.
+					Self->LastSubmitErrorCode = Response.GetErrorCodeString();
+					UE_LOG(LogHorizonSDK, Warning, TEXT("Leaderboard::SubmitScore -- Failed (%s): %s"),
+						*Self->LastSubmitErrorCode, *Response.ErrorMessage);
 					CapturedOnComplete.ExecuteIfBound(false, Response.ErrorMessage);
 				}
 			}

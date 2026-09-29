@@ -24,6 +24,7 @@ Official Unreal Engine SDK for **horizOn** Backend-as-a-Service by [ProjectMaker
 | 📰 **News** | `UHorizonNewsManager` | In-game news feed with language filtering and TTL cache |
 | 🎁 **Gift Codes** | `UHorizonGiftCodeManager` | Validate and redeem promotional codes, cosmetic unlocks via `grants` |
 | 🧑‍🎤 **Player Profile** | `UHorizonPlayerProfileManager` | Avatar, frame and badges per player, cosmetic unlocks, shown in leaderboards |
+| ✅ **Validated Actions** | `UHorizonValidatedActionsManager` | Server-checked runs: ticket with seed, validated submit with input log hash, rule codes |
 | 💬 **Feedback** | `UHorizonFeedbackManager` | Submit bug reports, feature requests, and general feedback |
 | 📊 **User Logs** | `UHorizonUserLogManager` | Server-side structured logging for analytics and debugging |
 | 💥 **Crash Reporting** | `UHorizonCrashReportManager` | Crash capture, exception tracking, breadcrumbs |
@@ -154,6 +155,12 @@ Horizon->Leaderboard->GetRank(
 Horizon->Leaderboard->GetAround(5,
     FOnLeaderboardComplete::CreateLambda([](bool bSuccess, const TArray<FHorizonLeaderboardEntry>& Entries) { }));
 ```
+
+A board can accept validated runs only (`FHorizonLeaderboardBoard::bValidatedOnly`, from
+`ListBoards`). `SubmitScore` to such a board fails with the code `VALIDATED_SUBMIT_REQUIRED`
+and writes nothing; the SDK does not retry it. The `OnComplete` signature is unchanged, read
+the code with `Horizon->Leaderboard->GetLastSubmitErrorCode()` and submit through
+[Validated Actions](#validated-actions) instead.
 
 Every entry of top, around and rank carries the player's profile in `Entry.Profile`
 (`AvatarId`, `FrameId`, `Badges`). Empty values mean "not set"; treat IDs your game
@@ -334,6 +341,78 @@ characters: lowercase letters, digits, `.`, `_`, `-`.
 - **"Get Horizon Current Player Profile"**: The last cached result
 - **"Get Horizon Cosmetics Of Type"** / **"Is Horizon Cosmetic Available"**: Picker helpers
 - **"Get Horizon Last Granted Unlocks"**: Unlocks from the last redeemed gift code
+
+### Validated Actions
+
+Validated Actions let the server check a run before its result counts. A run starts with a
+single use ticket and a server seed. Seed all randomness of the run with that seed, record the
+player's inputs as bytes, and submit the result together with the SHA-256 of that input log.
+The server checks the rules of your API key (maximum and minimum score, minimum duration,
+score per second, stages; set in the horizOn Dashboard) before anything is written and answers
+a rejection with a machine readable code. Rule values never reach the client.
+
+Both calls need a signed-in player and send the player session (`Authorization: Bearer`).
+
+```cpp
+#include "Managers/HorizonValidatedActionsManager.h"
+
+// 1. Start a run (bound to the board "weekly"; an empty key starts an unbound run)
+Horizon->ValidatedActions->StartRun(TEXT("weekly"),
+    FOnValidatedRunStarted::CreateLambda([](bool bSuccess, const FHorizonValidatedRun& Run,
+        const FString& ErrorCode, const FString& ErrorMessage)
+    {
+        if (!bSuccess) { return; } // for example RUN_RATE_LIMITED
+        FRandomStream Random(Run.Seed); // all randomness of the run from the server seed
+    }));
+
+// 2. Play, append every input to TArray<uint8> InputLog, then submit the current run
+Horizon->ValidatedActions->SubmitValidated(18250, InputLog, TEXT(""), TEXT(""), {},
+    FOnValidatedSubmitComplete::CreateLambda([](bool bSuccess, const FHorizonValidatedSubmitResult& Result,
+        const FString& ErrorCode, const FString& ErrorMessage)
+    {
+        if (!bSuccess)
+        {
+            // Rule codes such as DURATION_TOO_SHORT or SCORE_ABOVE_MAX, ticket codes such as TICKET_EXPIRED
+            UE_LOG(LogTemp, Warning, TEXT("Run rejected: %s"), *ErrorCode);
+            return;
+        }
+        UE_LOG(LogTemp, Log, TEXT("Best %lld, rank %lld, %lld s"), Result.BestScore, Result.Rank, Result.DurationSeconds);
+    }));
+
+// With a hash computed elsewhere (64 hex characters)
+const FString Hash = UHorizonValidatedActionsManager::ComputeInputLogHash(InputLog);
+Horizon->ValidatedActions->SubmitValidatedWithHash(18250, Hash, TEXT("wave_10"), TEXT("weekly"), {}, OnComplete);
+```
+
+- `SubmitValidated` parameters: `Score` (ignored by the server for a run without board),
+  `InputLog`, `Stage` (for stage rules, empty when none), `LeaderboardKey` (empty uses the
+  ticket's board), `Earned` (`TArray<FHorizonEarnedValue>`, server-owned values of a later
+  release; current servers ignore it).
+- The manager keeps the started run: `GetCurrentRun()`, `HasActiveRun()`, `DiscardRun()`.
+  A ticket is single use: after an accepted run, any 422 rejection and 403
+  `SCORE_LIMIT_REACHED` the current run is cleared. On network errors, 401, 404, 429 and 5xx
+  the run stays and you may submit again with the same ticket. Sign-out clears the run.
+- `GetLastErrorCode()` returns the code of the last failed call.
+- An accepted run with a board clears the leaderboard cache, like `SubmitScore`.
+
+Error codes: `SESSION_REQUIRED`, `NO_ACTIVE_RUN` (no started run) and
+`INVALID_INPUT_LOG_HASH` fail locally without a request. Server codes: `TICKET_INVALID`,
+`TICKET_EXPIRED`, `TICKET_FOREIGN`, `TICKET_CONSUMED`, `LEADERBOARD_MISMATCH`,
+`STAGE_REQUIRED`, `STAGE_UNKNOWN`, `SCORE_ABOVE_MAX`, `SCORE_BELOW_MIN`,
+`STAGE_SCORE_ABOVE_MAX`, `STAGE_SCORE_BELOW_MIN`, `DURATION_TOO_SHORT`,
+`SCORE_RATE_TOO_HIGH`, `SCORE_LIMIT_REACHED`, `SCORE_REQUIRED`, `PLAYER_NAME_REQUIRED`,
+`LEADERBOARD_NOT_FOUND`, `PLAYER_NOT_FOUND`, `SESSION_FORBIDDEN`,
+`VALIDATED_ACTIONS_UNAVAILABLE`, `RUN_RATE_LIMITED` and `RUN_CAPACITY_REACHED`. The two run
+limits are not retried automatically (the wait can be up to an hour). A backend without the
+feature (for example a Simple Server) gives `NOT_SUPPORTED`.
+
+#### Blueprints
+
+- **"Start Validated Run"**: Starts a run (On Success: Run, On Failure: Error Code, Error Message)
+- **"Submit Validated Run"**: Hashes the input log and submits the current run (On Success: Result)
+- **"Submit Validated Run With Hash"**: Same with a ready SHA-256 hash
+- **"Compute Input Log Hash"**, **"Has Active Run"**, **"Get Last Error Code"**, **"Discard Run"** on `ValidatedActions`
+- **"Get Horizon Current Validated Run"**: The current run
 
 ### Feedback
 
@@ -581,6 +660,8 @@ Horizon->Auth->SignInEmail(TEXT("user@example.com"), TEXT("password"),
 The horizOn SDKs work with both the **managed horizOn BaaS** and the **free, open-source [horizOn Simple Server](https://github.com/ProjectMakersDE/horizOn-simpleServer)**.
 
 Simple Server is a lightweight PHP backend with no dependencies — perfect as a starting point if you want full control over your infrastructure. It supports core features like leaderboards, cloud saves, remote config, news, gift codes, feedback, and crash reporting.
+
+Validated Actions are cloud only: a Simple Server does not have them, the SDK reports `NOT_SUPPORTED`.
 
 To connect to your own server, set the **Backend Hosts** in Project Settings > Plugins > horizOn SDK to your server URL.
 

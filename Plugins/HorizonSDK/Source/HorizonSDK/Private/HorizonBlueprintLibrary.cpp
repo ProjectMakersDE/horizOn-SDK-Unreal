@@ -6,6 +6,7 @@
 #include "Managers/HorizonCrashManager.h"
 #include "Managers/HorizonGiftCodeManager.h"
 #include "Managers/HorizonPlayerProfileManager.h"
+#include "Managers/HorizonValidatedActionsManager.h"
 #include "Kismet/GameplayStatics.h"
 #include "Engine/GameInstance.h"
 
@@ -115,4 +116,14 @@ TArray<FString> UHorizonBlueprintLibrary::GetHorizonLastGrantedUnlocks(const UOb
 		return TArray<FString>();
 	}
 	return Subsystem->GiftCodes->GetLastGrantedUnlocks();
+}
+
+FHorizonValidatedRun UHorizonBlueprintLibrary::GetHorizonCurrentValidatedRun(const UObject* WorldContextObject)
+{
+	UHorizonSubsystem* Subsystem = GetHorizonSubsystem(WorldContextObject);
+	if (!Subsystem || !Subsystem->ValidatedActions)
+	{
+		return FHorizonValidatedRun();
+	}
+	return Subsystem->ValidatedActions->GetCurrentRun();
 }

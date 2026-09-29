@@ -18,3 +18,8 @@ c++ -std=c++17 \
   Tests/PlayerProfileTransportContractTest.cpp \
   -o "$build_dir/player-profile-transport-test"
 "$build_dir/player-profile-transport-test"
+c++ -std=c++17 \
+  -I Plugins/HorizonSDK/Source/HorizonSDK/Public \
+  Tests/ValidatedActionsTransportContractTest.cpp \
+  -o "$build_dir/validated-actions-transport-test"
+"$build_dir/validated-actions-transport-test"
