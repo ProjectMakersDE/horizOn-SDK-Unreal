@@ -78,4 +78,25 @@ public:
 	/** The current validated run (empty before "Start Validated Run" and after its submit, a discard or sign-out). */
 	UFUNCTION(BlueprintPure, Category = "horizOn|ValidatedActions", meta = (WorldContext = "WorldContextObject"))
 	static FHorizonValidatedRun GetHorizonCurrentValidatedRun(const UObject* WorldContextObject);
+
+	// --- Validated Actions: server-owned state (TASK-887) ---
+
+	/** The cached server-owned values of the signed-in player (from "Get Validated Player State" or the last accepted run). */
+	UFUNCTION(BlueprintPure, Category = "horizOn|ValidatedActions", meta = (WorldContext = "WorldContextObject"))
+	static FHorizonPlayerState GetHorizonValidatedPlayerState(const UObject* WorldContextObject);
+
+	/** Balance of one value in a player state, 0 when the key is not defined. */
+	UFUNCTION(BlueprintPure, Category = "horizOn|ValidatedActions")
+	static int64 GetHorizonValidatedBalance(const FHorizonPlayerState& State, const FString& Key);
+
+	/** Finds one value in a player state; returns false when the key is not defined. */
+	UFUNCTION(BlueprintPure, Category = "horizOn|ValidatedActions")
+	static bool FindHorizonValidatedValue(const FHorizonPlayerState& State, const FString& Key, FHorizonPlayerStateValue& Value);
+
+	/**
+	 * True when a value of a submit result was applied in full (Credited == Requested).
+	 * Grant a purchase paid with a spend only when this is true.
+	 */
+	UFUNCTION(BlueprintPure, Category = "horizOn|ValidatedActions")
+	static bool IsHorizonValueFullyCredited(const FHorizonPlayerStateValue& Value);
 };

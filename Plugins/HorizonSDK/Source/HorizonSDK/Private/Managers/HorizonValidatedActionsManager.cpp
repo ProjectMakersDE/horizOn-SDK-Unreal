@@ -20,7 +20,7 @@ void UHorizonValidatedActionsManager::Initialize(UHorizonHttpClient* InHttpClien
 	HttpClient = InHttpClient;
 	AuthManager = InAuthManager;
 
-	// A run belongs to one player: drop it on sign-out and when another player signs in.
+	// A run and the cached state belong to one player: drop them on sign-out and when another player signs in.
 	if (AuthManager)
 	{
 		AuthManager->OnUserSignedIn.AddUniqueDynamic(this, &UHorizonValidatedActionsManager::HandleUserSignedIn);
@@ -258,7 +258,7 @@ void UHorizonValidatedActionsManager::HandleSubmitResponse(const FHorizonNetwork
 
 	const FHorizonValidatedSubmitResult Result = FHorizonValidatedSubmitResult::FromJson(Response.JsonData);
 	LastErrorCode.Empty();
-	OnRunAccepted(Result, InputLog);
+	OnRunAccepted(Result, RequestUserId, InputLog);
 
 	UE_LOG(LogHorizonSDK, Log, TEXT("ValidatedActions::SubmitValidated -- Run %s accepted (board '%s', score %lld, best %lld, rank %lld, %lld s)."),
 		*Result.RunId, *Result.LeaderboardKey, Result.Score, Result.BestScore, Result.Rank, Result.DurationSeconds);
@@ -266,7 +266,7 @@ void UHorizonValidatedActionsManager::HandleSubmitResponse(const FHorizonNetwork
 }
 
 void UHorizonValidatedActionsManager::OnRunAccepted(const FHorizonValidatedSubmitResult& Result,
-	const TSharedPtr<const TArray<uint8>>& /*InputLog*/)
+	const FString& RequestUserId, const TSharedPtr<const TArray<uint8>>& /*InputLog*/)
 {
 	// Same as after SubmitScore: cached top, around and rank lists are stale now.
 	if (Result.HasLeaderboard() && LeaderboardManager)
@@ -274,8 +274,126 @@ void UHorizonValidatedActionsManager::OnRunAccepted(const FHorizonValidatedSubmi
 		LeaderboardManager->ClearCache();
 	}
 
+	// Part 2: the result carries the state after the run. `state: null` means the rules define
+	// no values (or the state write failed); the cached state is kept then.
+	if (!Result.State.IsEmpty())
+	{
+		UpdateCurrentState(Result.State, RequestUserId);
+	}
+
 	// Part 3 (TASK-888): when Result.Evidence.bRequired and bAutoUploadEvidence and the raw
 	// InputLog is known, upload it here (PUT /api/v1/app/validated-actions/runs/{runId}/evidence).
+}
+
+// ============================================================
+// Player state (Part 2)
+// ============================================================
+
+void UHorizonValidatedActionsManager::GetState(FOnPlayerStateLoaded OnComplete)
+{
+	if (!HttpClient || !AuthManager || !AuthManager->IsSignedIn())
+	{
+		LastErrorCode = TEXT("SESSION_REQUIRED");
+		UE_LOG(LogHorizonSDK, Warning, TEXT("ValidatedActions::GetState -- User is not signed in."));
+		OnComplete.ExecuteIfBound(false, FHorizonPlayerState(), LastErrorCode, TEXT("A signed-in player is required."));
+		return;
+	}
+
+	const FString UserId = AuthManager->GetCurrentUser().UserId;
+	const HorizonTransportContract::FValidatedRequestPlan Plan =
+		HorizonTransportContract::BuildValidatedGetStatePlan(
+			TCHAR_TO_UTF8(*UserId),
+			TCHAR_TO_UTF8(*HttpClient->GetSessionToken()));
+	if (!Plan.bShouldSend)
+	{
+		LastErrorCode = UTF8_TO_TCHAR(Plan.ErrorCode.c_str());
+		const FString ErrorMessage = UTF8_TO_TCHAR(Plan.ErrorMessage.c_str());
+		UE_LOG(LogHorizonSDK, Warning, TEXT("ValidatedActions::GetState -- %s"), *ErrorMessage);
+		OnComplete.ExecuteIfBound(false, FHorizonPlayerState(), LastErrorCode, ErrorMessage);
+		return;
+	}
+
+	TWeakObjectPtr<UHorizonValidatedActionsManager> WeakSelf(this);
+	FOnPlayerStateLoaded CapturedOnComplete = OnComplete;
+	const FString Endpoint = UTF8_TO_TCHAR(Plan.Endpoint.c_str());
+
+	HttpClient->Get(Endpoint, Plan.bUseSessionToken,
+		FOnHttpResponse::CreateLambda(
+			[WeakSelf, CapturedOnComplete, UserId](const FHorizonNetworkResponse& Response)
+			{
+				UHorizonValidatedActionsManager* Self = WeakSelf.Get();
+				if (!Self)
+				{
+					return;
+				}
+				Self->HandleGetStateResponse(Response, UserId, CapturedOnComplete);
+			}
+		));
+}
+
+void UHorizonValidatedActionsManager::HandleGetStateResponse(const FHorizonNetworkResponse& Response,
+	const FString& RequestUserId, const FOnPlayerStateLoaded& OnComplete)
+{
+	if (!Response.bSuccess)
+	{
+		LastErrorCode = MapErrorCode(Response);
+		UE_LOG(LogHorizonSDK, Warning, TEXT("ValidatedActions::GetState -- Failed (%s): %s"), *LastErrorCode, *Response.ErrorMessage);
+		OnComplete.ExecuteIfBound(false, FHorizonPlayerState(), LastErrorCode, Response.ErrorMessage);
+		return;
+	}
+
+	if (!Response.JsonData.IsValid())
+	{
+		LastErrorCode = TEXT("INVALID_RESPONSE");
+		UE_LOG(LogHorizonSDK, Warning, TEXT("ValidatedActions::GetState -- Response has no JSON body."));
+		OnComplete.ExecuteIfBound(false, FHorizonPlayerState(), LastErrorCode, TEXT("The server response could not be read."));
+		return;
+	}
+
+	FHorizonPlayerState State = FHorizonPlayerState::FromJson(Response.JsonData);
+	if (State.UserId.IsEmpty())
+	{
+		State.UserId = RequestUserId;
+	}
+	UpdateCurrentState(State, RequestUserId);
+
+	LastErrorCode.Empty();
+	UE_LOG(LogHorizonSDK, Log, TEXT("ValidatedActions::GetState -- %d value(s) on %s."), State.Values.Num(), *State.Day);
+	OnComplete.ExecuteIfBound(true, State, FString(), FString());
+}
+
+void UHorizonValidatedActionsManager::UpdateCurrentState(const FHorizonPlayerState& State, const FString& RequestUserId)
+{
+	// Keep the state only when the same player is still signed in (a sign-out may have happened meanwhile).
+	if (!AuthManager || !AuthManager->IsSignedIn() || AuthManager->GetCurrentUser().UserId != RequestUserId)
+	{
+		return;
+	}
+
+	CurrentState = State;
+	if (CurrentState.UserId.IsEmpty())
+	{
+		CurrentState.UserId = RequestUserId;
+	}
+	// Requested and Credited describe one submit; the cached state holds balances only.
+	for (FHorizonPlayerStateValue& Value : CurrentState.Values)
+	{
+		Value.Requested = 0;
+		Value.Credited = 0;
+	}
+	CurrentStateUserId = RequestUserId;
+	OnStateChanged.Broadcast(CurrentState);
+}
+
+void UHorizonValidatedActionsManager::ClearCurrentState()
+{
+	const bool bHadState = !CurrentState.IsEmpty();
+	CurrentState = FHorizonPlayerState();
+	CurrentStateUserId.Empty();
+	if (bHadState)
+	{
+		OnStateChanged.Broadcast(CurrentState);
+	}
 }
 
 // ============================================================
@@ -290,16 +408,22 @@ void UHorizonValidatedActionsManager::DiscardRun()
 
 void UHorizonValidatedActionsManager::HandleUserSignedIn()
 {
-	// A session restore of the same player keeps the run; another player drops it.
-	if (!AuthManager || AuthManager->GetCurrentUser().UserId != CurrentRunUserId)
+	// A session restore of the same player keeps the run and the state; another player drops them.
+	const FString SignedInUserId = AuthManager ? AuthManager->GetCurrentUser().UserId : FString();
+	if (!AuthManager || SignedInUserId != CurrentRunUserId)
 	{
 		DiscardRun();
+	}
+	if (!AuthManager || SignedInUserId != CurrentStateUserId)
+	{
+		ClearCurrentState();
 	}
 }
 
 void UHorizonValidatedActionsManager::HandleUserSignedOut()
 {
 	DiscardRun();
+	ClearCurrentState();
 }
 
 // ============================================================

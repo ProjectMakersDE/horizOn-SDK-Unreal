@@ -9,6 +9,7 @@
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnValidatedRunStartedAsyncSuccess, const FHorizonValidatedRun&, Run);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnValidatedSubmitAsyncSuccess, const FHorizonValidatedSubmitResult&, Result);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnValidatedStateAsyncSuccess, const FHorizonPlayerState&, State);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnValidatedActionsAsyncFailure, const FString&, ErrorCode, const FString&, ErrorMessage);
 
 /**
@@ -62,7 +63,9 @@ public:
 
 	/**
 	 * Submit the current run. Score is ignored by the server for a run without board.
-	 * Stage and LeaderboardKey may stay empty (empty key uses the ticket's board); Earned is for Part 2 servers.
+	 * Stage and LeaderboardKey may stay empty (empty key uses the ticket's board).
+	 * Earned: server-owned values the run earned (positive) or spent (negative); only keys the
+	 * rules of the API key define (else UNKNOWN_VALUE_KEY). On success Result.State holds the values after the run.
 	 */
 	UFUNCTION(BlueprintCallable, meta = (BlueprintInternalUseOnly = "true", WorldContext = "WorldContextObject", DisplayName = "Submit Validated Run", AutoCreateRefTerm = "Earned"), Category = "horizOn|ValidatedActions")
 	static UHorizonAsync_SubmitValidated* SubmitValidated(const UObject* WorldContextObject, int64 Score, const TArray<uint8>& InputLog,
@@ -115,4 +118,35 @@ private:
 	TArray<FHorizonEarnedValue> EarnedValues;
 
 	void HandleResult(bool bSuccess, const FHorizonValidatedSubmitResult& Result, const FString& ErrorCode, const FString& ErrorMessage);
+};
+
+// ============================================================
+
+/**
+ * Async Blueprint node: Read the signed-in player's server-owned values (currency, loot).
+ * The state also becomes the cached state of the ValidatedActions manager.
+ */
+UCLASS()
+class HORIZONSDK_API UHorizonAsync_GetValidatedState : public UBlueprintAsyncActionBase
+{
+	GENERATED_BODY()
+
+public:
+	UPROPERTY(BlueprintAssignable)
+	FOnValidatedStateAsyncSuccess OnSuccess;
+
+	/** ErrorCode is SESSION_REQUIRED, SESSION_FORBIDDEN, PLAYER_NOT_FOUND, NOT_SUPPORTED, CONNECTION_FAILED, ... */
+	UPROPERTY(BlueprintAssignable)
+	FOnValidatedActionsAsyncFailure OnFailure;
+
+	/** Load the player state (every value defined in the rules, sorted by key). */
+	UFUNCTION(BlueprintCallable, meta = (BlueprintInternalUseOnly = "true", WorldContext = "WorldContextObject", DisplayName = "Get Validated Player State"), Category = "horizOn|ValidatedActions")
+	static UHorizonAsync_GetValidatedState* GetValidatedState(const UObject* WorldContextObject);
+
+	virtual void Activate() override;
+
+private:
+	TWeakObjectPtr<const UObject> WorldContext;
+
+	void HandleResult(bool bSuccess, const FHorizonPlayerState& State, const FString& ErrorCode, const FString& ErrorMessage);
 };

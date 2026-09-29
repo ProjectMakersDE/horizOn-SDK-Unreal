@@ -24,7 +24,7 @@ Official Unreal Engine SDK for **horizOn** Backend-as-a-Service by [ProjectMaker
 | 📰 **News** | `UHorizonNewsManager` | In-game news feed with language filtering and TTL cache |
 | 🎁 **Gift Codes** | `UHorizonGiftCodeManager` | Validate and redeem promotional codes, cosmetic unlocks via `grants` |
 | 🧑‍🎤 **Player Profile** | `UHorizonPlayerProfileManager` | Avatar, frame and badges per player, cosmetic unlocks, shown in leaderboards |
-| ✅ **Validated Actions** | `UHorizonValidatedActionsManager` | Server-checked runs: ticket with seed, validated submit with input log hash, rule codes |
+| ✅ **Validated Actions** | `UHorizonValidatedActionsManager` | Server-checked runs: ticket with seed, validated submit with input log hash, rule codes, server-owned currency and loot |
 | 💬 **Feedback** | `UHorizonFeedbackManager` | Submit bug reports, feature requests, and general feedback |
 | 📊 **User Logs** | `UHorizonUserLogManager` | Server-side structured logging for analytics and debugging |
 | 💥 **Crash Reporting** | `UHorizonCrashReportManager` | Crash capture, exception tracking, breadcrumbs |
@@ -386,8 +386,8 @@ Horizon->ValidatedActions->SubmitValidatedWithHash(18250, Hash, TEXT("wave_10"),
 
 - `SubmitValidated` parameters: `Score` (ignored by the server for a run without board),
   `InputLog`, `Stage` (for stage rules, empty when none), `LeaderboardKey` (empty uses the
-  ticket's board), `Earned` (`TArray<FHorizonEarnedValue>`, server-owned values of a later
-  release; current servers ignore it).
+  ticket's board), `Earned` (`TArray<FHorizonEarnedValue>`, see
+  [Server-owned state](#server-owned-state); leave it empty unless the rules define values).
 - The manager keeps the started run: `GetCurrentRun()`, `HasActiveRun()`, `DiscardRun()`.
   A ticket is single use: after an accepted run, the ticket codes (`TICKET_*`), every rule
   or value rejection (422) and 403 `SCORE_LIMIT_REACHED` the current run is cleared. The
@@ -403,19 +403,96 @@ Error codes: `SESSION_REQUIRED`, `NO_ACTIVE_RUN` (no started run) and
 `TICKET_EXPIRED`, `TICKET_FOREIGN`, `TICKET_CONSUMED`, `LEADERBOARD_MISMATCH`,
 `STAGE_REQUIRED`, `STAGE_UNKNOWN`, `SCORE_ABOVE_MAX`, `SCORE_BELOW_MIN`,
 `STAGE_SCORE_ABOVE_MAX`, `STAGE_SCORE_BELOW_MIN`, `DURATION_TOO_SHORT`,
-`SCORE_RATE_TOO_HIGH`, `SCORE_LIMIT_REACHED`, `SCORE_REQUIRED`, `PLAYER_NAME_REQUIRED`,
+`SCORE_RATE_TOO_HIGH`, `UNKNOWN_VALUE_KEY`, `DUPLICATE_VALUE_KEY`, `EARNED_ABOVE_MAX`,
+`EARNED_BELOW_MIN`, `INSUFFICIENT_BALANCE`, `SCORE_LIMIT_REACHED`, `SCORE_REQUIRED`, `PLAYER_NAME_REQUIRED`,
 `LEADERBOARD_NOT_FOUND`, `PLAYER_NOT_FOUND`, `SESSION_FORBIDDEN`,
 `VALIDATED_ACTIONS_UNAVAILABLE`, `RUN_RATE_LIMITED` and `RUN_CAPACITY_REACHED`. The two run
 limits are not retried automatically (the wait can be up to an hour). A backend without the
 feature (for example a Simple Server) gives `NOT_SUPPORTED`.
 
+#### Server-owned state
+
+The rules of your API key can define values (currency, loot counters) under `values`, for
+example `"gold": {"maxPerRun": 500, "dailyCap": 5000}`. Only the server writes them. A run
+earns (positive) or spends (negative) them through `Earned` of the submit; the server checks
+the key (`UNKNOWN_VALUE_KEY`, also when the rules define no values), duplicates
+(`DUPLICATE_VALUE_KEY`), `maxPerRun` / `minPerRun` (`EARNED_ABOVE_MAX`, `EARNED_BELOW_MIN`)
+and the balance of a spend (`INSUFFICIENT_BALANCE`). These are 422 rejections: the ticket is
+used up. The daily cap and `maxBalance` clamp a credit without rejecting the run.
+
+```cpp
+// Earn 250 gold and spend one chest key in the same run
+TArray<FHorizonEarnedValue> Earned;
+Earned.Add(FHorizonEarnedValue(TEXT("gold"), 250));
+Earned.Add(FHorizonEarnedValue(TEXT("chest.key"), -1));
+
+Horizon->ValidatedActions->SubmitValidated(18250, InputLog, TEXT(""), TEXT(""), Earned,
+    FOnValidatedSubmitComplete::CreateLambda([](bool bSuccess, const FHorizonValidatedSubmitResult& Result,
+        const FString& ErrorCode, const FString& ErrorMessage)
+    {
+        if (!bSuccess) { return; } // for example INSUFFICIENT_BALANCE
+        const FHorizonPlayerStateValue* Key = Result.State.FindValue(TEXT("chest.key"));
+        if (Key && Key->IsFullyCredited())
+        {
+            // The spend was applied: open the chest
+        }
+        UE_LOG(LogTemp, Log, TEXT("Gold: %lld"), Result.State.GetBalance(TEXT("gold")));
+    }));
+
+// Read the state at any time (for example at game start)
+Horizon->ValidatedActions->GetState(FOnPlayerStateLoaded::CreateLambda(
+    [](bool bSuccess, const FHorizonPlayerState& State, const FString& ErrorCode, const FString& ErrorMessage)
+    {
+        for (const FHorizonPlayerStateValue& Value : State.Values)
+        {
+            // "250 / 5000 today"; DailyCap 0 means no cap
+            UE_LOG(LogTemp, Log, TEXT("%s: %lld (%lld / %lld today)"), *Value.Key, Value.Balance, Value.EarnedToday, Value.DailyCap);
+        }
+    }));
+```
+
+- `FHorizonPlayerState`: `Day` (current UTC day), `Values` (every key of the rules, sorted,
+  balance 0 when never earned), `GetBalance(Key)`, `FindValue(Key)`. `UserId` is set by
+  `GetState` only.
+- `FHorizonPlayerStateValue`: `Key`, `Balance`, `EarnedToday`, `DailyCap` (0 = no cap),
+  `Requested` and `Credited` (int64). `Requested` / `Credited` are set in a submit result for
+  the values the run touched and 0 otherwise. `Credited < Requested` for a credit means the
+  daily cap or `maxBalance` clamped it. A spend is either applied in full or `Credited` is 0
+  (a parallel run of the same player used the balance first): grant a purchase only when
+  `IsFullyCredited()`.
+- `Result.State` is empty when the rules define no values.
+- The manager caches the last known state: `GetCurrentState()`, `HasState()`,
+  `GetBalance(Key)`, updated by `GetState` and every accepted run with a state, cleared on
+  sign-out. `OnStateChanged` (Blueprint assignable) fires on every change.
+- There is no method that writes the state. Support corrects balances in the horizOn
+  Dashboard.
+
+**Cloud save as a mirror.** The cloud save stays a blob the client writes. Keep server-owned
+values there only as a copy:
+
+1. After every accepted run copy `Result.State` into your save data (for display and an
+   offline start).
+2. At game start call `GetState` and overwrite the copy with it, never the other way round.
+3. Never send a value from the cloud save back as a balance. Balances change only through
+   `Earned` of a validated run.
+4. Values earned offline are sent as `Earned` with the next validated run; the per run and
+   daily limits apply as usual.
+
+`AHorizonValidatedActionsExample::BuildCloudSaveMirror(State)` shows one compact format
+(`{"day":"2026-09-29","balances":{"gold":1250}}`).
+
 #### Blueprints
 
 - **"Start Validated Run"**: Starts a run (On Success: Run, On Failure: Error Code, Error Message)
-- **"Submit Validated Run"**: Hashes the input log and submits the current run (On Success: Result)
+- **"Submit Validated Run"**: Hashes the input log and submits the current run (On Success: Result, with `State`)
 - **"Submit Validated Run With Hash"**: Same with a ready SHA-256 hash
-- **"Compute Input Log Hash"**, **"Has Active Run"**, **"Get Last Error Code"**, **"Discard Run"** on `ValidatedActions`
+- **"Get Validated Player State"**: Loads the server-owned values (On Success: State)
+- **"Compute Input Log Hash"**, **"Has Active Run"**, **"Get Last Error Code"**, **"Discard Run"**,
+  **"Has State"**, **"Get Balance"** and the event **On State Changed** on `ValidatedActions`
 - **"Get Horizon Current Validated Run"**: The current run
+- **"Get Horizon Validated Player State"**: The cached state
+- **"Get Horizon Validated Balance"**, **"Find Horizon Validated Value"**,
+  **"Is Horizon Value Fully Credited"**: Helpers for a state and its values
 
 ### Feedback
 

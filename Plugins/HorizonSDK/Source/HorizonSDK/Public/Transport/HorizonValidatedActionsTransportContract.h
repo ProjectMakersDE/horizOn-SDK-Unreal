@@ -11,15 +11,15 @@
 #include <vector>
 
 /**
- * Engine free transport contract of Validated Actions (TASK-883, Part 1).
+ * Engine free transport contract of Validated Actions (TASK-883 Part 1, TASK-887 Part 2).
  *
  * Holds everything that decides what goes over the wire so it can be compiled and
  * checked without the engine: the SHA-256 input log hash, the local pre-checks
- * (SESSION_REQUIRED, NO_ACTIVE_RUN, INVALID_INPUT_LOG_HASH), the request bodies of
- * start run and submit, and the rules for keeping or clearing the current run.
+ * (SESSION_REQUIRED, NO_ACTIVE_RUN, INVALID_INPUT_LOG_HASH), the request plans of
+ * start run, submit and (Part 2) the player state read, and the rules for keeping or
+ * clearing the current run.
  *
- * Part 2 (player state, GET .../state) and Part 3 (evidence upload, PUT
- * .../runs/{runId}/evidence) add their plans to this file.
+ * Part 3 (evidence upload, PUT .../runs/{runId}/evidence) adds its plan to this file.
  */
 namespace HorizonTransportContract
 {
@@ -29,6 +29,9 @@ namespace HorizonTransportContract
 	/** Endpoints of Part 1. */
 	constexpr const char* ValidatedStartRunEndpoint = "/api/v1/app/validated-actions/runs";
 	constexpr const char* ValidatedSubmitEndpoint = "/api/v1/app/validated-actions/submit";
+
+	/** Endpoint of Part 2: the signed-in player's server-owned values (read only). */
+	constexpr const char* ValidatedStateEndpoint = "/api/v1/app/validated-actions/state";
 
 	/** Local error codes (no request is sent). */
 	constexpr const char* ValidatedCodeSessionRequired = "SESSION_REQUIRED";
@@ -43,6 +46,20 @@ namespace HorizonTransportContract
 	constexpr const char* ValidatedCodeScoreLimitReached = "SCORE_LIMIT_REACHED";
 	constexpr const char* ValidatedCodeRunRateLimited = "RUN_RATE_LIMITED";
 	constexpr const char* ValidatedCodeRunCapacityReached = "RUN_CAPACITY_REACHED";
+
+	/**
+	 * Part 2 codes of the submit (422, the ticket is consumed with status REJECTED): an
+	 * `earned` key the rules do not define (also when the rules define no values), a key
+	 * twice, an amount above `maxPerRun` or below `minPerRun`, a spend larger than the balance.
+	 */
+	constexpr const char* ValidatedCodeUnknownValueKey = "UNKNOWN_VALUE_KEY";
+	constexpr const char* ValidatedCodeDuplicateValueKey = "DUPLICATE_VALUE_KEY";
+	constexpr const char* ValidatedCodeEarnedAboveMax = "EARNED_ABOVE_MAX";
+	constexpr const char* ValidatedCodeEarnedBelowMin = "EARNED_BELOW_MIN";
+	constexpr const char* ValidatedCodeInsufficientBalance = "INSUFFICIENT_BALANCE";
+
+	/** Largest number of `earned` entries per submit (the server answers 400 without code above it). */
+	constexpr std::size_t MaxEarnedValuesPerRun = 64;
 
 	namespace ValidatedActionsDetail
 	{
@@ -345,6 +362,47 @@ namespace HorizonTransportContract
 		}
 		Plan.BodyJson += "}";
 		return Plan;
+	}
+
+	/**
+	 * GET /api/v1/app/validated-actions/state?userId=... with the player session (Part 2).
+	 * No body. SESSION_REQUIRED without user or session token (no request is sent).
+	 */
+	inline FValidatedRequestPlan BuildValidatedGetStatePlan(
+		const std::string& UserId,
+		const std::string& SessionToken)
+	{
+		if (UserId.empty() || SessionToken.empty())
+		{
+			return ValidatedFailedPlan(ValidatedCodeSessionRequired, "A signed-in player is required.");
+		}
+
+		FValidatedRequestPlan Plan;
+		Plan.bShouldSend = true;
+		Plan.Verb = "GET";
+		Plan.Endpoint = std::string(ValidatedStateEndpoint) + "?userId=" + EncodePathSegment(UserId);
+		return Plan;
+	}
+
+	/** True for the Part 2 value rejections of a submit (UNKNOWN_VALUE_KEY, ..., INSUFFICIENT_BALANCE). */
+	inline bool IsValueRejectionCode(const std::string& ServerErrorCode)
+	{
+		return ServerErrorCode == ValidatedCodeUnknownValueKey
+			|| ServerErrorCode == ValidatedCodeDuplicateValueKey
+			|| ServerErrorCode == ValidatedCodeEarnedAboveMax
+			|| ServerErrorCode == ValidatedCodeEarnedBelowMin
+			|| ServerErrorCode == ValidatedCodeInsufficientBalance;
+	}
+
+	/**
+	 * True when a value of a submit result was applied in full (Part 2). A positive amount can be
+	 * clamped by the daily cap or maxBalance; a spend is either applied in full or not at all
+	 * (credited 0 when a concurrent run used the balance first). Grant a purchase only when this
+	 * is true for the spent value.
+	 */
+	inline bool IsFullyCredited(std::int64_t Requested, std::int64_t Credited)
+	{
+		return Credited == Requested;
 	}
 
 	/**

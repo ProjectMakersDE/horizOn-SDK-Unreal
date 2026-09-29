@@ -127,3 +127,35 @@ FHorizonValidatedRun UHorizonBlueprintLibrary::GetHorizonCurrentValidatedRun(con
 	}
 	return Subsystem->ValidatedActions->GetCurrentRun();
 }
+
+FHorizonPlayerState UHorizonBlueprintLibrary::GetHorizonValidatedPlayerState(const UObject* WorldContextObject)
+{
+	UHorizonSubsystem* Subsystem = GetHorizonSubsystem(WorldContextObject);
+	if (!Subsystem || !Subsystem->ValidatedActions)
+	{
+		return FHorizonPlayerState();
+	}
+	return Subsystem->ValidatedActions->GetCurrentState();
+}
+
+int64 UHorizonBlueprintLibrary::GetHorizonValidatedBalance(const FHorizonPlayerState& State, const FString& Key)
+{
+	return State.GetBalance(Key);
+}
+
+bool UHorizonBlueprintLibrary::FindHorizonValidatedValue(const FHorizonPlayerState& State, const FString& Key, FHorizonPlayerStateValue& Value)
+{
+	const FHorizonPlayerStateValue* Found = State.FindValue(Key);
+	if (!Found)
+	{
+		Value = FHorizonPlayerStateValue();
+		return false;
+	}
+	Value = *Found;
+	return true;
+}
+
+bool UHorizonBlueprintLibrary::IsHorizonValueFullyCredited(const FHorizonPlayerStateValue& Value)
+{
+	return Value.IsFullyCredited();
+}

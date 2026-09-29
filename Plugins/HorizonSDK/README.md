@@ -11,7 +11,7 @@ The horizOn SDK is a fully-featured Unreal Engine plugin that connects your game
 - **News** -- Fetch and display in-game news entries with language filtering and 5-minute TTL cache.
 - **Gift Codes** -- Validate and redeem promotional codes; codes with `grants` unlock cosmetics.
 - **Player Profile** -- Avatar, frame and up to three badges per player, cosmetic unlocks, shown on every leaderboard entry.
-- **Validated Actions** -- Server-checked runs: a single use ticket with a server seed, a validated submit with the SHA-256 of the input log, rule rejections with a machine readable code.
+- **Validated Actions** -- Server-checked runs: a single use ticket with a server seed, a validated submit with the SHA-256 of the input log, rule rejections with a machine readable code, and server-owned values (currency, loot) that only accepted runs change.
 - **Feedback** -- Submit bug reports, feature requests, and general feedback with optional device info.
 - **User Logs** -- Send structured log entries (info, warning, error) to the server for analytics and debugging.
 - **Crash Reporting** -- Capture crashes and non-fatal exceptions with breadcrumbs and custom keys.
@@ -120,6 +120,8 @@ to set to real values from your horizOn Dashboard before running them.
 catalog of your API key (horizOn Dashboard).
 `AHorizonValidatedActionsExample` runs without setup (no rule set means default
 rules); its `LeaderboardKey` property selects the board, empty runs without one.
+Set `ValueKey` to a value defined in the rules of your API key to earn server-owned
+values; `bMirrorToCloudSave` writes the state mirror to the cloud save.
 
 ## Documentation
 

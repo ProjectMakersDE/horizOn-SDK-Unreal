@@ -88,6 +88,7 @@ FHorizonPlayerStateValue FHorizonPlayerStateValue::FromJson(const TSharedPtr<FJs
 	Value.Key = ReadValidatedString(JsonObject, TEXT("key"));
 	Value.Balance = ReadValidatedInt64(JsonObject, TEXT("balance"));
 	Value.EarnedToday = ReadValidatedInt64(JsonObject, TEXT("earnedToday"));
+	// null (no cap) gives 0; requested and credited are omitted for untouched values and in GET .../state.
 	Value.DailyCap = ReadValidatedInt64(JsonObject, TEXT("dailyCap"));
 	Value.Requested = ReadValidatedInt64(JsonObject, TEXT("requested"));
 	Value.Credited = ReadValidatedInt64(JsonObject, TEXT("credited"));
@@ -96,14 +97,21 @@ FHorizonPlayerStateValue FHorizonPlayerStateValue::FromJson(const TSharedPtr<FJs
 
 int64 FHorizonPlayerState::GetBalance(const FString& Key) const
 {
+	const FHorizonPlayerStateValue* Value = FindValue(Key);
+	return Value ? Value->Balance : 0;
+}
+
+const FHorizonPlayerStateValue* FHorizonPlayerState::FindValue(const FString& Key) const
+{
+	// Keys are lower case by rule; compare exactly like the server.
 	for (const FHorizonPlayerStateValue& Value : Values)
 	{
-		if (Value.Key == Key)
+		if (Value.Key.Equals(Key, ESearchCase::CaseSensitive))
 		{
-			return Value.Balance;
+			return &Value;
 		}
 	}
-	return 0;
+	return nullptr;
 }
 
 FHorizonPlayerState FHorizonPlayerState::FromJson(const TSharedPtr<FJsonObject>& JsonObject)
@@ -114,6 +122,7 @@ FHorizonPlayerState FHorizonPlayerState::FromJson(const TSharedPtr<FJsonObject>&
 		return State;
 	}
 
+	State.UserId = ReadValidatedString(JsonObject, TEXT("userId"));
 	State.Day = ReadValidatedString(JsonObject, TEXT("day"));
 
 	const TArray<TSharedPtr<FJsonValue>>* Values = nullptr;

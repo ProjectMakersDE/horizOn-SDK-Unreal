@@ -86,7 +86,7 @@ Once connected and signed in, call any manager method:
 | News          | `Horizon->News->LoadNews()`   | horizOn Load News          |
 | Gift Codes    | `Horizon->GiftCodes->Redeem()`| horizOn Redeem Gift Code   |
 | Player Profile | `Horizon->PlayerProfile->GetProfile()` / `SetProfile()` | Get Player Profile / Set Player Profile |
-| Validated Actions | `Horizon->ValidatedActions->StartRun()` / `SubmitValidated()` | Start Validated Run / Submit Validated Run |
+| Validated Actions | `Horizon->ValidatedActions->StartRun()` / `SubmitValidated()` / `GetState()` | Start Validated Run / Submit Validated Run / Get Validated Player State |
 | Feedback      | `Horizon->Feedback->Submit()` | horizOn Submit Feedback    |
 | User Logs     | `Horizon->UserLogs->Info()`   | horizOn Create User Log    |
 

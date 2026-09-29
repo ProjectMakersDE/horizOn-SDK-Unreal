@@ -34,7 +34,8 @@ namespace
 	}
 }
 
-// Validated Actions (TASK-883, Part 1): input log hash, start run and submit plans, run lifecycle.
+// Validated Actions (TASK-883 Part 1, TASK-887 Part 2): input log hash, start run, submit and
+// player state plans, run lifecycle, value codes.
 int main()
 {
 	using namespace HorizonTransportContract;
@@ -146,6 +147,48 @@ int main()
 	Require(!ShouldClearRunAfterSubmit(400, "PLAYER_NAME_REQUIRED"), "PLAYER_NAME_REQUIRED must keep the run");
 	Require(!ShouldClearRunAfterSubmit(429, "RUN_RATE_LIMITED"), "429 must keep the run");
 	Require(!ShouldClearRunAfterSubmit(503, "VALIDATED_ACTIONS_UNAVAILABLE"), "503 must keep the run");
+
+	// Part 2: player state read. GET with the Bearer session, userId in the query, no body.
+	const FValidatedRequestPlan StatePlan = BuildValidatedGetStatePlan("0d7e1c2a-5b3f-4e8a-9c1d-2f3e4a5b6c7d", "session-token-887");
+	Require(StatePlan.bShouldSend, "signed user did not produce a state plan");
+	Require(StatePlan.Verb == "GET", "state plan must use GET");
+	Require(StatePlan.bUseSessionToken, "state plan must send the session token");
+	Require(StatePlan.Endpoint == "/api/v1/app/validated-actions/state?userId=0d7e1c2a-5b3f-4e8a-9c1d-2f3e4a5b6c7d",
+		"incorrect state endpoint");
+	Require(StatePlan.BodyJson.empty(), "state plan must not send a body");
+	Require(HasBearer("session-token-887", StatePlan.bUseSessionToken), "state headers are missing the bearer session");
+	Require(BuildValidatedGetStatePlan("user 887&x", "session-token-887").Endpoint
+		== "/api/v1/app/validated-actions/state?userId=user%20887%26x", "state user id must be URL encoded");
+
+	const FValidatedRequestPlan StateWithoutSession = BuildValidatedGetStatePlan("user-887", "");
+	Require(!StateWithoutSession.bShouldSend && StateWithoutSession.ErrorCode == "SESSION_REQUIRED",
+		"missing session must block the state read with SESSION_REQUIRED");
+	Require(!BuildValidatedGetStatePlan("", "session-token-887").bShouldSend, "missing user id did not block the state read");
+
+	// Part 2: earned values are sent with int64 amounts, spends negative, largest amount exact.
+	const FValidatedRequestPlan EarnedPlan = BuildValidatedSubmitPlan(
+		"user-887", "session-token-887", "ticket-887", ValidHash, 0, "", "",
+		{{"gold", 9007199254740991LL}, {"chest.gold", -9007199254740991LL}});
+	Require(EarnedPlan.BodyJson.find(
+		"\"earned\":[{\"key\":\"gold\",\"amount\":9007199254740991},{\"key\":\"chest.gold\",\"amount\":-9007199254740991}]")
+		!= std::string::npos, "earned amounts must be sent exactly as int64");
+	Require(EarnedPlan.BodyJson.find("leaderboardKey") == std::string::npos, "a run without board must omit leaderboardKey");
+
+	// Part 2: value rejections are rule rejections, the ticket is consumed.
+	Require(IsValueRejectionCode("UNKNOWN_VALUE_KEY"), "UNKNOWN_VALUE_KEY is a value rejection");
+	Require(IsValueRejectionCode("DUPLICATE_VALUE_KEY"), "DUPLICATE_VALUE_KEY is a value rejection");
+	Require(IsValueRejectionCode("EARNED_ABOVE_MAX"), "EARNED_ABOVE_MAX is a value rejection");
+	Require(IsValueRejectionCode("EARNED_BELOW_MIN"), "EARNED_BELOW_MIN is a value rejection");
+	Require(IsValueRejectionCode("INSUFFICIENT_BALANCE"), "INSUFFICIENT_BALANCE is a value rejection");
+	Require(!IsValueRejectionCode("SCORE_ABOVE_MAX"), "SCORE_ABOVE_MAX is not a value rejection");
+	Require(ShouldClearRunAfterSubmit(422, "UNKNOWN_VALUE_KEY"), "UNKNOWN_VALUE_KEY must clear the current run");
+	Require(ShouldClearRunAfterSubmit(422, "EARNED_ABOVE_MAX"), "EARNED_ABOVE_MAX must clear the current run");
+
+	// Part 2: a purchase is granted only when the spend was applied in full.
+	Require(IsFullyCredited(-500, -500), "a full spend is fully credited");
+	Require(!IsFullyCredited(-500, 0), "a spend a concurrent run made unaffordable is not credited");
+	Require(!IsFullyCredited(250, 100), "a clamped credit is not fully credited");
+	Require(IsFullyCredited(0, 0), "an untouched value counts as fully credited");
 
 	// Run limits are not retried automatically; the account request limit (no code) is.
 	Require(IsNonRetryableRateLimitCode("RUN_RATE_LIMITED"), "RUN_RATE_LIMITED must not be retried");

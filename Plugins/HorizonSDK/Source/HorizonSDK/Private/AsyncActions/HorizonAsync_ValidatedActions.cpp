@@ -143,3 +143,44 @@ void UHorizonAsync_SubmitValidatedWithHash::HandleResult(bool bSuccess, const FH
 	}
 	SetReadyToDestroy();
 }
+
+// ============================================================
+// GetValidatedState (Part 2)
+// ============================================================
+
+UHorizonAsync_GetValidatedState* UHorizonAsync_GetValidatedState::GetValidatedState(const UObject* WorldContextObject)
+{
+	UHorizonAsync_GetValidatedState* Action = NewObject<UHorizonAsync_GetValidatedState>();
+	Action->WorldContext = WorldContextObject;
+	Action->RegisterWithGameInstance(WorldContextObject);
+	return Action;
+}
+
+void UHorizonAsync_GetValidatedState::Activate()
+{
+	UHorizonSubsystem* Subsystem = UHorizonBlueprintLibrary::GetHorizonSubsystem(WorldContext.Get());
+	if (!Subsystem || !Subsystem->ValidatedActions)
+	{
+		OnFailure.Broadcast(TEXT("UNKNOWN"), TEXT("horizOn Subsystem or ValidatedActions manager not found."));
+		SetReadyToDestroy();
+		return;
+	}
+
+	Subsystem->ValidatedActions->GetState(
+		FOnPlayerStateLoaded::CreateUObject(this, &UHorizonAsync_GetValidatedState::HandleResult)
+	);
+}
+
+void UHorizonAsync_GetValidatedState::HandleResult(bool bSuccess, const FHorizonPlayerState& State,
+	const FString& ErrorCode, const FString& ErrorMessage)
+{
+	if (bSuccess)
+	{
+		OnSuccess.Broadcast(State);
+	}
+	else
+	{
+		OnFailure.Broadcast(ErrorCode, ErrorMessage);
+	}
+	SetReadyToDestroy();
+}
