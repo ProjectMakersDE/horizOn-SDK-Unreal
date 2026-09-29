@@ -2,7 +2,10 @@
 
 #include "Managers/HorizonGiftCodeManager.h"
 #include "HorizonSDKModule.h"
+#include "Transport/HorizonGiftCodeTransportContract.h"
 #include "Dom/JsonObject.h"
+#include "Serialization/JsonReader.h"
+#include "Serialization/JsonSerializer.h"
 
 // ============================================================
 // Initialization
@@ -21,23 +24,47 @@ void UHorizonGiftCodeManager::Initialize(UHorizonHttpClient* InHttpClient, UHori
 
 void UHorizonGiftCodeManager::Redeem(const FString& Code, FOnGiftCodeRedeemComplete OnComplete)
 {
-	if (!AuthManager || !AuthManager->IsSignedIn())
+	if (!AuthManager || !HttpClient || !AuthManager->IsSignedIn())
 	{
 		UE_LOG(LogHorizonSDK, Warning, TEXT("GiftCode::Redeem -- User is not signed in."));
 		OnComplete.ExecuteIfBound(false, TEXT(""), TEXT("User is not signed in."));
 		return;
 	}
 
-	const FString UserId = AuthManager->GetCurrentUser().UserId;
+	if (Code.IsEmpty())
+	{
+		UE_LOG(LogHorizonSDK, Warning, TEXT("GiftCode::Redeem -- Gift code is required."));
+		OnComplete.ExecuteIfBound(false, TEXT(""), TEXT("Gift code is required."));
+		return;
+	}
 
-	TSharedRef<FJsonObject> Body = MakeShared<FJsonObject>();
-	Body->SetStringField(TEXT("code"), Code);
-	Body->SetStringField(TEXT("userId"), UserId);
+	// The server binds redemption to the player's Bearer session (TASK-886):
+	// only build the request when a session token exists.
+	const FString UserId = AuthManager->GetCurrentUser().UserId;
+	const HorizonTransportContract::FGiftCodeRedeemPlan Plan =
+		HorizonTransportContract::BuildGiftCodeRedeemPlan(
+			TCHAR_TO_UTF8(*UserId),
+			TCHAR_TO_UTF8(*HttpClient->GetSessionToken()),
+			TCHAR_TO_UTF8(*Code));
+	if (!Plan.bShouldSend)
+	{
+		UE_LOG(LogHorizonSDK, Warning, TEXT("GiftCode::Redeem -- No player session available."));
+		OnComplete.ExecuteIfBound(false, TEXT(""), TEXT("User is not signed in."));
+		return;
+	}
+
+	TSharedPtr<FJsonObject> ParsedBody;
+	const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(UTF8_TO_TCHAR(Plan.BodyJson.c_str()));
+	if (!FJsonSerializer::Deserialize(Reader, ParsedBody) || !ParsedBody.IsValid())
+	{
+		OnComplete.ExecuteIfBound(false, TEXT(""), TEXT("Failed to build gift code request."));
+		return;
+	}
 
 	TWeakObjectPtr<UHorizonGiftCodeManager> WeakSelf(this);
 	FOnGiftCodeRedeemComplete CapturedOnComplete = OnComplete;
 
-	HttpClient->PostJson(Body, TEXT("api/v1/app/gift-codes/redeem"), true,
+	HttpClient->PostJson(ParsedBody.ToSharedRef(), TEXT("api/v1/app/gift-codes/redeem"), Plan.bUseSessionToken,
 		FOnHttpResponse::CreateLambda(
 			[WeakSelf, CapturedOnComplete](const FHorizonNetworkResponse& Response)
 			{
