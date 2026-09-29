@@ -2,7 +2,7 @@ name: Release
 
 on:
   push:
-    branches: [main]
+    branches: [release]
 
 permissions:
   contents: write
@@ -83,7 +83,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: main
+          ref: release
 
       - name: Create plugin ZIP
         run: |
