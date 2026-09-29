@@ -8,3 +8,8 @@ c++ -std=c++17 -pthread \
   Tests/LeaderboardTransportContractTest.cpp \
   -o "$build_dir/leaderboard-transport-test"
 "$build_dir/leaderboard-transport-test"
+c++ -std=c++17 \
+  -I Plugins/HorizonSDK/Source/HorizonSDK/Public \
+  Tests/GiftCodeTransportContractTest.cpp \
+  -o "$build_dir/gift-code-transport-test"
+"$build_dir/gift-code-transport-test"

@@ -234,6 +234,8 @@ Horizon->News->LoadNews(20, TEXT("en"),
 
 ### Gift Codes
 
+`Redeem` needs a signed-in player and sends the player session (`Authorization: Bearer`). The server only redeems codes for the player who owns that session.
+
 ```cpp
 // Validate
 Horizon->GiftCodes->Validate(TEXT("ABCD-1234"),
