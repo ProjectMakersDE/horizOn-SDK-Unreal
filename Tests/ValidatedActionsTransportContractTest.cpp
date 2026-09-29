@@ -200,6 +200,7 @@ int main()
 	Require(MapValidatedErrorCode(422, "SCORE_ABOVE_MAX", "UNKNOWN") == "SCORE_ABOVE_MAX", "server code must win");
 	Require(MapValidatedErrorCode(404, "LEADERBOARD_NOT_FOUND", "NOT_FOUND") == "LEADERBOARD_NOT_FOUND", "404 with code keeps the code");
 	Require(MapValidatedErrorCode(404, "", "NOT_FOUND") == "NOT_SUPPORTED", "404 without code must give NOT_SUPPORTED");
+	Require(MapValidatedErrorCode(404, "NOT_FOUND", "NOT_FOUND") == "NOT_SUPPORTED", "404 with the generic NOT_FOUND code must give NOT_SUPPORTED");
 	Require(MapValidatedErrorCode(429, "", "RATE_LIMITED") == "RATE_LIMITED", "429 without code keeps the HTTP mapping");
 	Require(MapValidatedErrorCode(0, "", "CONNECTION_FAILED") == "CONNECTION_FAILED", "network error keeps the HTTP mapping");
 

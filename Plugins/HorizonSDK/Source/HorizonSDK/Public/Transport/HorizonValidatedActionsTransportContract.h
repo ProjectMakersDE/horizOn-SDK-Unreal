@@ -467,18 +467,19 @@ namespace HorizonTransportContract
 
 	/**
 	 * Error code shown for a failed Validated Actions request: the server `code` when
-	 * present, NOT_SUPPORTED for a 404 without code (the backend lacks the feature),
+	 * present, NOT_SUPPORTED for a 404 without code or with the generic code NOT_FOUND
+	 * (the backend lacks the feature, for example the simpleServer's unknown route answer),
 	 * otherwise the SDK's HTTP mapping passed in as FallbackCode.
 	 */
 	inline std::string MapValidatedErrorCode(int StatusCode, const std::string& ServerErrorCode, const std::string& FallbackCode)
 	{
+		if (StatusCode == 404 && (ServerErrorCode.empty() || ServerErrorCode == "NOT_FOUND"))
+		{
+			return ValidatedCodeNotSupported;
+		}
 		if (!ServerErrorCode.empty())
 		{
 			return ServerErrorCode;
-		}
-		if (StatusCode == 404)
-		{
-			return ValidatedCodeNotSupported;
 		}
 		return FallbackCode;
 	}
