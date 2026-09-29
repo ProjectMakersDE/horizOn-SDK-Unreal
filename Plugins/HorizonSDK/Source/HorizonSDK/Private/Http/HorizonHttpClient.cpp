@@ -295,15 +295,20 @@ void UHorizonHttpClient::SendRequest(
 					}
 				}
 
-				UE_LOG(LogHorizonSDK, Warning, TEXT("Rate limited (429) on %s %s. Retrying after %.1fs (attempt %d/%d)."),
-					*CapturedVerb, *CapturedUrl, RetryAfter, RetryCount + 1, Self->MaxRetryAttempts);
-
 				if (RetryCount < Self->MaxRetryAttempts)
 				{
+					UE_LOG(LogHorizonSDK, Warning, TEXT("Rate limited (429) on %s %s. Retrying after %.1fs (attempt %d/%d)."),
+						*CapturedVerb, *CapturedUrl, RetryAfter, RetryCount + 1, Self->MaxRetryAttempts);
+
 					Self->ScheduleRetry(CapturedVerb, CapturedUrl, CapturedContentType, CapturedPayload,
 						bUseSessionToken, RetryCount, RetryAfter, CapturedOnComplete);
 					return;
 				}
+
+				// Still rate limited after the last attempt: deliver the 429 with its clear
+				// message from ParseResponse (no 5xx retry below, 429 is not retryable there).
+				UE_LOG(LogHorizonSDK, Warning, TEXT("Rate limited (429) on %s %s. Giving up after %d retries: %s"),
+					*CapturedVerb, *CapturedUrl, Self->MaxRetryAttempts, *Response.ErrorMessage);
 			}
 
 			// Handle 5xx / connection failure with retry
@@ -396,6 +401,14 @@ FHorizonNetworkResponse UHorizonHttpClient::ParseResponse(FHttpResponsePtr HttpR
 		if (Response.JsonData.IsValid() && Response.JsonData->HasField(TEXT("message")))
 		{
 			Response.ErrorMessage = Response.JsonData->GetStringField(TEXT("message"));
+		}
+		else if (Response.StatusCode == 429)
+		{
+			// The server answers 429 with an empty body and a Retry-After header (seconds).
+			const float RetryAfterSeconds = FCString::Atof(*HttpResponse->GetHeader(TEXT("Retry-After")));
+			Response.ErrorMessage = RetryAfterSeconds > 0.0f
+				? FString::Printf(TEXT("Rate limit exceeded (HTTP 429). Try again in %d seconds."), FMath::CeilToInt(RetryAfterSeconds))
+				: FString(TEXT("Rate limit exceeded (HTTP 429). Try again later."));
 		}
 		else
 		{
