@@ -10,7 +10,7 @@
 #include "HAL/PlatformMemory.h"
 #include "HAL/PlatformStackWalk.h"
 #include "Misc/App.h"
-#include "Misc/SecureHash.h"
+#include "Transport/HorizonValidatedActionsTransportContract.h"
 #include "Misc/CoreDelegates.h"
 #include "Internationalization/Regex.h"
 
@@ -358,10 +358,14 @@ FString UHorizonCrashManager::NormalizeFrame(const FString& Frame) const
 
 FString UHorizonCrashManager::HashSHA256(const FString& Input) const
 {
+	// UE Core has no portable SHA-256 (there is no FSHA256 class, and
+	// FGenericPlatformMisc::GetSHA256Signature is not implemented on every platform), so the
+	// SDK's own engine free implementation is used: SHA-256 of the UTF-8 bytes, lower case hex.
 	const FTCHARToUTF8 Utf8(*Input);
-	FSHA256Signature Signature;
-	FSHA256::HashBuffer(Utf8.Get(), Utf8.Length(), Signature.Bytes);
-	return Signature.ToString();
+	const std::string Hash = HorizonTransportContract::Sha256Hex(
+		reinterpret_cast<const std::uint8_t*>(Utf8.Get()),
+		static_cast<std::size_t>(Utf8.Length()));
+	return UTF8_TO_TCHAR(Hash.c_str());
 }
 
 FString UHorizonCrashManager::GenerateFingerprint(const FString& StackTrace) const
