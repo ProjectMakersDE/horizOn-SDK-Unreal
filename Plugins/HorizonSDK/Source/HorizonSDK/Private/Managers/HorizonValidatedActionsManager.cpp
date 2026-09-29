@@ -258,15 +258,19 @@ void UHorizonValidatedActionsManager::HandleSubmitResponse(const FHorizonNetwork
 
 	const FHorizonValidatedSubmitResult Result = FHorizonValidatedSubmitResult::FromJson(Response.JsonData);
 	LastErrorCode.Empty();
-	OnRunAccepted(Result, RequestUserId, InputLog);
+	OnRunAccepted(Result, RequestUserId);
 
 	UE_LOG(LogHorizonSDK, Log, TEXT("ValidatedActions::SubmitValidated -- Run %s accepted (board '%s', score %lld, best %lld, rank %lld, %lld s)."),
 		*Result.RunId, *Result.LeaderboardKey, Result.Score, Result.BestScore, Result.Rank, Result.DurationSeconds);
 	OnComplete.ExecuteIfBound(true, Result, FString(), FString());
+
+	// Part 3: the evidence upload starts only after the submit result was delivered, so it can
+	// never change that result or LastErrorCode (even a local failure reports after OnComplete).
+	StartEvidenceUpload(Result, RequestUserId, InputLog);
 }
 
 void UHorizonValidatedActionsManager::OnRunAccepted(const FHorizonValidatedSubmitResult& Result,
-	const FString& RequestUserId, const TSharedPtr<const TArray<uint8>>& /*InputLog*/)
+	const FString& RequestUserId)
 {
 	// Same as after SubmitScore: cached top, around and rank lists are stale now.
 	if (Result.HasLeaderboard() && LeaderboardManager)
@@ -280,9 +284,155 @@ void UHorizonValidatedActionsManager::OnRunAccepted(const FHorizonValidatedSubmi
 	{
 		UpdateCurrentState(Result.State, RequestUserId);
 	}
+}
 
-	// Part 3 (TASK-888): when Result.Evidence.bRequired and bAutoUploadEvidence and the raw
-	// InputLog is known, upload it here (PUT /api/v1/app/validated-actions/runs/{runId}/evidence).
+void UHorizonValidatedActionsManager::StartEvidenceUpload(const FHorizonValidatedSubmitResult& Result,
+	const FString& RequestUserId, const TSharedPtr<const TArray<uint8>>& InputLog)
+{
+	// Part 3 (TASK-888): the server asks for the input log of this run. Upload the raw bytes
+	// right away when they are known; the outcome goes to the evidence events only.
+	if (!Result.Evidence.bRequired)
+	{
+		return;
+	}
+
+	const FString EvidenceRunId = Result.Evidence.RunId.IsEmpty() ? Result.RunId : Result.Evidence.RunId;
+	if (Result.Evidence.MaxBytes > 0)
+	{
+		// Remembered so a later UploadEvidence of this run checks the size locally as well.
+		EvidenceMaxBytesByRun.Add(EvidenceRunId, Result.Evidence.MaxBytes);
+	}
+	if (!bAutoUploadEvidence)
+	{
+		UE_LOG(LogHorizonSDK, Log, TEXT("ValidatedActions -- Run %s: evidence requested until %s, automatic upload is off (call UploadEvidence)."),
+			*EvidenceRunId, *Result.Evidence.UploadBefore);
+		return;
+	}
+	if (!InputLog.IsValid())
+	{
+		UE_LOG(LogHorizonSDK, Warning, TEXT("ValidatedActions -- Run %s: evidence requested until %s, but the run was submitted with a hash only. Call UploadEvidence with the input log bytes."),
+			*EvidenceRunId, *Result.Evidence.UploadBefore);
+		return;
+	}
+
+	UE_LOG(LogHorizonSDK, Log, TEXT("ValidatedActions -- Run %s: evidence requested, uploading %d byte(s)."),
+		*EvidenceRunId, InputLog->Num());
+	UploadEvidenceInternal(EvidenceRunId, *InputLog, Result.Evidence.MaxBytes, RequestUserId, FOnEvidenceUploaded());
+}
+
+// ============================================================
+// Evidence (Part 3)
+// ============================================================
+
+void UHorizonValidatedActionsManager::UploadEvidence(const FString& RunId, const TArray<uint8>& InputLog, FOnEvidenceUploaded OnComplete)
+{
+	// evidence.maxBytes of this run when the manager saw the request, else the server checks the size.
+	const int32* KnownMaxBytes = EvidenceMaxBytesByRun.Find(RunId.TrimStartAndEnd());
+	UploadEvidenceInternal(RunId, InputLog, KnownMaxBytes ? *KnownMaxBytes : 0, FString(), OnComplete);
+}
+
+bool UHorizonValidatedActionsManager::IsEvidenceUploadRetryable(const FString& ErrorCode)
+{
+	return HorizonTransportContract::IsEvidenceUploadRetryable(TCHAR_TO_UTF8(*ErrorCode));
+}
+
+void UHorizonValidatedActionsManager::UploadEvidenceInternal(const FString& RunId, const TArray<uint8>& InputLog,
+	int64 MaxBytes, const FString& ExpectedUserId, FOnEvidenceUploaded OnComplete)
+{
+	if (!HttpClient || !AuthManager || !AuthManager->IsSignedIn())
+	{
+		FailEvidenceUpload(RunId, TEXT("SESSION_REQUIRED"), TEXT("A signed-in player is required."), OnComplete);
+		return;
+	}
+
+	const FString UserId = AuthManager->GetCurrentUser().UserId;
+	if (!ExpectedUserId.IsEmpty() && ExpectedUserId != UserId)
+	{
+		// Another player signed in while the submit was in flight: the evidence belongs to the old one.
+		FailEvidenceUpload(RunId, TEXT("SESSION_REQUIRED"), TEXT("The player of the run is no longer signed in."), OnComplete);
+		return;
+	}
+
+	const HorizonTransportContract::FValidatedRequestPlan Plan =
+		HorizonTransportContract::BuildValidatedEvidenceUploadPlan(
+			TCHAR_TO_UTF8(*UserId),
+			TCHAR_TO_UTF8(*HttpClient->GetSessionToken()),
+			TCHAR_TO_UTF8(*RunId),
+			InputLog.Num() > 0 ? InputLog.GetData() : nullptr,
+			static_cast<std::size_t>(InputLog.Num()),
+			MaxBytes);
+	if (!Plan.bShouldSend)
+	{
+		FailEvidenceUpload(RunId, UTF8_TO_TCHAR(Plan.ErrorCode.c_str()), UTF8_TO_TCHAR(Plan.ErrorMessage.c_str()), OnComplete);
+		return;
+	}
+
+	TSharedPtr<FJsonObject> ParsedBody;
+	const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(UTF8_TO_TCHAR(Plan.BodyJson.c_str()));
+	if (!FJsonSerializer::Deserialize(Reader, ParsedBody) || !ParsedBody.IsValid())
+	{
+		FailEvidenceUpload(RunId, TEXT("INVALID_REQUEST"), TEXT("Failed to build evidence upload request."), OnComplete);
+		return;
+	}
+
+	TWeakObjectPtr<UHorizonValidatedActionsManager> WeakSelf(this);
+	FOnEvidenceUploaded CapturedOnComplete = OnComplete;
+	const FString CapturedRunId = RunId.TrimStartAndEnd();
+	const FString Endpoint = UTF8_TO_TCHAR(Plan.Endpoint.c_str());
+
+	HttpClient->PutJson(ParsedBody.ToSharedRef(), Endpoint, Plan.bUseSessionToken,
+		FOnHttpResponse::CreateLambda(
+			[WeakSelf, CapturedOnComplete, CapturedRunId](const FHorizonNetworkResponse& Response)
+			{
+				UHorizonValidatedActionsManager* Self = WeakSelf.Get();
+				if (!Self)
+				{
+					return;
+				}
+				Self->HandleEvidenceResponse(Response, CapturedRunId, CapturedOnComplete);
+			}
+		));
+}
+
+void UHorizonValidatedActionsManager::HandleEvidenceResponse(const FHorizonNetworkResponse& Response,
+	const FString& RunId, const FOnEvidenceUploaded& OnComplete)
+{
+	if (!Response.bSuccess)
+	{
+		// 422 EVIDENCE_HASH_MISMATCH keeps the request open; 400, 404, 409, 410 and 413 are final.
+		FailEvidenceUpload(RunId, MapErrorCode(Response), Response.ErrorMessage, OnComplete);
+		return;
+	}
+
+	FHorizonEvidenceUploadResult Result = FHorizonEvidenceUploadResult::FromJson(Response.JsonData);
+	if (Result.RunId.IsEmpty())
+	{
+		Result.RunId = RunId;
+	}
+	EvidenceMaxBytesByRun.Remove(RunId);
+
+	LastEvidenceErrorCode.Empty();
+	UE_LOG(LogHorizonSDK, Log, TEXT("ValidatedActions::UploadEvidence -- Run %s: %d byte(s) %s."),
+		*Result.RunId, Result.Bytes, Result.Status.IsEmpty() ? TEXT("UPLOADED") : *Result.Status);
+	OnEvidenceUploaded.Broadcast(Result.RunId, Result.Bytes);
+	OnComplete.ExecuteIfBound(true, Result, FString(), FString());
+}
+
+void UHorizonValidatedActionsManager::FailEvidenceUpload(const FString& RunId, const FString& ErrorCode,
+	const FString& ErrorMessage, const FOnEvidenceUploaded& OnComplete)
+{
+	LastEvidenceErrorCode = ErrorCode;
+	if (!IsEvidenceUploadRetryable(ErrorCode))
+	{
+		EvidenceMaxBytesByRun.Remove(RunId.TrimStartAndEnd());
+	}
+	UE_LOG(LogHorizonSDK, Warning, TEXT("ValidatedActions::UploadEvidence -- Run %s failed (%s%s): %s"),
+		*RunId, *ErrorCode, IsEvidenceUploadRetryable(ErrorCode) ? TEXT(", may be retried") : TEXT(", final"), *ErrorMessage);
+	OnEvidenceUploadFailed.Broadcast(RunId, ErrorCode, ErrorMessage);
+
+	FHorizonEvidenceUploadResult Result;
+	Result.RunId = RunId;
+	OnComplete.ExecuteIfBound(false, Result, ErrorCode, ErrorMessage);
 }
 
 // ============================================================
@@ -424,6 +574,7 @@ void UHorizonValidatedActionsManager::HandleUserSignedOut()
 {
 	DiscardRun();
 	ClearCurrentState();
+	EvidenceMaxBytesByRun.Empty();
 }
 
 // ============================================================

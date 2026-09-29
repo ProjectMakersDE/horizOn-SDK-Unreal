@@ -34,8 +34,9 @@ namespace
 	}
 }
 
-// Validated Actions (TASK-883 Part 1, TASK-887 Part 2): input log hash, start run, submit and
-// player state plans, run lifecycle, value codes.
+// Validated Actions (TASK-883 Part 1, TASK-887 Part 2, TASK-888 Part 3): input log hash, start
+// run, submit, player state and evidence upload plans, run lifecycle, value codes, base64 and
+// the upload retry rule.
 int main()
 {
 	using namespace HorizonTransportContract;
@@ -201,6 +202,75 @@ int main()
 	Require(MapValidatedErrorCode(404, "", "NOT_FOUND") == "NOT_SUPPORTED", "404 without code must give NOT_SUPPORTED");
 	Require(MapValidatedErrorCode(429, "", "RATE_LIMITED") == "RATE_LIMITED", "429 without code keeps the HTTP mapping");
 	Require(MapValidatedErrorCode(0, "", "CONNECTION_FAILED") == "CONNECTION_FAILED", "network error keeps the HTTP mapping");
+
+	// Part 3: standard base64 with padding (RFC 4648 test vectors plus binary bytes).
+	Require(Base64Encode(Bytes("")) == "", "base64 of empty input");
+	Require(Base64Encode(Bytes("f")) == "Zg==", "base64 of f");
+	Require(Base64Encode(Bytes("fo")) == "Zm8=", "base64 of fo");
+	Require(Base64Encode(Bytes("foo")) == "Zm9v", "base64 of foo");
+	Require(Base64Encode(Bytes("foob")) == "Zm9vYg==", "base64 of foob");
+	Require(Base64Encode(Bytes("fooba")) == "Zm9vYmE=", "base64 of fooba");
+	Require(Base64Encode(Bytes("foobar")) == "Zm9vYmFy", "base64 of foobar");
+	Require(Base64Encode(std::vector<std::uint8_t>{0xFB, 0xFF, 0xBF}) == "+/+/", "base64 must use the standard alphabet (+ and /)");
+	Require(Base64Encode(std::vector<std::uint8_t>{0x00, 0x01, 0x02, 0x03}) == "AAECAw==", "base64 of binary bytes");
+
+	// Part 3: evidence upload. PUT with the Bearer session, run ID in the path, log as base64 of
+	// the same bytes whose SHA-256 was submitted.
+	const std::vector<std::uint8_t> EvidenceLog{0x00, 0x03, 0x01, 0x02, 0xFF};
+	const FValidatedRequestPlan EvidencePlan = BuildValidatedEvidenceUploadPlan(
+		"user-888", "session-token-888", "5f1c2d3e-4a5b-4c6d-8e7f-9a0b1c2d3e4f", EvidenceLog, 32768);
+	Require(EvidencePlan.bShouldSend, "valid evidence upload did not produce a plan");
+	Require(EvidencePlan.Verb == "PUT", "evidence plan must use PUT");
+	Require(EvidencePlan.bUseSessionToken, "evidence plan must send the session token");
+	Require(EvidencePlan.Endpoint == "/api/v1/app/validated-actions/runs/5f1c2d3e-4a5b-4c6d-8e7f-9a0b1c2d3e4f/evidence",
+		"incorrect evidence endpoint");
+	Require(EvidencePlan.BodyJson == "{\"userId\":\"user-888\",\"log\":\"AAMBAv8=\"}", "incorrect evidence body");
+	Require(HasBearer("session-token-888", EvidencePlan.bUseSessionToken), "evidence headers are missing the bearer session");
+	Require(BuildValidatedEvidenceUploadPlan("user-888", "session-token-888", " run/1 ", EvidenceLog, 0).Endpoint
+		== "/api/v1/app/validated-actions/runs/run%2F1/evidence", "evidence run id must be trimmed and URL encoded");
+
+	// The largest accepted log (maxBytes) is sent; one byte more fails locally. MaxBytes 0 = unknown, the server decides.
+	const std::vector<std::uint8_t> MaxLog(32768, 0x2A);
+	const FValidatedRequestPlan MaxLogPlan = BuildValidatedEvidenceUploadPlan("user-888", "session-token-888", "run-1", MaxLog, 32768);
+	Require(MaxLogPlan.bShouldSend, "a log of exactly maxBytes must be sent");
+	Require(MaxLogPlan.BodyJson.size() == std::string("{\"userId\":\"user-888\",\"log\":\"\"}").size() + 43692,
+		"a 32768 byte log must be 43692 base64 characters");
+	const std::vector<std::uint8_t> TooLargeLog(32769, 0x2A);
+	const FValidatedRequestPlan TooLargePlan = BuildValidatedEvidenceUploadPlan("user-888", "session-token-888", "run-1", TooLargeLog, 32768);
+	Require(!TooLargePlan.bShouldSend && TooLargePlan.ErrorCode == "EVIDENCE_TOO_LARGE", "a log above maxBytes must fail locally");
+	Require(BuildValidatedEvidenceUploadPlan("user-888", "session-token-888", "run-1", TooLargeLog, 0).bShouldSend,
+		"without maxBytes the size is left to the server");
+
+	// Local checks in order: SESSION_REQUIRED, INVALID_RUN_ID, EMPTY_INPUT_LOG, EVIDENCE_TOO_LARGE.
+	const FValidatedRequestPlan EvidenceWithoutSession = BuildValidatedEvidenceUploadPlan("user-888", "", "", {}, 1);
+	Require(!EvidenceWithoutSession.bShouldSend && EvidenceWithoutSession.ErrorCode == "SESSION_REQUIRED",
+		"missing session must block the upload with SESSION_REQUIRED first");
+	Require(!BuildValidatedEvidenceUploadPlan("", "session-token-888", "run-1", EvidenceLog, 0).bShouldSend,
+		"missing user id did not block the upload");
+	const FValidatedRequestPlan EvidenceWithoutRun = BuildValidatedEvidenceUploadPlan("user-888", "session-token-888", "  ", {}, 1);
+	Require(!EvidenceWithoutRun.bShouldSend && EvidenceWithoutRun.ErrorCode == "INVALID_RUN_ID",
+		"blank run id must give INVALID_RUN_ID");
+	const FValidatedRequestPlan EmptyEvidence = BuildValidatedEvidenceUploadPlan("user-888", "session-token-888", "run-1", {}, 1);
+	Require(!EmptyEvidence.bShouldSend && EmptyEvidence.ErrorCode == "EMPTY_INPUT_LOG", "empty log must give EMPTY_INPUT_LOG");
+
+	// Retry an upload only after 422 EVIDENCE_HASH_MISMATCH or a network error.
+	Require(IsEvidenceUploadRetryable("EVIDENCE_HASH_MISMATCH"), "EVIDENCE_HASH_MISMATCH may be retried with the correct bytes");
+	Require(IsEvidenceUploadRetryable("CONNECTION_FAILED"), "a network error may be retried");
+	Require(!IsEvidenceUploadRetryable("SERVER_ERROR"), "a 5xx is final for the game (the HTTP client already retried it)");
+	Require(!IsEvidenceUploadRetryable("EVIDENCE_ALREADY_UPLOADED"), "409 is final");
+	Require(!IsEvidenceUploadRetryable("EVIDENCE_EXPIRED"), "410 is final");
+	Require(!IsEvidenceUploadRetryable("EVIDENCE_TOO_LARGE"), "413 is final");
+	Require(!IsEvidenceUploadRetryable("EVIDENCE_INVALID_ENCODING"), "400 EVIDENCE_INVALID_ENCODING is final");
+	Require(!IsEvidenceUploadRetryable("EVIDENCE_NOT_REQUESTED"), "404 EVIDENCE_NOT_REQUESTED is final");
+	Require(!IsEvidenceUploadRetryable("SESSION_REQUIRED"), "a local session error is final");
+	Require(!IsEvidenceUploadRetryable("EMPTY_INPUT_LOG"), "a local input error is final");
+	Require(MapValidatedErrorCode(404, "EVIDENCE_NOT_REQUESTED", "NOT_FOUND") == "EVIDENCE_NOT_REQUESTED",
+		"404 EVIDENCE_NOT_REQUESTED keeps its code");
+	Require(MapValidatedErrorCode(413, "EVIDENCE_TOO_LARGE", "UNKNOWN") == "EVIDENCE_TOO_LARGE", "413 keeps its code");
+
+	// Part 3: PLAYER_BANNED is checked before the ticket is consumed, so the run stays.
+	Require(!ShouldClearRunAfterSubmit(403, "PLAYER_BANNED"), "PLAYER_BANNED must keep the run");
+	Require(MapValidatedErrorCode(403, "PLAYER_BANNED", "FORBIDDEN") == "PLAYER_BANNED", "PLAYER_BANNED keeps its code");
 
 	std::cout << "Unreal SDK validated actions transport contract passed\n";
 	return 0;

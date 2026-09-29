@@ -23,7 +23,7 @@ DECLARE_DELEGATE_FourParams(FOnValidatedRunStarted, bool /*bSuccess*/, const FHo
 /**
  * Completion of SubmitValidated / SubmitValidatedWithHash.
  * On failure ErrorCode is the server `code` (rule rejections such as "DURATION_TOO_SHORT",
- * ticket codes such as "TICKET_EXPIRED", "SCORE_LIMIT_REACHED", ...), a local code
+ * ticket codes such as "TICKET_EXPIRED", "SCORE_LIMIT_REACHED", "PLAYER_BANNED", ...), a local code
  * ("SESSION_REQUIRED", "NO_ACTIVE_RUN", "INVALID_INPUT_LOG_HASH"), "NOT_SUPPORTED", or the
  * HTTP mapping. Both strings are empty on success.
  */
@@ -38,13 +38,34 @@ DECLARE_DELEGATE_FourParams(FOnValidatedSubmitComplete, bool /*bSuccess*/, const
 DECLARE_DELEGATE_FourParams(FOnPlayerStateLoaded, bool /*bSuccess*/, const FHorizonPlayerState& /*State*/, const FString& /*ErrorCode*/, const FString& /*ErrorMessage*/);
 
 /**
+ * Completion of UploadEvidence (Part 3).
+ * On failure ErrorCode is the server `code` ("EVIDENCE_HASH_MISMATCH", "EVIDENCE_EXPIRED",
+ * "EVIDENCE_ALREADY_UPLOADED", "EVIDENCE_NOT_REQUESTED", "EVIDENCE_TOO_LARGE",
+ * "EVIDENCE_INVALID_ENCODING", "SESSION_FORBIDDEN", ...), a local code ("SESSION_REQUIRED",
+ * "INVALID_RUN_ID", "EMPTY_INPUT_LOG", "EVIDENCE_TOO_LARGE" against evidence.maxBytes), "NOT_SUPPORTED", or the HTTP
+ * mapping ("CONNECTION_FAILED", ...). Both strings are empty on success.
+ * UHorizonValidatedActionsManager::IsEvidenceUploadRetryable(ErrorCode) tells whether sending
+ * the log again can help.
+ */
+DECLARE_DELEGATE_FourParams(FOnEvidenceUploaded, bool /*bSuccess*/, const FHorizonEvidenceUploadResult& /*Result*/, const FString& /*ErrorCode*/, const FString& /*ErrorMessage*/);
+
+/** Fired after every successful evidence upload (automatic or UploadEvidence). */
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnHorizonEvidenceUploaded, const FString&, RunId, int32, Bytes);
+
+/**
+ * Fired after every failed evidence upload (automatic or UploadEvidence), also for local
+ * checks. The submit result is not affected: the run was accepted.
+ */
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FOnHorizonEvidenceUploadFailed, const FString&, RunId, const FString&, ErrorCode, const FString&, ErrorMessage);
+
+/**
  * Fired when the cached player state changes: after GetState, after an accepted run that
  * returned a state, and (with an empty state) on sign-out or when another player signs in.
  */
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnHorizonPlayerStateChanged, const FHorizonPlayerState&, State);
 
 /**
- * Validated Actions Manager for the horizOn SDK (TASK-883 Part 1, TASK-887 Part 2).
+ * Validated Actions Manager for the horizOn SDK (TASK-883 Part 1, TASK-887 Part 2, TASK-888 Part 3).
  *
  * A run starts with a single use ticket and a server seed (StartRun). The game seeds its
  * deterministic randomness with the seed, records its input log and submits the result
@@ -55,8 +76,9 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnHorizonPlayerStateChanged, const 
  * (accepted, 422 TICKET_* codes, 422 rule and value rejections, 403 SCORE_LIMIT_REACHED)
  * clears it. Checks the server runs before it touches the ticket keep the run, so the game
  * may retry with the same ticket: 404 LEADERBOARD_NOT_FOUND, 422 LEADERBOARD_MISMATCH,
- * 400 SCORE_REQUIRED, 400 PLAYER_NAME_REQUIRED, and also network errors, 401, 429 and 5xx.
- * The run is also cleared on sign-out and when another player signs in.
+ * 400 SCORE_REQUIRED, 400 PLAYER_NAME_REQUIRED, 403 PLAYER_BANNED (a player banned from the
+ * board; the ticket stays usable after an unban, DiscardRun drops it), and also network errors,
+ * 401, 429 and 5xx. The run is also cleared on sign-out and when another player signs in.
  *
  * Server-owned state (Part 2): the rules of the API key can define values (currency, loot)
  * that only the server writes. A run earns or spends them through `Earned` of the submit;
@@ -64,9 +86,15 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnHorizonPlayerStateChanged, const 
  * state at any time. The manager caches the last known state (GetCurrentState()); there is
  * no method that writes it.
  *
- * Every call needs a signed-in player and sends the player session (Authorization: Bearer).
+ * Evidence (Part 3): the server can ask for the input log of an accepted run
+ * (Result.Evidence.bRequired, for example a flagged run or a run in the board's top N). When the
+ * run was submitted with the raw bytes (SubmitValidated) and bAutoUploadEvidence is on, the
+ * manager uploads the log right away. After SubmitValidatedWithHash the game calls
+ * UploadEvidence(Result.Evidence.RunId, Log) itself before Result.Evidence.UploadBefore (24 h).
+ * Upload outcomes arrive through OnEvidenceUploaded / OnEvidenceUploadFailed and never change
+ * the submit result.
  *
- * Extension point: Part 3 (TASK-888) adds UploadEvidence and the automatic upload in OnRunAccepted.
+ * Every call needs a signed-in player and sends the player session (Authorization: Bearer).
  */
 UCLASS(BlueprintType)
 class HORIZONSDK_API UHorizonValidatedActionsManager : public UObject
@@ -148,7 +176,45 @@ public:
 	UFUNCTION(BlueprintPure, Category = "horizOn|ValidatedActions")
 	bool HasActiveRun() const { return CurrentRun.IsValid(); }
 
-	/** Error code of the last failed StartRun, submit or GetState; empty after a success. */
+	/**
+	 * Upload the input log of an accepted run as evidence (Part 3):
+	 * PUT /api/v1/app/validated-actions/runs/{RunId}/evidence with the log as standard base64.
+	 * Only valid after a submit whose result had Evidence.bRequired, within Evidence.UploadBefore.
+	 * InputLog must be the exact bytes whose SHA-256 was submitted (else EVIDENCE_HASH_MISMATCH).
+	 * The HTTP client retries network errors as for every request; the SDK adds no upload retry
+	 * of its own. Send again yourself only when IsEvidenceUploadRetryable(ErrorCode) is true.
+	 * When the manager saw the evidence request of RunId, Evidence.MaxBytes is checked locally.
+	 * @param RunId      Result.Evidence.RunId (or Result.RunId) of the accepted run.
+	 * @param InputLog   Raw input log bytes of that run.
+	 * @param OnComplete Called with (bSuccess, Result, ErrorCode, ErrorMessage).
+	 */
+	void UploadEvidence(const FString& RunId, const TArray<uint8>& InputLog, FOnEvidenceUploaded OnComplete);
+
+	/**
+	 * True when a failed upload may be sent again: EVIDENCE_HASH_MISMATCH (with the correct bytes)
+	 * and a network error (CONNECTION_FAILED, the Unreal SDK's network error code). Every other
+	 * code is final.
+	 */
+	UFUNCTION(BlueprintPure, Category = "horizOn|ValidatedActions")
+	static bool IsEvidenceUploadRetryable(const FString& ErrorCode);
+
+	/** Error code of the last failed evidence upload (automatic or UploadEvidence); empty after a success. */
+	UFUNCTION(BlueprintPure, Category = "horizOn|ValidatedActions")
+	FString GetLastEvidenceErrorCode() const { return LastEvidenceErrorCode; }
+
+	/** Fired after every successful evidence upload. */
+	UPROPERTY(BlueprintAssignable, Category = "horizOn|ValidatedActions|Events")
+	FOnHorizonEvidenceUploaded OnEvidenceUploaded;
+
+	/** Fired after every failed evidence upload (see FOnHorizonEvidenceUploadFailed). */
+	UPROPERTY(BlueprintAssignable, Category = "horizOn|ValidatedActions|Events")
+	FOnHorizonEvidenceUploadFailed OnEvidenceUploadFailed;
+
+	/**
+	 * Error code of the last failed StartRun, submit or GetState; empty after a success.
+	 * Evidence uploads report through GetLastEvidenceErrorCode() instead, so an upload never
+	 * changes the code of the submit it belongs to.
+	 */
 	UFUNCTION(BlueprintPure, Category = "horizOn|ValidatedActions")
 	FString GetLastErrorCode() const { return LastErrorCode; }
 
@@ -157,8 +223,10 @@ public:
 	void DiscardRun();
 
 	/**
-	 * Upload the input log right after a submit that requests evidence (Part 3, TASK-888).
-	 * Has no effect with Part 1 servers, which never request evidence.
+	 * Upload the input log right after a SubmitValidated whose result requests evidence
+	 * (Part 3, TASK-888). Off: the game calls UploadEvidence itself. Has no effect after
+	 * SubmitValidatedWithHash (the SDK does not know the bytes) and with servers before Part 3,
+	 * which never request evidence.
 	 */
 	UPROPERTY(BlueprintReadWrite, Category = "horizOn|ValidatedActions")
 	bool bAutoUploadEvidence = true;
@@ -179,6 +247,12 @@ private:
 	FString CurrentRunUserId;
 
 	FString LastErrorCode;
+
+	/** See GetLastEvidenceErrorCode(). */
+	FString LastEvidenceErrorCode;
+
+	/** evidence.maxBytes of requested runs, so UploadEvidence checks the size locally too. */
+	TMap<FString, int32> EvidenceMaxBytesByRun;
 
 	/** Cached server-owned values (Part 2) and the player they belong to. */
 	FHorizonPlayerState CurrentState;
@@ -208,12 +282,32 @@ private:
 		const FOnValidatedSubmitComplete& OnComplete);
 
 	/**
-	 * Work after an accepted run: clear the leaderboard cache when a board was written, cache
-	 * Result.State (Part 2). Part 3 adds the evidence upload here (Result.Evidence.bRequired,
-	 * bAutoUploadEvidence, InputLog).
+	 * Work after an accepted run, before OnComplete: clear the leaderboard cache when a board
+	 * was written, cache Result.State (Part 2).
 	 */
-	void OnRunAccepted(const FHorizonValidatedSubmitResult& Result, const FString& RequestUserId,
+	void OnRunAccepted(const FHorizonValidatedSubmitResult& Result, const FString& RequestUserId);
+
+	/**
+	 * Part 3, after OnComplete delivered the submit result: upload the input log when
+	 * Result.Evidence.bRequired, bAutoUploadEvidence and the raw InputLog is known. The run ID is
+	 * Result.Evidence.RunId, falling back to Result.RunId; Evidence.MaxBytes is checked locally.
+	 */
+	void StartEvidenceUpload(const FHorizonValidatedSubmitResult& Result, const FString& RequestUserId,
 		const TSharedPtr<const TArray<uint8>>& InputLog);
+
+	/**
+	 * Shared upload path. ExpectedUserId (non empty for the automatic upload) must still be the
+	 * signed-in player. MaxBytes > 0 checks the size locally. Fires the evidence events.
+	 */
+	void UploadEvidenceInternal(const FString& RunId, const TArray<uint8>& InputLog, int64 MaxBytes,
+		const FString& ExpectedUserId, FOnEvidenceUploaded OnComplete);
+
+	void HandleEvidenceResponse(const FHorizonNetworkResponse& Response, const FString& RunId,
+		const FOnEvidenceUploaded& OnComplete);
+
+	/** Records and reports a failed upload (LastEvidenceErrorCode, OnEvidenceUploadFailed, OnComplete). */
+	void FailEvidenceUpload(const FString& RunId, const FString& ErrorCode, const FString& ErrorMessage,
+		const FOnEvidenceUploaded& OnComplete);
 
 	/** Error code for a failed response (server code, NOT_SUPPORTED for a bare 404, HTTP mapping). */
 	static FString MapErrorCode(const FHorizonNetworkResponse& Response);

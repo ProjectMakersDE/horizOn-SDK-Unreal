@@ -83,7 +83,8 @@ public:
 	 * signature is unchanged). "VALIDATED_SUBMIT_REQUIRED" means the board accepts
 	 * validated runs only (FHorizonLeaderboardBoard::bValidatedOnly): nothing was written,
 	 * the SDK does not retry, submit through ValidatedActions->SubmitValidated instead.
-	 * Otherwise the server `code`, "SESSION_REQUIRED" or the HTTP mapping.
+	 * "PLAYER_BANNED" (403) means the player is banned from this board: nothing was written,
+	 * the SDK does not retry. Otherwise the server `code`, "SESSION_REQUIRED" or the HTTP mapping.
 	 */
 	UFUNCTION(BlueprintPure, Category = "horizOn|Leaderboard")
 	FString GetLastSubmitErrorCode() const { return LastSubmitErrorCode; }

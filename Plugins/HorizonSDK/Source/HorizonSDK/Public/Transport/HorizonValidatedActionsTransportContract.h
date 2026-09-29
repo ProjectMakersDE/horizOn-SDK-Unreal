@@ -11,15 +11,15 @@
 #include <vector>
 
 /**
- * Engine free transport contract of Validated Actions (TASK-883 Part 1, TASK-887 Part 2).
+ * Engine free transport contract of Validated Actions (TASK-883 Part 1, TASK-887 Part 2,
+ * TASK-888 Part 3).
  *
  * Holds everything that decides what goes over the wire so it can be compiled and
  * checked without the engine: the SHA-256 input log hash, the local pre-checks
  * (SESSION_REQUIRED, NO_ACTIVE_RUN, INVALID_INPUT_LOG_HASH), the request plans of
- * start run, submit and (Part 2) the player state read, and the rules for keeping or
- * clearing the current run.
- *
- * Part 3 (evidence upload, PUT .../runs/{runId}/evidence) adds its plan to this file.
+ * start run, submit, (Part 2) the player state read and (Part 3) the evidence upload
+ * with its standard base64 encoding, and the rules for keeping or clearing the current
+ * run and for retrying an upload.
  */
 namespace HorizonTransportContract
 {
@@ -33,10 +33,18 @@ namespace HorizonTransportContract
 	/** Endpoint of Part 2: the signed-in player's server-owned values (read only). */
 	constexpr const char* ValidatedStateEndpoint = "/api/v1/app/validated-actions/state";
 
+	/** Endpoint of Part 3: PUT {prefix}{runId}{suffix} uploads the input log of a run as evidence. */
+	constexpr const char* ValidatedEvidenceEndpointPrefix = "/api/v1/app/validated-actions/runs/";
+	constexpr const char* ValidatedEvidenceEndpointSuffix = "/evidence";
+
 	/** Local error codes (no request is sent). */
 	constexpr const char* ValidatedCodeSessionRequired = "SESSION_REQUIRED";
 	constexpr const char* ValidatedCodeNoActiveRun = "NO_ACTIVE_RUN";
 	constexpr const char* ValidatedCodeInvalidInputLogHash = "INVALID_INPUT_LOG_HASH";
+
+	/** Local error codes of the evidence upload (Part 3, no request is sent). */
+	constexpr const char* ValidatedCodeInvalidRunId = "INVALID_RUN_ID";
+	constexpr const char* ValidatedCodeEmptyInputLog = "EMPTY_INPUT_LOG";
 
 	/** A 404 without a server code (for example a simpleServer) means the feature is missing. */
 	constexpr const char* ValidatedCodeNotSupported = "NOT_SUPPORTED";
@@ -57,6 +65,23 @@ namespace HorizonTransportContract
 	constexpr const char* ValidatedCodeEarnedAboveMax = "EARNED_ABOVE_MAX";
 	constexpr const char* ValidatedCodeEarnedBelowMin = "EARNED_BELOW_MIN";
 	constexpr const char* ValidatedCodeInsufficientBalance = "INSUFFICIENT_BALANCE";
+
+	/**
+	 * Part 3 codes. PLAYER_BANNED (403) answers both the plain SubmitScore and the validated
+	 * submit of a player banned from the board; the validated submit checks it before the ticket
+	 * is consumed. The evidence codes answer the upload; EVIDENCE_TOO_LARGE is also the local
+	 * code when the log is larger than the `maxBytes` of the evidence request.
+	 */
+	constexpr const char* ValidatedCodePlayerBanned = "PLAYER_BANNED";
+	constexpr const char* ValidatedCodeEvidenceInvalidEncoding = "EVIDENCE_INVALID_ENCODING";
+	constexpr const char* ValidatedCodeEvidenceNotRequested = "EVIDENCE_NOT_REQUESTED";
+	constexpr const char* ValidatedCodeEvidenceAlreadyUploaded = "EVIDENCE_ALREADY_UPLOADED";
+	constexpr const char* ValidatedCodeEvidenceExpired = "EVIDENCE_EXPIRED";
+	constexpr const char* ValidatedCodeEvidenceTooLarge = "EVIDENCE_TOO_LARGE";
+	constexpr const char* ValidatedCodeEvidenceHashMismatch = "EVIDENCE_HASH_MISMATCH";
+
+	/** HTTP mapping of the SDK for a network error (FHorizonNetworkResponse, NETWORK_ERROR in Unity and Godot). */
+	constexpr const char* HttpCodeConnectionFailed = "CONNECTION_FAILED";
 
 	/** Largest number of `earned` entries per submit (the server answers 400 without code above it). */
 	constexpr std::size_t MaxEarnedValuesPerRun = 64;
@@ -413,8 +438,10 @@ namespace HorizonTransportContract
 	 *
 	 * The server checks the board (404 LEADERBOARD_NOT_FOUND, 422 LEADERBOARD_MISMATCH),
 	 * 400 SCORE_REQUIRED and 400 PLAYER_NAME_REQUIRED before it touches the ticket, so the run
-	 * stays for those and the game may resubmit with a corrected board, score or name. The run
-	 * also stays on network errors (status 0), other 400, 401, other 403, 404, 429 and 5xx.
+	 * stays for those and the game may resubmit with a corrected board, score or name. Part 3:
+	 * 403 PLAYER_BANNED is checked first of all rules and does not consume the ticket either, so
+	 * the run stays (the game drops it with DiscardRun; the ticket stays usable after an unban).
+	 * The run also stays on network errors (status 0), other 400, 401, other 403, 404, 429 and 5xx.
 	 */
 	inline bool ShouldClearRunAfterSubmit(int StatusCode, const std::string& ServerErrorCode)
 	{
@@ -454,5 +481,126 @@ namespace HorizonTransportContract
 			return ValidatedCodeNotSupported;
 		}
 		return FallbackCode;
+	}
+
+	// ============================================================
+	// Part 3 (TASK-888): evidence upload
+	// ============================================================
+
+	/**
+	 * Standard base64 with padding (RFC 4648 section 4, alphabet A-Z a-z 0-9 + /), the encoding the
+	 * server decodes with java.util.Base64.getDecoder(). Same output as FBase64::Encode of the engine.
+	 */
+	inline std::string Base64Encode(const std::uint8_t* Data, std::size_t Length)
+	{
+		static const char Alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+		std::string Result;
+		Result.reserve(((Length + 2) / 3) * 4);
+		std::size_t Index = 0;
+		for (; Index + 2 < Length; Index += 3)
+		{
+			const std::uint32_t Triple = (static_cast<std::uint32_t>(Data[Index]) << 16)
+				| (static_cast<std::uint32_t>(Data[Index + 1]) << 8)
+				| static_cast<std::uint32_t>(Data[Index + 2]);
+			Result.push_back(Alphabet[(Triple >> 18) & 0x3Fu]);
+			Result.push_back(Alphabet[(Triple >> 12) & 0x3Fu]);
+			Result.push_back(Alphabet[(Triple >> 6) & 0x3Fu]);
+			Result.push_back(Alphabet[Triple & 0x3Fu]);
+		}
+		const std::size_t Remaining = Length - Index;
+		if (Remaining == 1)
+		{
+			const std::uint32_t Triple = static_cast<std::uint32_t>(Data[Index]) << 16;
+			Result.push_back(Alphabet[(Triple >> 18) & 0x3Fu]);
+			Result.push_back(Alphabet[(Triple >> 12) & 0x3Fu]);
+			Result.append("==");
+		}
+		else if (Remaining == 2)
+		{
+			const std::uint32_t Triple = (static_cast<std::uint32_t>(Data[Index]) << 16)
+				| (static_cast<std::uint32_t>(Data[Index + 1]) << 8);
+			Result.push_back(Alphabet[(Triple >> 18) & 0x3Fu]);
+			Result.push_back(Alphabet[(Triple >> 12) & 0x3Fu]);
+			Result.push_back(Alphabet[(Triple >> 6) & 0x3Fu]);
+			Result.push_back('=');
+		}
+		return Result;
+	}
+
+	inline std::string Base64Encode(const std::vector<std::uint8_t>& Data)
+	{
+		return Base64Encode(Data.empty() ? nullptr : Data.data(), Data.size());
+	}
+
+	/**
+	 * PUT /api/v1/app/validated-actions/runs/{runId}/evidence: `{"userId", "log"}` with the player
+	 * session. `log` is the standard base64 of the raw input log bytes, the same bytes whose
+	 * SHA-256 was submitted as `inputLogHash`. The run ID is URL encoded into the path.
+	 *
+	 * Local checks in this order: SESSION_REQUIRED (no user or session token), INVALID_RUN_ID
+	 * (blank run ID), EMPTY_INPUT_LOG (no bytes; the server rejects a blank `log`),
+	 * EVIDENCE_TOO_LARGE (MaxBytes > 0 and the log is larger; 0 means unknown, the server decides).
+	 */
+	inline FValidatedRequestPlan BuildValidatedEvidenceUploadPlan(
+		const std::string& UserId,
+		const std::string& SessionToken,
+		const std::string& RunId,
+		const std::uint8_t* InputLog,
+		std::size_t InputLogLength,
+		std::int64_t MaxBytes)
+	{
+		if (UserId.empty() || SessionToken.empty())
+		{
+			return ValidatedFailedPlan(ValidatedCodeSessionRequired, "A signed-in player is required.");
+		}
+		const std::string NormalizedRunId = Trim(RunId);
+		if (NormalizedRunId.empty())
+		{
+			return ValidatedFailedPlan(ValidatedCodeInvalidRunId, "The run ID of the evidence request is missing.");
+		}
+		if (InputLog == nullptr || InputLogLength == 0)
+		{
+			return ValidatedFailedPlan(ValidatedCodeEmptyInputLog, "The input log is empty.");
+		}
+		if (MaxBytes > 0 && static_cast<std::uint64_t>(InputLogLength) > static_cast<std::uint64_t>(MaxBytes))
+		{
+			return ValidatedFailedPlan(ValidatedCodeEvidenceTooLarge,
+				"The input log has " + std::to_string(InputLogLength) + " bytes, the server accepts at most "
+				+ std::to_string(MaxBytes) + ".");
+		}
+
+		FValidatedRequestPlan Plan;
+		Plan.bShouldSend = true;
+		Plan.Verb = "PUT";
+		Plan.Endpoint = std::string(ValidatedEvidenceEndpointPrefix) + EncodePathSegment(NormalizedRunId)
+			+ ValidatedEvidenceEndpointSuffix;
+		Plan.BodyJson = "{\"userId\":\"" + EscapeJson(UserId) + "\""
+			+ ",\"log\":\"" + Base64Encode(InputLog, InputLogLength) + "\"}";
+		return Plan;
+	}
+
+	inline FValidatedRequestPlan BuildValidatedEvidenceUploadPlan(
+		const std::string& UserId,
+		const std::string& SessionToken,
+		const std::string& RunId,
+		const std::vector<std::uint8_t>& InputLog,
+		std::int64_t MaxBytes)
+	{
+		return BuildValidatedEvidenceUploadPlan(UserId, SessionToken, RunId,
+			InputLog.empty() ? nullptr : InputLog.data(), InputLog.size(), MaxBytes);
+	}
+
+	/**
+	 * True when a failed evidence upload may be sent again: after 422 EVIDENCE_HASH_MISMATCH (with
+	 * the correct bytes, the request stays open until `uploadBefore`) and after a network error
+	 * (CONNECTION_FAILED). Every other code is final: 400 EVIDENCE_INVALID_ENCODING, 404
+	 * EVIDENCE_NOT_REQUESTED, 409 EVIDENCE_ALREADY_UPLOADED, 410 EVIDENCE_EXPIRED, 413
+	 * EVIDENCE_TOO_LARGE, the local codes, session, server error and rate limit codes. The SDK
+	 * never retries an upload by itself beyond the HTTP client's network retries.
+	 */
+	inline bool IsEvidenceUploadRetryable(const std::string& ErrorCode)
+	{
+		return ErrorCode == ValidatedCodeEvidenceHashMismatch
+			|| ErrorCode == HttpCodeConnectionFailed;
 	}
 }

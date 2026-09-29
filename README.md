@@ -24,7 +24,7 @@ Official Unreal Engine SDK for **horizOn** Backend-as-a-Service by [ProjectMaker
 | 📰 **News** | `UHorizonNewsManager` | In-game news feed with language filtering and TTL cache |
 | 🎁 **Gift Codes** | `UHorizonGiftCodeManager` | Validate and redeem promotional codes, cosmetic unlocks via `grants` |
 | 🧑‍🎤 **Player Profile** | `UHorizonPlayerProfileManager` | Avatar, frame and badges per player, cosmetic unlocks, shown in leaderboards |
-| ✅ **Validated Actions** | `UHorizonValidatedActionsManager` | Server-checked runs: ticket with seed, validated submit with input log hash, rule codes, server-owned currency and loot |
+| ✅ **Validated Actions** | `UHorizonValidatedActionsManager` | Server-checked runs: ticket with seed, validated submit with input log hash, rule codes, server-owned currency and loot, input log upload as evidence |
 | 💬 **Feedback** | `UHorizonFeedbackManager` | Submit bug reports, feature requests, and general feedback |
 | 📊 **User Logs** | `UHorizonUserLogManager` | Server-side structured logging for analytics and debugging |
 | 💥 **Crash Reporting** | `UHorizonCrashReportManager` | Crash capture, exception tracking, breadcrumbs |
@@ -160,7 +160,8 @@ A board can accept validated runs only (`FHorizonLeaderboardBoard::bValidatedOnl
 `ListBoards`). `SubmitScore` to such a board fails with the code `VALIDATED_SUBMIT_REQUIRED`
 and writes nothing; the SDK does not retry it. The `OnComplete` signature is unchanged, read
 the code with `Horizon->Leaderboard->GetLastSubmitErrorCode()` and submit through
-[Validated Actions](#validated-actions) instead.
+[Validated Actions](#validated-actions) instead. A player banned from a board gets
+`PLAYER_BANNED` from `SubmitScore` (same way, nothing written, not retried).
 
 Every entry of top, around and rank carries the player's profile in `Entry.Profile`
 (`AvatarId`, `FrameId`, `Badges`). Empty values mean "not set"; treat IDs your game
@@ -395,6 +396,9 @@ Horizon->ValidatedActions->SubmitValidatedWithHash(18250, Hash, TEXT("wave_10"),
   `LEADERBOARD_NOT_FOUND`, `LEADERBOARD_MISMATCH`, `SCORE_REQUIRED` and
   `PLAYER_NAME_REQUIRED` (fix the call and submit again), and also on network errors, 401,
   429 and 5xx. Sign-out clears the run.
+- 403 `PLAYER_BANNED`: the player is banned from the board. The server checks this before it
+  touches the ticket, so the run stays (the ticket works again after an unban). Drop it with
+  `DiscardRun()` or start a run without board.
 - `GetLastErrorCode()` returns the code of the last failed call.
 - An accepted run with a board clears the leaderboard cache, like `SubmitScore`.
 
@@ -404,7 +408,7 @@ Error codes: `SESSION_REQUIRED`, `NO_ACTIVE_RUN` (no started run) and
 `STAGE_REQUIRED`, `STAGE_UNKNOWN`, `SCORE_ABOVE_MAX`, `SCORE_BELOW_MIN`,
 `STAGE_SCORE_ABOVE_MAX`, `STAGE_SCORE_BELOW_MIN`, `DURATION_TOO_SHORT`,
 `SCORE_RATE_TOO_HIGH`, `UNKNOWN_VALUE_KEY`, `DUPLICATE_VALUE_KEY`, `EARNED_ABOVE_MAX`,
-`EARNED_BELOW_MIN`, `INSUFFICIENT_BALANCE`, `SCORE_LIMIT_REACHED`, `SCORE_REQUIRED`, `PLAYER_NAME_REQUIRED`,
+`EARNED_BELOW_MIN`, `INSUFFICIENT_BALANCE`, `SCORE_LIMIT_REACHED`, `PLAYER_BANNED`, `SCORE_REQUIRED`, `PLAYER_NAME_REQUIRED`,
 `LEADERBOARD_NOT_FOUND`, `PLAYER_NOT_FOUND`, `SESSION_FORBIDDEN`,
 `VALIDATED_ACTIONS_UNAVAILABLE`, `RUN_RATE_LIMITED` and `RUN_CAPACITY_REACHED`. The two run
 limits are not retried automatically (the wait can be up to an hour). A backend without the
@@ -481,14 +485,61 @@ values there only as a copy:
 `AHorizonValidatedActionsExample::BuildCloudSaveMirror(State)` shows one compact format
 (`{"day":"2026-09-29","balances":{"gold":1250}}`).
 
+#### Evidence
+
+The server can ask for the input log of an accepted run, for example when the run is flagged
+or lands in the board's top N (`evidenceTopN`, set per board in the horizOn Dashboard). The
+result then carries `Result.Evidence` with `bRequired = true`, `RunId`, `UploadBefore` (24 h)
+and `MaxBytes` (32,768). You can review and download the logs in the horizOn Dashboard and
+replay them with the run's seed.
+
+- After `SubmitValidated` the SDK uploads the same bytes by itself
+  (`PUT /api/v1/app/validated-actions/runs/{runId}/evidence`, the log as standard base64).
+  Turn this off with `Horizon->ValidatedActions->bAutoUploadEvidence = false`.
+- After `SubmitValidatedWithHash` the SDK does not know the bytes. Call `UploadEvidence`
+  yourself with the exact bytes of the submitted hash:
+
+```cpp
+if (Result.Evidence.bRequired)
+{
+    Horizon->ValidatedActions->UploadEvidence(Result.Evidence.RunId, InputLog,
+        FOnEvidenceUploaded::CreateLambda([](bool bSuccess, const FHorizonEvidenceUploadResult& Upload,
+            const FString& ErrorCode, const FString& ErrorMessage)
+        {
+            if (!bSuccess && UHorizonValidatedActionsManager::IsEvidenceUploadRetryable(ErrorCode))
+            {
+                // EVIDENCE_HASH_MISMATCH (send the correct bytes) or a network error: try again later
+            }
+        }));
+}
+```
+
+- Every upload, automatic or manual, fires `OnEvidenceUploaded(RunId, Bytes)` or
+  `OnEvidenceUploadFailed(RunId, ErrorCode, ErrorMessage)` (Blueprint assignable).
+  `GetLastEvidenceErrorCode()` holds the last upload error. An upload never changes the
+  submit result or `GetLastErrorCode()`: the run counts either way.
+- Upload codes: `EVIDENCE_HASH_MISMATCH` (422, the request stays open, send the correct bytes
+  again), `EVIDENCE_NOT_REQUESTED` (404), `EVIDENCE_ALREADY_UPLOADED` (409),
+  `EVIDENCE_EXPIRED` (410, past `UploadBefore`), `EVIDENCE_TOO_LARGE` (413, also checked
+  locally against `MaxBytes` of the evidence request), `EVIDENCE_INVALID_ENCODING` (400).
+  Local codes: `SESSION_REQUIRED`, `INVALID_RUN_ID`, `EMPTY_INPUT_LOG`.
+- Send an upload again only when `IsEvidenceUploadRetryable(ErrorCode)` is true:
+  `EVIDENCE_HASH_MISMATCH` and network errors (`CONNECTION_FAILED`). All other codes are
+  final. The SDK itself never repeats an upload beyond the HTTP client's network retries.
+- The automatic upload starts after the submit callback ran, with `Result.Evidence.RunId`
+  (falling back to `Result.RunId`).
+
 #### Blueprints
 
 - **"Start Validated Run"**: Starts a run (On Success: Run, On Failure: Error Code, Error Message)
 - **"Submit Validated Run"**: Hashes the input log and submits the current run (On Success: Result, with `State`)
 - **"Submit Validated Run With Hash"**: Same with a ready SHA-256 hash
 - **"Get Validated Player State"**: Loads the server-owned values (On Success: State)
+- **"Upload Validated Run Evidence"**: Uploads the input log of an accepted run (On Success: Result with `RunId`, `Status`, `Bytes`)
 - **"Compute Input Log Hash"**, **"Has Active Run"**, **"Get Last Error Code"**, **"Discard Run"**,
-  **"Has State"**, **"Get Balance"** and the event **On State Changed** on `ValidatedActions`
+  **"Has State"**, **"Get Balance"**, **"Is Evidence Upload Retryable"**, **"Get Last Evidence Error Code"**,
+  the property **Auto Upload Evidence** and the events **On State Changed**, **On Evidence Uploaded**,
+  **On Evidence Upload Failed** on `ValidatedActions`
 - **"Get Horizon Current Validated Run"**: The current run
 - **"Get Horizon Validated Player State"**: The cached state
 - **"Get Horizon Validated Balance"**, **"Find Horizon Validated Value"**,

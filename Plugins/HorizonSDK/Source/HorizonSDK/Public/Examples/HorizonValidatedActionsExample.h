@@ -19,13 +19,18 @@ class UHorizonSubsystem;
  * value, and the state after the run is logged (Requested, Credited, EarnedToday / DailyCap).
  * Finally it shows how to mirror the state into the cloud save (log only, unless
  * bMirrorToCloudSave is on). A rejected run logs the code (for example DURATION_TOO_SHORT).
+ * When the server asks for the input log (Result.Evidence.bRequired, for example a run in the
+ * board's top N), the SDK uploads it by itself and the example logs the evidence events. With
+ * bUploadEvidenceManually the automatic upload is off and the example calls UploadEvidence.
+ * A player banned from the board gets PLAYER_BANNED; the run stays and the example discards it.
  *
  * Before running: nothing is required. Without a rule set the server accepts every run with
  * its default rules. To see server-owned values, define a value (for example "gold" with
  * "maxPerRun": 100) under "values" in the Validated Actions rules of your API key in the
  * horizOn Dashboard and set ValueKey to that key. A ValueKey the rules do not define rejects
  * the run with UNKNOWN_VALUE_KEY. To see a rule rejection, set "minDurationSeconds" above a
- * few seconds.
+ * few seconds. To see an evidence upload, set the evidence top N (`evidenceTopN`) of the board above 0 in the
+ * horizOn Dashboard (the example run then lands in the top N of a new board).
  *
  * Where to set the API key: Project Settings > Plugins > horizOn SDK > API Key.
  * Drop this actor into a level and press Play to run the flow.
@@ -38,6 +43,8 @@ class UHorizonSubsystem;
  *   [ValidatedActionsExample] SUCCESS: best <n>, rank <n>, measured <n> s
  *   [ValidatedActionsExample]   gold: balance <n>, requested <n>, credited <n>, today <n> / <cap>
  *   [ValidatedActionsExample] Cloud save mirror: {"day":"<day>","balances":{"gold":<n>}}
+ *   [ValidatedActionsExample] Evidence requested for run <id> until <time> (max <n> bytes)
+ *   [ValidatedActionsExample] Evidence uploaded for run <id>: <n> bytes
  *   or
  *   [ValidatedActionsExample] REJECTED (<code>): <message>
  */
@@ -69,6 +76,13 @@ public:
 	bool bMirrorToCloudSave = false;
 
 	/**
+	 * Turn the automatic evidence upload off and upload with UploadEvidence instead (the path of
+	 * games that submit a hash only). Off by default: SubmitValidated uploads by itself.
+	 */
+	UPROPERTY(EditAnywhere, Category = "horizOn|Example")
+	bool bUploadEvidenceManually = false;
+
+	/**
 	 * Cloud save mirror of the server-owned values: one JSON string with day and balances.
 	 * The copy is for display and offline start only. Never send it back as a balance: values
 	 * change only through `earned` of a validated run, and GetState overwrites the copy.
@@ -92,6 +106,17 @@ private:
 
 	/** Step 3: log the state after the run and mirror it into the cloud save. */
 	void HandleStateAfterRun(const FHorizonPlayerState& State);
+
+	/** Step 4: log an evidence request; upload it here when bUploadEvidenceManually is on. */
+	void HandleEvidenceRequest(const FHorizonEvidenceRequest& Evidence, const TArray<uint8>& InputLog);
+
+	/** Bound to UHorizonValidatedActionsManager::OnEvidenceUploaded (automatic and manual uploads). */
+	UFUNCTION()
+	void HandleEvidenceUploaded(const FString& RunId, int32 Bytes);
+
+	/** Bound to UHorizonValidatedActionsManager::OnEvidenceUploadFailed. */
+	UFUNCTION()
+	void HandleEvidenceUploadFailed(const FString& RunId, const FString& ErrorCode, const FString& ErrorMessage);
 
 	UHorizonSubsystem* GetHorizon() const;
 };

@@ -14,8 +14,8 @@ class FJsonObject;
  *
  * Part 1 fills FHorizonValidatedRun and FHorizonValidatedSubmitResult.
  * Part 2 (TASK-887) fills FHorizonPlayerState: from GET .../state and as
- * FHorizonValidatedSubmitResult::State. FHorizonEvidenceRequest (Part 3, TASK-888)
- * stays empty until then.
+ * FHorizonValidatedSubmitResult::State. Part 3 (TASK-888) fills FHorizonEvidenceRequest
+ * (FHorizonValidatedSubmitResult::Evidence) and FHorizonEvidenceUploadResult (PUT .../evidence).
  */
 
 /**
@@ -162,7 +162,11 @@ struct HORIZONSDK_API FHorizonPlayerState
 	static FHorizonPlayerState FromJson(const TSharedPtr<FJsonObject>& JsonObject);
 };
 
-/** Evidence request of an accepted run (Part 3). Required is false in Part 1. */
+/**
+ * Evidence request of an accepted run (Part 3). The server asks for the input log when the run
+ * became the player's entry on the board and is flagged or ranks inside the board's top N.
+ * bRequired is false for every other run and with servers before Part 3 (`evidence: null`).
+ */
 USTRUCT(BlueprintType)
 struct HORIZONSDK_API FHorizonEvidenceRequest
 {
@@ -184,6 +188,26 @@ struct HORIZONSDK_API FHorizonEvidenceRequest
 	int32 MaxBytes = 0;
 
 	static FHorizonEvidenceRequest FromJson(const TSharedPtr<FJsonObject>& JsonObject);
+};
+
+/** Answer of a successful evidence upload (Part 3): `{runId, status: "UPLOADED", bytes}`. */
+USTRUCT(BlueprintType)
+struct HORIZONSDK_API FHorizonEvidenceUploadResult
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly, Category = "horizOn|ValidatedActions")
+	FString RunId;
+
+	/** Always "UPLOADED". */
+	UPROPERTY(BlueprintReadOnly, Category = "horizOn|ValidatedActions")
+	FString Status;
+
+	/** Stored log size in bytes. */
+	UPROPERTY(BlueprintReadOnly, Category = "horizOn|ValidatedActions")
+	int32 Bytes = 0;
+
+	static FHorizonEvidenceUploadResult FromJson(const TSharedPtr<FJsonObject>& JsonObject);
 };
 
 /** Result of an accepted validated run. */

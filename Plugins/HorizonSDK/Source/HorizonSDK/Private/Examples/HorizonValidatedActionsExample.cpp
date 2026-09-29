@@ -59,6 +59,11 @@ void AHorizonValidatedActionsExample::HandleConnected()
 	UHorizonValidatedActionsManager* ValidatedActions = Horizon->ValidatedActions;
 	TWeakObjectPtr<AHorizonValidatedActionsExample> WeakThis(this);
 
+	// Evidence (Part 3): outcomes of every upload, automatic or manual, arrive here.
+	ValidatedActions->bAutoUploadEvidence = !bUploadEvidenceManually;
+	ValidatedActions->OnEvidenceUploaded.AddUniqueDynamic(this, &AHorizonValidatedActionsExample::HandleEvidenceUploaded);
+	ValidatedActions->OnEvidenceUploadFailed.AddUniqueDynamic(this, &AHorizonValidatedActionsExample::HandleEvidenceUploadFailed);
+
 	// Runs need a signed-in player; a leaderboard run also needs a display name.
 	Horizon->Auth->SignUpAnonymous(TEXT("ExamplePlayer"), FOnAuthComplete::CreateLambda(
 		[WeakThis, ValidatedActions](bool bAuthSuccess)
@@ -141,9 +146,17 @@ void AHorizonValidatedActionsExample::StartAndSubmitRun()
 			// Empty stage and board: the ticket's board is used.
 			ValidatedActions->SubmitValidated(Score, InputLog, FString(), FString(), Earned,
 				FOnValidatedSubmitComplete::CreateLambda(
-					[WeakThis](bool bAccepted, const FHorizonValidatedSubmitResult& Result,
+					[WeakThis, ValidatedActions, InputLog](bool bAccepted, const FHorizonValidatedSubmitResult& Result,
 						const FString& SubmitErrorCode, const FString& SubmitErrorMessage)
 					{
+						if (!bAccepted && SubmitErrorCode == TEXT("PLAYER_BANNED"))
+						{
+							// Banned from this board: checked before the ticket is used, so the run stays.
+							// The example drops it; a game could start an unbound run instead.
+							UE_LOG(LogTemp, Warning, TEXT("[ValidatedActionsExample] BANNED from this board: %s"), *SubmitErrorMessage);
+							ValidatedActions->DiscardRun();
+							return;
+						}
 						if (!bAccepted)
 						{
 							// Rule codes such as DURATION_TOO_SHORT, value codes such as UNKNOWN_VALUE_KEY or
@@ -159,6 +172,7 @@ void AHorizonValidatedActionsExample::StartAndSubmitRun()
 						if (AHorizonValidatedActionsExample* Self = WeakThis.Get())
 						{
 							Self->HandleStateAfterRun(Result.State);
+							Self->HandleEvidenceRequest(Result.Evidence, InputLog);
 						}
 					}));
 		}));
@@ -202,6 +216,53 @@ void AHorizonValidatedActionsExample::HandleStateAfterRun(const FHorizonPlayerSt
 					bSaved ? TEXT("written") : TEXT("FAILED:"), *SaveErrorMessage);
 			}));
 	}
+}
+
+void AHorizonValidatedActionsExample::HandleEvidenceRequest(const FHorizonEvidenceRequest& Evidence, const TArray<uint8>& InputLog)
+{
+	if (!Evidence.bRequired)
+	{
+		// Most runs: the server does not need the log.
+		return;
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("[ValidatedActionsExample] Evidence requested for run %s until %s (max %d bytes)"),
+		*Evidence.RunId, *Evidence.UploadBefore, Evidence.MaxBytes);
+
+	if (!bUploadEvidenceManually)
+	{
+		// SubmitValidated already started the upload; HandleEvidenceUploaded logs the result.
+		return;
+	}
+
+	// The path of a game that submitted a hash only: upload the exact bytes of that hash.
+	UHorizonSubsystem* Horizon = GetHorizon();
+	if (!Horizon || !Horizon->ValidatedActions)
+	{
+		return;
+	}
+	Horizon->ValidatedActions->UploadEvidence(Evidence.RunId, InputLog, FOnEvidenceUploaded::CreateLambda(
+		[](bool bUploaded, const FHorizonEvidenceUploadResult& Result, const FString& ErrorCode, const FString& ErrorMessage)
+		{
+			if (!bUploaded && UHorizonValidatedActionsManager::IsEvidenceUploadRetryable(ErrorCode))
+			{
+				// EVIDENCE_HASH_MISMATCH or a network error: a game keeps the log and tries again later.
+				UE_LOG(LogTemp, Warning, TEXT("[ValidatedActionsExample] Evidence upload of run %s can be sent again (%s)."),
+					*Result.RunId, *ErrorCode);
+			}
+		}));
+}
+
+void AHorizonValidatedActionsExample::HandleEvidenceUploaded(const FString& RunId, int32 Bytes)
+{
+	UE_LOG(LogTemp, Log, TEXT("[ValidatedActionsExample] Evidence uploaded for run %s: %d bytes"), *RunId, Bytes);
+}
+
+void AHorizonValidatedActionsExample::HandleEvidenceUploadFailed(const FString& RunId, const FString& ErrorCode, const FString& ErrorMessage)
+{
+	// The run still counts; only the review in the horizOn Dashboard misses the log.
+	UE_LOG(LogTemp, Warning, TEXT("[ValidatedActionsExample] Evidence upload for run %s FAILED (%s): %s"),
+		*RunId, *ErrorCode, *ErrorMessage);
 }
 
 FString AHorizonValidatedActionsExample::BuildCloudSaveMirror(const FHorizonPlayerState& State)

@@ -160,6 +160,24 @@ FHorizonEvidenceRequest FHorizonEvidenceRequest::FromJson(const TSharedPtr<FJson
 }
 
 // ============================================================
+// FHorizonEvidenceUploadResult (Part 3)
+// ============================================================
+
+FHorizonEvidenceUploadResult FHorizonEvidenceUploadResult::FromJson(const TSharedPtr<FJsonObject>& JsonObject)
+{
+	FHorizonEvidenceUploadResult Result;
+	if (!JsonObject.IsValid())
+	{
+		return Result;
+	}
+
+	Result.RunId = ReadValidatedString(JsonObject, TEXT("runId"));
+	Result.Status = ReadValidatedString(JsonObject, TEXT("status"));
+	Result.Bytes = static_cast<int32>(ReadValidatedInt64(JsonObject, TEXT("bytes")));
+	return Result;
+}
+
+// ============================================================
 // FHorizonValidatedSubmitResult
 // ============================================================
 

@@ -10,6 +10,7 @@
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnValidatedRunStartedAsyncSuccess, const FHorizonValidatedRun&, Run);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnValidatedSubmitAsyncSuccess, const FHorizonValidatedSubmitResult&, Result);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnValidatedStateAsyncSuccess, const FHorizonPlayerState&, State);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnValidatedEvidenceAsyncSuccess, const FHorizonEvidenceUploadResult&, Result);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnValidatedActionsAsyncFailure, const FString&, ErrorCode, const FString&, ErrorMessage);
 
 /**
@@ -46,7 +47,9 @@ private:
 
 /**
  * Async Blueprint node: Submit the current validated run with its input log.
- * The SDK hashes the log (SHA-256) and sends the hash with the run's ticket.
+ * The SDK hashes the log (SHA-256) and sends the hash with the run's ticket. When the result
+ * requests evidence (Result.Evidence.bRequired) the SDK uploads the log by itself (unless
+ * bAutoUploadEvidence is off); the outcome arrives on OnEvidenceUploaded / OnEvidenceUploadFailed.
  */
 UCLASS()
 class HORIZONSDK_API UHorizonAsync_SubmitValidated : public UBlueprintAsyncActionBase
@@ -57,7 +60,7 @@ public:
 	UPROPERTY(BlueprintAssignable)
 	FOnValidatedSubmitAsyncSuccess OnSuccess;
 
-	/** ErrorCode is the rejection code (for example DURATION_TOO_SHORT, TICKET_EXPIRED) or NO_ACTIVE_RUN, SESSION_REQUIRED, ... */
+	/** ErrorCode is the rejection code (for example DURATION_TOO_SHORT, TICKET_EXPIRED), PLAYER_BANNED (the run stays), or NO_ACTIVE_RUN, SESSION_REQUIRED, ... */
 	UPROPERTY(BlueprintAssignable)
 	FOnValidatedActionsAsyncFailure OnFailure;
 
@@ -88,6 +91,8 @@ private:
 
 /**
  * Async Blueprint node: Submit the current validated run with a ready SHA-256 hash of its input log.
+ * The SDK does not know the bytes: when Result.Evidence.bRequired is true, call
+ * "Upload Validated Run Evidence" with the log before Result.Evidence.UploadBefore.
  */
 UCLASS()
 class HORIZONSDK_API UHorizonAsync_SubmitValidatedWithHash : public UBlueprintAsyncActionBase
@@ -149,4 +154,43 @@ private:
 	TWeakObjectPtr<const UObject> WorldContext;
 
 	void HandleResult(bool bSuccess, const FHorizonPlayerState& State, const FString& ErrorCode, const FString& ErrorMessage);
+};
+
+// ============================================================
+
+/**
+ * Async Blueprint node: Upload the input log of an accepted run as evidence (Part 3).
+ * Use it after "Submit Validated Run With Hash" when Result.Evidence.bRequired is true, or
+ * when the automatic upload is off. "Submit Validated Run" uploads by itself.
+ */
+UCLASS()
+class HORIZONSDK_API UHorizonAsync_UploadEvidence : public UBlueprintAsyncActionBase
+{
+	GENERATED_BODY()
+
+public:
+	UPROPERTY(BlueprintAssignable)
+	FOnValidatedEvidenceAsyncSuccess OnSuccess;
+
+	/**
+	 * ErrorCode is EVIDENCE_HASH_MISMATCH (send the correct bytes again), EVIDENCE_EXPIRED,
+	 * EVIDENCE_ALREADY_UPLOADED, EVIDENCE_NOT_REQUESTED, EVIDENCE_TOO_LARGE, EVIDENCE_INVALID_ENCODING,
+	 * SESSION_REQUIRED, INVALID_RUN_ID, EMPTY_INPUT_LOG, CONNECTION_FAILED, ... Check
+	 * "Is Evidence Upload Retryable" before sending again.
+	 */
+	UPROPERTY(BlueprintAssignable)
+	FOnValidatedActionsAsyncFailure OnFailure;
+
+	/** Upload InputLog (the exact bytes of the submitted hash) for RunId (Result.Evidence.RunId). */
+	UFUNCTION(BlueprintCallable, meta = (BlueprintInternalUseOnly = "true", WorldContext = "WorldContextObject", DisplayName = "Upload Validated Run Evidence"), Category = "horizOn|ValidatedActions")
+	static UHorizonAsync_UploadEvidence* UploadEvidence(const UObject* WorldContextObject, const FString& RunId, const TArray<uint8>& InputLog);
+
+	virtual void Activate() override;
+
+private:
+	TWeakObjectPtr<const UObject> WorldContext;
+	FString RunIdStr;
+	TArray<uint8> InputLogBytes;
+
+	void HandleResult(bool bSuccess, const FHorizonEvidenceUploadResult& Result, const FString& ErrorCode, const FString& ErrorMessage);
 };

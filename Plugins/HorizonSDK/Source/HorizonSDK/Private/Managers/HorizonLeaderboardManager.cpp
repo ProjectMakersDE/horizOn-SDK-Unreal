@@ -111,6 +111,7 @@ void UHorizonLeaderboardManager::SubmitScore(int64 Score, FOnRequestComplete OnC
 				else
 				{
 					// 403 VALIDATED_SUBMIT_REQUIRED: "validated only" board, nothing written, not retried.
+					// 403 PLAYER_BANNED: the player is banned from this board, nothing written, not retried.
 					Self->LastSubmitErrorCode = Response.GetErrorCodeString();
 					UE_LOG(LogHorizonSDK, Warning, TEXT("Leaderboard::SubmitScore -- Failed (%s): %s"),
 						*Self->LastSubmitErrorCode, *Response.ErrorMessage);

@@ -184,3 +184,49 @@ void UHorizonAsync_GetValidatedState::HandleResult(bool bSuccess, const FHorizon
 	}
 	SetReadyToDestroy();
 }
+
+// ============================================================
+// UploadEvidence (Part 3)
+// ============================================================
+
+UHorizonAsync_UploadEvidence* UHorizonAsync_UploadEvidence::UploadEvidence(const UObject* WorldContextObject,
+	const FString& RunId, const TArray<uint8>& InputLog)
+{
+	UHorizonAsync_UploadEvidence* Action = NewObject<UHorizonAsync_UploadEvidence>();
+	Action->WorldContext = WorldContextObject;
+	Action->RunIdStr = RunId;
+	Action->InputLogBytes = InputLog;
+	Action->RegisterWithGameInstance(WorldContextObject);
+	return Action;
+}
+
+void UHorizonAsync_UploadEvidence::Activate()
+{
+	UHorizonSubsystem* Subsystem = UHorizonBlueprintLibrary::GetHorizonSubsystem(WorldContext.Get());
+	if (!Subsystem || !Subsystem->ValidatedActions)
+	{
+		OnFailure.Broadcast(TEXT("UNKNOWN"), TEXT("horizOn Subsystem or ValidatedActions manager not found."));
+		SetReadyToDestroy();
+		return;
+	}
+
+	Subsystem->ValidatedActions->UploadEvidence(
+		RunIdStr,
+		InputLogBytes,
+		FOnEvidenceUploaded::CreateUObject(this, &UHorizonAsync_UploadEvidence::HandleResult)
+	);
+}
+
+void UHorizonAsync_UploadEvidence::HandleResult(bool bSuccess, const FHorizonEvidenceUploadResult& Result,
+	const FString& ErrorCode, const FString& ErrorMessage)
+{
+	if (bSuccess)
+	{
+		OnSuccess.Broadcast(Result);
+	}
+	else
+	{
+		OnFailure.Broadcast(ErrorCode, ErrorMessage);
+	}
+	SetReadyToDestroy();
+}
