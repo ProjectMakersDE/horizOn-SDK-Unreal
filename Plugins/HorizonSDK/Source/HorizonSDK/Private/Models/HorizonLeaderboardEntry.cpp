@@ -9,6 +9,12 @@ FHorizonLeaderboardEntry FHorizonLeaderboardEntry::FromJson(const TSharedPtr<FJs
         Entry.Position = static_cast<int32>(JsonObject->GetNumberField(TEXT("position")));
         Entry.Username = JsonObject->GetStringField(TEXT("username"));
         Entry.Score = static_cast<int64>(JsonObject->GetNumberField(TEXT("score")));
+
+        const TSharedPtr<FJsonObject>* ProfileObject = nullptr;
+        if (JsonObject->TryGetObjectField(TEXT("profile"), ProfileObject) && ProfileObject)
+        {
+            Entry.Profile = FHorizonPlayerProfile::FromJson(*ProfileObject);
+        }
     }
     return Entry;
 }

@@ -13,3 +13,8 @@ c++ -std=c++17 \
   Tests/GiftCodeTransportContractTest.cpp \
   -o "$build_dir/gift-code-transport-test"
 "$build_dir/gift-code-transport-test"
+c++ -std=c++17 \
+  -I Plugins/HorizonSDK/Source/HorizonSDK/Public \
+  Tests/PlayerProfileTransportContractTest.cpp \
+  -o "$build_dir/player-profile-transport-test"
+"$build_dir/player-profile-transport-test"

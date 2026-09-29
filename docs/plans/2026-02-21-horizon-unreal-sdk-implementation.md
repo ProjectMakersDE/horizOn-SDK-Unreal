@@ -963,6 +963,7 @@ class HORIZONSDK_API UHorizonLeaderboardManager : public UObject
 public:
     void Initialize(UHorizonHttpClient* InHttpClient, UHorizonAuthManager* InAuthManager);
 
+    // Metadata: deprecated and ignored since TASK-881 (the server has no score metadata; never sent).
     void SubmitScore(int64 Score, FOnRequestComplete OnComplete, const FString& Metadata = TEXT(""));
     void GetTop(int32 Limit, bool bUseCache, FOnLeaderboardEntriesComplete OnComplete);
     void GetRank(bool bUseCache, FOnLeaderboardRankComplete OnComplete);

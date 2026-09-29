@@ -23,3 +23,34 @@ EHorizonErrorCode FHorizonNetworkResponse::StatusToErrorCode(int32 HttpStatus)
         return EHorizonErrorCode::Unknown;
     }
 }
+
+FString FHorizonNetworkResponse::ErrorCodeToString(EHorizonErrorCode Code)
+{
+    switch (Code)
+    {
+    case EHorizonErrorCode::None:             return FString();
+    case EHorizonErrorCode::InvalidRequest:   return TEXT("INVALID_REQUEST");
+    case EHorizonErrorCode::Unauthorized:     return TEXT("UNAUTHORIZED");
+    case EHorizonErrorCode::Forbidden:        return TEXT("FORBIDDEN");
+    case EHorizonErrorCode::NotFound:         return TEXT("NOT_FOUND");
+    case EHorizonErrorCode::Conflict:         return TEXT("CONFLICT");
+    case EHorizonErrorCode::RateLimited:      return TEXT("RATE_LIMITED");
+    case EHorizonErrorCode::ServerError:      return TEXT("SERVER_ERROR");
+    case EHorizonErrorCode::ConnectionFailed: return TEXT("CONNECTION_FAILED");
+    default:                                  return TEXT("UNKNOWN");
+    }
+}
+
+FString FHorizonNetworkResponse::GetErrorCodeString() const
+{
+    if (bSuccess)
+    {
+        return FString();
+    }
+    if (!ServerErrorCode.IsEmpty())
+    {
+        return ServerErrorCode;
+    }
+    const FString Mapped = ErrorCodeToString(ErrorCode);
+    return Mapped.IsEmpty() ? FString(TEXT("UNKNOWN")) : Mapped;
+}

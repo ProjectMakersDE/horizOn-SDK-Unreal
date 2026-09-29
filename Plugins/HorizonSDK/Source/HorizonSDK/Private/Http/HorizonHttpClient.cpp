@@ -12,6 +12,7 @@
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
 #include "Dom/JsonObject.h"
+#include "Dom/JsonValue.h"
 #include "Misc/App.h"
 #include "Containers/Ticker.h"
 #include "TimerManager.h"
@@ -208,6 +209,22 @@ void UHorizonHttpClient::PostJson(const TSharedRef<FJsonObject>& Body, const FSt
 	SendRequest(TEXT("POST"), Url, TEXT("application/json"), Payload, bUseSessionToken, 0, OnComplete);
 }
 
+void UHorizonHttpClient::PutJson(const TSharedRef<FJsonObject>& Body, const FString& Endpoint, bool bUseSessionToken, FOnHttpResponse OnComplete)
+{
+	const FString Url = ActiveHost / Endpoint;
+
+	FString JsonString;
+	TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&JsonString);
+	FJsonSerializer::Serialize(Body, Writer);
+
+	TArray<uint8> Payload;
+	FTCHARToUTF8 Converter(*JsonString);
+	Payload.Append(reinterpret_cast<const uint8*>(Converter.Get()), Converter.Length());
+
+	// Same headers, retries and 429 handling as PostJson (shared SendRequest).
+	SendRequest(TEXT("PUT"), Url, TEXT("application/json"), Payload, bUseSessionToken, 0, OnComplete);
+}
+
 void UHorizonHttpClient::PostBinary(const FString& Endpoint, const TArray<uint8>& Data, bool bUseSessionToken, FOnHttpResponse OnComplete)
 {
 	const FString Url = ActiveHost / Endpoint;
@@ -398,6 +415,16 @@ FHorizonNetworkResponse UHorizonHttpClient::ParseResponse(FHttpResponsePtr HttpR
 	// Extract error message for non-success responses
 	if (!Response.bSuccess)
 	{
+		// Machine readable server code (for example "COSMETIC_LOCKED"), only when it is a JSON string.
+		if (Response.JsonData.IsValid())
+		{
+			const TSharedPtr<FJsonValue> CodeValue = Response.JsonData->TryGetField(TEXT("code"));
+			if (CodeValue.IsValid() && CodeValue->Type == EJson::String)
+			{
+				Response.ServerErrorCode = CodeValue->AsString();
+			}
+		}
+
 		if (Response.JsonData.IsValid() && Response.JsonData->HasField(TEXT("message")))
 		{
 			Response.ErrorMessage = Response.JsonData->GetStringField(TEXT("message"));
@@ -422,6 +449,7 @@ FHorizonNetworkResponse UHorizonHttpClient::ParseResponse(FHttpResponsePtr HttpR
 		Response.bSuccess = true;
 		Response.ErrorCode = EHorizonErrorCode::None;
 		Response.ErrorMessage.Empty();
+		Response.ServerErrorCode.Empty();
 	}
 
 	return Response;

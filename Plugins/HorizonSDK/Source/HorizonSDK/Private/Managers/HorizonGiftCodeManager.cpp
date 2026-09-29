@@ -2,8 +2,10 @@
 
 #include "Managers/HorizonGiftCodeManager.h"
 #include "HorizonSDKModule.h"
+#include "Managers/HorizonPlayerProfileManager.h"
 #include "Transport/HorizonGiftCodeTransportContract.h"
 #include "Dom/JsonObject.h"
+#include "Dom/JsonValue.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 
@@ -16,6 +18,11 @@ void UHorizonGiftCodeManager::Initialize(UHorizonHttpClient* InHttpClient, UHori
 	HttpClient = InHttpClient;
 	AuthManager = InAuthManager;
 	UE_LOG(LogHorizonSDK, Log, TEXT("HorizonGiftCodeManager initialized."));
+}
+
+void UHorizonGiftCodeManager::SetPlayerProfileManager(UHorizonPlayerProfileManager* InPlayerProfileManager)
+{
+	PlayerProfileManager = InPlayerProfileManager;
 }
 
 // ============================================================
@@ -83,17 +90,39 @@ void UHorizonGiftCodeManager::Redeem(const FString& Code, FOnGiftCodeRedeemCompl
 				bool bServerSuccess = false;
 				FString GiftData;
 				FString Message;
+				TArray<FString> GrantedUnlocks;
 
 				if (Response.JsonData.IsValid())
 				{
 					bServerSuccess = Response.JsonData->GetBoolField(TEXT("success"));
 					GiftData = Response.JsonData->GetStringField(TEXT("giftData"));
 					Message = Response.JsonData->GetStringField(TEXT("message"));
+
+					// TASK-881: cosmetic IDs unlocked through the code's giftData.grants.
+					const TArray<TSharedPtr<FJsonValue>>* GrantedValues = nullptr;
+					if (Response.JsonData->TryGetArrayField(TEXT("grantedUnlocks"), GrantedValues) && GrantedValues)
+					{
+						for (const TSharedPtr<FJsonValue>& Value : *GrantedValues)
+						{
+							if (Value.IsValid() && Value->Type == EJson::String)
+							{
+								GrantedUnlocks.Add(Value->AsString());
+							}
+						}
+					}
 				}
 
 				if (bServerSuccess)
 				{
-					UE_LOG(LogHorizonSDK, Log, TEXT("GiftCode::Redeem -- Code redeemed successfully. Message: %s"), *Message);
+					UHorizonGiftCodeManager* Self = WeakSelf.Get();
+					Self->LastGrantedUnlocks = GrantedUnlocks;
+					if (GrantedUnlocks.Num() > 0 && Self->PlayerProfileManager)
+					{
+						// The cached profile does not know the new unlocks yet.
+						Self->PlayerProfileManager->ClearCache();
+					}
+					UE_LOG(LogHorizonSDK, Log, TEXT("GiftCode::Redeem -- Code redeemed successfully (%d unlocks granted). Message: %s"),
+						GrantedUnlocks.Num(), *Message);
 				}
 				else
 				{

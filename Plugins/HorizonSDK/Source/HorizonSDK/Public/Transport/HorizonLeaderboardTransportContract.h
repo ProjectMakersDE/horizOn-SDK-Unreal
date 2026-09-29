@@ -76,12 +76,16 @@ namespace HorizonTransportContract
 		return Value.substr(First, Last - First + 1);
 	}
 
+	/**
+	 * Builds the score submit request. The body carries userId, score and the
+	 * optional leaderboardKey only: the server has no score metadata field
+	 * (TASK-881), so the SDK never sends one.
+	 */
 	inline FLeaderboardSubmitPlan BuildLeaderboardSubmitPlan(
 		const std::string& UserId,
 		const std::string& SessionToken,
 		std::int64_t Score,
-		const std::string& BoardKey,
-		const std::string& Metadata)
+		const std::string& BoardKey)
 	{
 		FLeaderboardSubmitPlan Plan;
 		if (UserId.empty() || SessionToken.empty())
@@ -98,10 +102,6 @@ namespace HorizonTransportContract
 		if (!NormalizedBoardKey.empty())
 		{
 			Plan.BodyJson += ",\"leaderboardKey\":\"" + EscapeJson(NormalizedBoardKey) + "\"";
-		}
-		if (!Metadata.empty())
-		{
-			Plan.BodyJson += ",\"metadata\":\"" + EscapeJson(Metadata) + "\"";
 		}
 		Plan.BodyJson += "}";
 		return Plan;

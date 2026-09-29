@@ -9,7 +9,8 @@ The horizOn SDK is a fully-featured Unreal Engine plugin that connects your game
 - **Leaderboard** -- Submit scores, retrieve top entries, player rank, and surrounding entries with in-memory caching.
 - **Remote Config** -- Typed key-value retrieval (string, int, float, bool) with cache support.
 - **News** -- Fetch and display in-game news entries with language filtering and 5-minute TTL cache.
-- **Gift Codes** -- Validate and redeem promotional codes.
+- **Gift Codes** -- Validate and redeem promotional codes; codes with `grants` unlock cosmetics.
+- **Player Profile** -- Avatar, frame and up to three badges per player, cosmetic unlocks, shown on every leaderboard entry.
 - **Feedback** -- Submit bug reports, feature requests, and general feedback with optional device info.
 - **User Logs** -- Send structured log entries (info, warning, error) to the server for analytics and debugging.
 - **Crash Reporting** -- Capture crashes and non-fatal exceptions with breadcrumbs and custom keys.
@@ -108,10 +109,13 @@ output.
 | Email Sending | `AHorizonEmailSendingExample` |
 | Gift Codes | `AHorizonGiftCodesExample` |
 | Feedback | `AHorizonFeedbackExample` |
+| Player Profile | `AHorizonPlayerProfileExample` |
 
 The `AHorizonEmailSendingExample` and `AHorizonGiftCodesExample` actors expose
 editable properties (recipient user ID, template slug, gift code) that you need
 to set to real values from your horizOn Dashboard before running them.
+`AHorizonPlayerProfileExample` needs at least one free avatar in the cosmetics
+catalog of your API key (horizOn Dashboard).
 
 ## Documentation
 

@@ -60,11 +60,15 @@ int main()
 {
 	using namespace HorizonTransportContract;
 	const FLeaderboardSubmitPlan Plan = BuildLeaderboardSubmitPlan(
-		"user-720", "session-token-720", 4242, "season one", "");
+		"user-720", "session-token-720", 4242, "season one");
 	Require(Plan.bShouldSend, "signed user did not produce a submit plan");
-	Require(!BuildLeaderboardSubmitPlan("", "session-token-720", 99, "season one", "").bShouldSend,
+	Require(Plan.BodyJson == "{\"userId\":\"user-720\",\"score\":4242,\"leaderboardKey\":\"season one\"}",
+		"incorrect submit body");
+	// TASK-881: the server has no score metadata, the SDK never sends it.
+	Require(Plan.BodyJson.find("metadata") == std::string::npos, "submit body must not contain metadata");
+	Require(!BuildLeaderboardSubmitPlan("", "session-token-720", 99, "season one").bShouldSend,
 		"missing user id did not block submit");
-	Require(!BuildLeaderboardSubmitPlan("user-720", "", 99, "season one", "").bShouldSend,
+	Require(!BuildLeaderboardSubmitPlan("user-720", "", 99, "season one").bShouldSend,
 		"missing session token did not block submit");
 
 	std::atomic<bool> Ready = false;

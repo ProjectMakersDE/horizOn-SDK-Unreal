@@ -210,7 +210,7 @@ All managers are `UObject` subclasses owned by the subsystem. All async methods 
 - SaveObject<T>/LoadObject<T> (serialized via FJsonObjectConverter)
 
 ### UHorizonLeaderboardManager
-- SubmitScore(int64 Score, FString Metadata)
+- SubmitScore(int64 Score) (a `Metadata` parameter still exists for source compatibility; it is deprecated, ignored and never sent, the server has no score metadata, see TASK-881)
 - GetTop(int32 Limit), GetRank(), GetAround(int32 Limit)
 - In-memory TMap cache, cleared on SubmitScore
 

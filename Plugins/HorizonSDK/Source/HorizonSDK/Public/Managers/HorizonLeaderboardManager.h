@@ -34,7 +34,10 @@ public:
 	 * Clears the leaderboard cache on success.
 	 * @param Score      The score to submit.
 	 * @param OnComplete Called with (bSuccess, ErrorMessage).
-	 * @param Metadata   Optional metadata string.
+	 * @param Metadata   Deprecated and ignored: the server has no score metadata, the SDK
+	 *                   never sends it. Kept for source compatibility; the parameter is
+	 *                   removed in the next major version. Store per-player data in the
+	 *                   player profile or Cloud Save instead.
 	 * @param BoardKey   Optional board key for multi-board leaderboards.
 	 */
 	void SubmitScore(int64 Score, FOnRequestComplete OnComplete, const FString& Metadata = TEXT(""), const FString& BoardKey = TEXT(""));

@@ -53,7 +53,7 @@ void UHorizonLeaderboardManager::Initialize(UHorizonHttpClient* InHttpClient, UH
 // Submit Score
 // ============================================================
 
-void UHorizonLeaderboardManager::SubmitScore(int64 Score, FOnRequestComplete OnComplete, const FString& Metadata, const FString& BoardKey)
+void UHorizonLeaderboardManager::SubmitScore(int64 Score, FOnRequestComplete OnComplete, const FString& /*Metadata (deprecated, ignored)*/, const FString& BoardKey)
 {
 	if (!AuthManager || !HttpClient)
 	{
@@ -68,8 +68,7 @@ void UHorizonLeaderboardManager::SubmitScore(int64 Score, FOnRequestComplete OnC
 			TCHAR_TO_UTF8(*UserId),
 			TCHAR_TO_UTF8(*HttpClient->GetSessionToken()),
 			Score,
-			TCHAR_TO_UTF8(*BoardKey),
-			TCHAR_TO_UTF8(*Metadata));
+			TCHAR_TO_UTF8(*BoardKey));
 	if (!Plan.bShouldSend)
 	{
 		UE_LOG(LogHorizonSDK, Warning, TEXT("Leaderboard::SubmitScore -- User is not signed in."));

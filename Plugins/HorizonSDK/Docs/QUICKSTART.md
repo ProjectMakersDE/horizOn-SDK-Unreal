@@ -85,6 +85,7 @@ Once connected and signed in, call any manager method:
 | Remote Config | `Horizon->RemoteConfig->GetAllConfigs()` | horizOn Get All Configs |
 | News          | `Horizon->News->LoadNews()`   | horizOn Load News          |
 | Gift Codes    | `Horizon->GiftCodes->Redeem()`| horizOn Redeem Gift Code   |
+| Player Profile | `Horizon->PlayerProfile->GetProfile()` / `SetProfile()` | Get Player Profile / Set Player Profile |
 | Feedback      | `Horizon->Feedback->Submit()` | horizOn Submit Feedback    |
 | User Logs     | `Horizon->UserLogs->Info()`   | horizOn Create User Log    |
 
@@ -93,7 +94,7 @@ All async operations use callbacks (C++) or output execution pins (Blueprints) f
 ## Troubleshooting
 
 - **"HttpClient not initialized"** -- Make sure you call `ConnectToServer()` before any other operation.
-- **Authentication required** -- Cloud Save, Leaderboard, Gift Codes, and User Logs require the player to be signed in first.
+- **Authentication required** -- Cloud Save, Leaderboard, Gift Codes, Player Profile, and User Logs require the player to be signed in first.
 - **Multiple hosts** -- If you configure multiple backend hosts, the SDK automatically pings each one and selects the fastest.
 - **Session caching** -- The SDK saves session tokens to disk. Returning players are automatically re-authenticated via `RestoreSession()`.
 - **Clear cache** -- Use **Tools > horizOn > Clear Session Cache** in the editor to wipe local session data.

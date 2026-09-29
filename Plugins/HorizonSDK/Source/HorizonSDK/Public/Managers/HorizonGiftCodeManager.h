@@ -8,6 +8,8 @@
 #include "Managers/HorizonAuthManager.h"
 #include "HorizonGiftCodeManager.generated.h"
 
+class UHorizonPlayerProfileManager;
+
 DECLARE_DELEGATE_ThreeParams(FOnGiftCodeRedeemComplete, bool /*bSuccess*/, const FString& /*GiftData*/, const FString& /*Message*/);
 DECLARE_DELEGATE_TwoParams(FOnGiftCodeValidateComplete, bool /*bRequestSuccess*/, bool /*bValid*/);
 
@@ -34,6 +36,17 @@ public:
 	void Redeem(const FString& Code, FOnGiftCodeRedeemComplete OnComplete);
 
 	/**
+	 * Cosmetic IDs the player owns through the last successful redeem (`grantedUnlocks`,
+	 * TASK-881): the `grants` of the code's giftData. Empty when the code had no grants.
+	 * Read it in the Redeem callback; after a non-empty grant the player profile cache
+	 * is cleared, so the next PlayerProfile->GetProfile shows the unlock.
+	 */
+	const TArray<FString>& GetLastGrantedUnlocks() const { return LastGrantedUnlocks; }
+
+	/** Called by UHorizonSubsystem: lets a redeem with grants clear the profile cache. */
+	void SetPlayerProfileManager(UHorizonPlayerProfileManager* InPlayerProfileManager);
+
+	/**
 	 * Validate a gift code without redeeming it.
 	 * @param Code       The gift code to validate.
 	 * @param OnComplete Called with (bRequestSuccess, bValid).
@@ -46,4 +59,9 @@ private:
 
 	UPROPERTY()
 	UHorizonAuthManager* AuthManager;
+
+	UPROPERTY()
+	UHorizonPlayerProfileManager* PlayerProfileManager = nullptr;
+
+	TArray<FString> LastGrantedUnlocks;
 };

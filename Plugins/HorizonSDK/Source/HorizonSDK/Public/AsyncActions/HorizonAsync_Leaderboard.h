@@ -29,7 +29,11 @@ public:
 	UPROPERTY(BlueprintAssignable)
 	FOnLeaderboardAsyncFailure OnFailure;
 
-	/** Submit a score to the leaderboard. */
+	/**
+	 * Submit a score to the leaderboard.
+	 * Metadata is deprecated and ignored: the server has no score metadata and the SDK
+	 * never sends it. Leave it empty; the pin is removed in the next major version.
+	 */
 	UFUNCTION(BlueprintCallable, meta = (BlueprintInternalUseOnly = "true", WorldContext = "WorldContextObject", DisplayName = "Submit Leaderboard Score", AdvancedDisplay = "BoardKey"), Category = "horizOn|Leaderboard")
 	static UHorizonAsync_LeaderboardSubmit* SubmitScore(const UObject* WorldContextObject, int64 Score, const FString& Metadata, const FString& BoardKey);
 

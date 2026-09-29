@@ -14,6 +14,7 @@
 #include "Managers/HorizonUserLogManager.h"
 #include "Managers/HorizonCrashManager.h"
 #include "Managers/HorizonEmailSendingManager.h"
+#include "Managers/HorizonPlayerProfileManager.h"
 
 // ============================================================
 // Subsystem lifecycle
@@ -61,6 +62,12 @@ void UHorizonSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 
 	EmailSending = NewObject<UHorizonEmailSendingManager>(this);
 	EmailSending->Initialize(HttpClient);
+
+	PlayerProfile = NewObject<UHorizonPlayerProfileManager>(this);
+	PlayerProfile->Initialize(HttpClient, Auth);
+
+	// A gift code redeem that grants unlocks clears the cached player profile.
+	GiftCodes->SetPlayerProfileManager(PlayerProfile);
 
 	// Wire auto-breadcrumb handlers
 	Auth->OnUserSignedIn.AddUniqueDynamic(Crashes, &UHorizonCrashManager::OnAutoUserSignedIn);

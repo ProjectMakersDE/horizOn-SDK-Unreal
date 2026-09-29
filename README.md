@@ -22,7 +22,8 @@ Official Unreal Engine SDK for **horizOn** Backend-as-a-Service by [ProjectMaker
 | ⚙️ **Remote Config** | `UHorizonRemoteConfigManager` | Typed key-value retrieval (string, int, float, bool) with caching |
 | 🌐 **Localization** | `UHorizonLocalizationManager` | Translated strings in 15 languages with an active language and caching |
 | 📰 **News** | `UHorizonNewsManager` | In-game news feed with language filtering and TTL cache |
-| 🎁 **Gift Codes** | `UHorizonGiftCodeManager` | Validate and redeem promotional codes |
+| 🎁 **Gift Codes** | `UHorizonGiftCodeManager` | Validate and redeem promotional codes, cosmetic unlocks via `grants` |
+| 🧑‍🎤 **Player Profile** | `UHorizonPlayerProfileManager` | Avatar, frame and badges per player, cosmetic unlocks, shown in leaderboards |
 | 💬 **Feedback** | `UHorizonFeedbackManager` | Submit bug reports, feature requests, and general feedback |
 | 📊 **User Logs** | `UHorizonUserLogManager` | Server-side structured logging for analytics and debugging |
 | 💥 **Crash Reporting** | `UHorizonCrashReportManager` | Crash capture, exception tracking, breadcrumbs |
@@ -154,6 +155,19 @@ Horizon->Leaderboard->GetAround(5,
     FOnLeaderboardComplete::CreateLambda([](bool bSuccess, const TArray<FHorizonLeaderboardEntry>& Entries) { }));
 ```
 
+Every entry of top, around and rank carries the player's profile in `Entry.Profile`
+(`AvatarId`, `FrameId`, `Badges`). Empty values mean "not set"; treat IDs your game
+does not know as "not set" as well and fall back to a default avatar.
+
+```cpp
+for (const FHorizonLeaderboardEntry& Entry : Entries)
+{
+    const FString Avatar = Entry.Profile.HasAvatar() ? Entry.Profile.AvatarId : TEXT("avatar.default");
+    UE_LOG(LogTemp, Log, TEXT("#%d %s %lld (%s, %d badges)"),
+        Entry.Position, *Entry.Username, Entry.Score, *Avatar, Entry.Profile.Badges.Num());
+}
+```
+
 ### Cloud Saves
 
 ```cpp
@@ -243,14 +257,83 @@ Horizon->GiftCodes->Validate(TEXT("ABCD-1234"),
 
 // Redeem
 Horizon->GiftCodes->Redeem(TEXT("ABCD-1234"),
-    FOnGiftCodeComplete::CreateLambda([](bool bSuccess, const FHorizonGiftCodeResult& Result)
+    FOnGiftCodeRedeemComplete::CreateLambda([Horizon](bool bSuccess, const FString& GiftData, const FString& Message)
     {
-        if (bSuccess && Result.bSuccess)
+        if (bSuccess)
         {
-            // Parse Result.GiftData for rewards
+            // Parse GiftData for rewards.
+            // Cosmetics from the code's "grants" are unlocked on the server:
+            const TArray<FString>& Unlocked = Horizon->GiftCodes->GetLastGrantedUnlocks();
+            // The cached player profile was cleared; GetProfile now shows the unlocks.
         }
     }));
 ```
+
+A code whose `giftData` contains `grants` (for example `{"grants": ["badge.supporter"]}`)
+unlocks those cosmetics for the player. `GetLastGrantedUnlocks()` returns them after a
+successful redeem (empty when the code had no grants); in Blueprints use
+**"Get Horizon Last Granted Unlocks"**.
+
+### Player Profile
+
+Each player has a small profile that leaderboards show next to name and score: an
+avatar, an optional frame and up to three badges. The catalog of cosmetics (IDs with
+type `avatar`, `frame` or `badge`, free or locked) is maintained per API key in the
+horizOn Dashboard. The server stores IDs only; your game maps them to its own assets.
+Locked cosmetics need an unlock, granted by a gift code with `grants` or in the Dashboard.
+
+Both calls need a signed-in player and send the player session (`Authorization: Bearer`).
+
+```cpp
+// Load profile, unlocks and the catalog (with an availability flag per entry)
+Horizon->PlayerProfile->GetProfile(
+    FOnPlayerProfileComplete::CreateLambda([](bool bSuccess, const FHorizonPlayerProfileResult& Result,
+        const FString& ErrorCode, const FString& ErrorMessage)
+    {
+        if (!bSuccess) { return; }
+        for (const FHorizonCosmetic& Avatar : Result.GetCosmetics(TEXT("avatar")))
+        {
+            // Build the picker: Avatar.Id, Avatar.bLocked, Avatar.bAvailable
+        }
+    }));
+
+// Replace the whole profile (pass the current values for slots you keep)
+Horizon->PlayerProfile->SetProfile(
+    TEXT("avatar.zombie_07"),
+    TEXT(""),                          // empty clears the frame
+    { TEXT("badge.supporter") },       // at most 3, empty array clears the badges
+    FOnPlayerProfileComplete::CreateLambda([](bool bSuccess, const FHorizonPlayerProfileResult& Result,
+        const FString& ErrorCode, const FString& ErrorMessage)
+    {
+        if (!bSuccess && ErrorCode == TEXT("COSMETIC_LOCKED"))
+        {
+            // The player does not own this cosmetic yet
+        }
+    }));
+
+// Last result, cached until sign-in, sign-out or a gift code that granted unlocks
+if (Horizon->PlayerProfile->HasCurrentProfile())
+{
+    const FHorizonPlayerProfileResult& Current = Horizon->PlayerProfile->GetCurrentProfile();
+    bool bCanUse = Current.IsAvailable(TEXT("frame.gold"));
+}
+```
+
+`ErrorCode` is the server code: `INVALID_COSMETIC_ID`, `INVALID_BADGES` (more than 3 or
+listed twice), `COSMETIC_NOT_FOUND`, `COSMETIC_TYPE_MISMATCH`, `COSMETIC_LOCKED`,
+`SESSION_REQUIRED`, `SESSION_FORBIDDEN`, `PLAYER_NOT_FOUND`. Without a signed-in player
+the SDK fails locally with `SESSION_REQUIRED` and sends nothing; more than 3 badges or a
+malformed ID fail locally too. Without a server code the SDK reports the HTTP mapping
+(`RATE_LIMITED`, `CONNECTION_FAILED`, `SERVER_ERROR`, ...). Cosmetic IDs are 1 to 32
+characters: lowercase letters, digits, `.`, `_`, `-`.
+
+#### Blueprints
+
+- **"Get Player Profile"**: Loads profile, unlocks and catalog (On Success: Result, On Failure: Error Code, Error Message)
+- **"Set Player Profile"**: Replaces avatar, frame and badges
+- **"Get Horizon Current Player Profile"**: The last cached result
+- **"Get Horizon Cosmetics Of Type"** / **"Is Horizon Cosmetic Available"**: Picker helpers
+- **"Get Horizon Last Granted Unlocks"**: Unlocks from the last redeemed gift code
 
 ### Feedback
 
