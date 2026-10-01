@@ -97,6 +97,8 @@ Horizon->Disconnect();
 
 ### Authentication
 
+Anonymous signup omits client tokens and stores the token issued by the server. It signs in with that token when signup returns no session. The deprecated token argument is ignored. Use `SignInAnonymous` for an existing account. `RestoreAnonymousSession` reuses the cached token if its session has expired.
+
 ```cpp
 // Anonymous sign-up
 Horizon->Auth->SignUpAnonymous(TEXT("PlayerName"),
@@ -177,6 +179,8 @@ for (const FHorizonLeaderboardEntry& Entry : Entries)
 ```
 
 ### Cloud Saves
+
+Sign in first. All save/load requests carry the player session. Binary loads POST a JSON `userId` body with `Accept: application/octet-stream`. HTTP 204 completes with `false` and empty bytes when no save exists.
 
 ```cpp
 // Save JSON object
@@ -817,6 +821,10 @@ Plugins/HorizonSDK/
 ├── Docs/
 └── Config/
 ```
+
+## Transport checks
+
+Run `bash Tests/run_transport_test.sh` from the repository root. The standalone tests include selected production auth, user-model, binary-load and HTTP helper methods compiled against in-memory engine boundaries. They cover server-issued token signup, direct signup sessions, failed and expired session recovery, returning accounts, binary headers/body, 204 and 401. A full plugin build still requires an Unreal Engine 5.5+ project.
 
 ## Documentation
 

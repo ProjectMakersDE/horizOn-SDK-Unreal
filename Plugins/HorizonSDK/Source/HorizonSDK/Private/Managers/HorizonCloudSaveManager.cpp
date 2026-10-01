@@ -192,12 +192,13 @@ void UHorizonCloudSaveManager::LoadBytes(FOnBinaryComplete OnComplete)
 	}
 
 	const FString UserId = AuthManager->GetCurrentUser().UserId;
-	const FString Endpoint = FString::Printf(TEXT("api/v1/app/cloud-save/load?userId=%s"), *UserId);
+	TSharedRef<FJsonObject> Body = MakeShared<FJsonObject>();
+	Body->SetStringField(TEXT("userId"), UserId);
 
 	TWeakObjectPtr<UHorizonCloudSaveManager> WeakSelf(this);
 	FOnBinaryComplete CapturedOnComplete = OnComplete;
 
-	HttpClient->GetBinary(Endpoint, true,
+	HttpClient->PostJsonForBinary(Body, TEXT("api/v1/app/cloud-save/load"), true,
 		FOnHttpResponse::CreateLambda(
 			[WeakSelf, CapturedOnComplete](const FHorizonNetworkResponse& Response)
 			{

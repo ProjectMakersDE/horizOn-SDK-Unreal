@@ -46,6 +46,8 @@ public:
 	// -- HTTP convenience methods --
 	void Get(const FString& Endpoint, bool bUseSessionToken, FOnHttpResponse OnComplete);
 	void PostJson(const TSharedRef<FJsonObject>& Body, const FString& Endpoint, bool bUseSessionToken, FOnHttpResponse OnComplete);
+	/** POST a JSON body and negotiate a binary response. */
+	void PostJsonForBinary(const TSharedRef<FJsonObject>& Body, const FString& Endpoint, bool bUseSessionToken, FOnHttpResponse OnComplete);
 	void PutJson(const TSharedRef<FJsonObject>& Body, const FString& Endpoint, bool bUseSessionToken, FOnHttpResponse OnComplete);
 	void PostBinary(const FString& Endpoint, const TArray<uint8>& Data, bool bUseSessionToken, FOnHttpResponse OnComplete);
 	void Delete(const FString& Endpoint, bool bUseSessionToken, FOnHttpResponse OnComplete);
@@ -68,11 +70,12 @@ private:
 		const TArray<uint8>& Payload,
 		bool bUseSessionToken,
 		int32 RetryCount,
-		FOnHttpResponse OnComplete
+		FOnHttpResponse OnComplete,
+		const FString& AcceptContentType = TEXT("")
 	);
 
 	/** Build and apply standard headers to a request. */
-	void ApplyHeaders(TSharedRef<IHttpRequest, ESPMode::ThreadSafe> Request, const FString& ContentType, bool bUseSessionToken) const;
+	void ApplyHeaders(TSharedRef<IHttpRequest, ESPMode::ThreadSafe> Request, const FString& ContentType, bool bUseSessionToken, const FString& AcceptContentType = TEXT("")) const;
 
 	/** Parse an HTTP response into FHorizonNetworkResponse. */
 	FHorizonNetworkResponse ParseResponse(FHttpResponsePtr HttpResponse, bool bConnectedSuccessfully) const;
@@ -89,7 +92,8 @@ private:
 		bool bUseSessionToken,
 		int32 RetryCount,
 		float DelaySeconds,
-		FOnHttpResponse OnComplete
+		FOnHttpResponse OnComplete,
+		const FString& AcceptContentType = TEXT("")
 	);
 
 	/** Ping a single host, measure latency, call back when all pings are done. */

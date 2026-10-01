@@ -210,6 +210,20 @@ void UHorizonHttpClient::PostJson(const TSharedRef<FJsonObject>& Body, const FSt
 	SendRequest(TEXT("POST"), Url, TEXT("application/json"), Payload, bUseSessionToken, 0, OnComplete);
 }
 
+void UHorizonHttpClient::PostJsonForBinary(const TSharedRef<FJsonObject>& Body, const FString& Endpoint, bool bUseSessionToken, FOnHttpResponse OnComplete)
+{
+	const FString Url = ActiveHost / Endpoint;
+	FString JsonString;
+	TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&JsonString);
+	FJsonSerializer::Serialize(Body, Writer);
+	TArray<uint8> Payload;
+	FTCHARToUTF8 Converter(*JsonString);
+	Payload.Append(reinterpret_cast<const uint8*>(Converter.Get()), Converter.Length());
+
+	SendRequest(TEXT("POST"), Url, TEXT("application/json"), Payload, bUseSessionToken, 0, OnComplete,
+		TEXT("application/octet-stream"));
+}
+
 void UHorizonHttpClient::PutJson(const TSharedRef<FJsonObject>& Body, const FString& Endpoint, bool bUseSessionToken, FOnHttpResponse OnComplete)
 {
 	const FString Url = ActiveHost / Endpoint;
@@ -257,14 +271,15 @@ void UHorizonHttpClient::SendRequest(
 	const TArray<uint8>& Payload,
 	bool bUseSessionToken,
 	int32 RetryCount,
-	FOnHttpResponse OnComplete)
+	FOnHttpResponse OnComplete,
+	const FString& AcceptContentType)
 {
 	TSharedRef<IHttpRequest, ESPMode::ThreadSafe> Request = FHttpModule::Get().CreateRequest();
 	Request->SetVerb(Verb);
 	Request->SetURL(Url);
 	Request->SetTimeout(ConnectionTimeoutSeconds);
 
-	ApplyHeaders(Request, ContentType, bUseSessionToken);
+	ApplyHeaders(Request, ContentType, bUseSessionToken, AcceptContentType);
 
 	if (Payload.Num() > 0)
 	{
@@ -275,11 +290,12 @@ void UHorizonHttpClient::SendRequest(
 	FString CapturedVerb = Verb;
 	FString CapturedUrl = Url;
 	FString CapturedContentType = ContentType;
+	FString CapturedAcceptContentType = AcceptContentType;
 	TArray<uint8> CapturedPayload = Payload;
 	FOnHttpResponse CapturedOnComplete = OnComplete;
 
 	Request->OnProcessRequestComplete().BindLambda(
-		[WeakSelf, CapturedVerb, CapturedUrl, CapturedContentType, CapturedPayload, bUseSessionToken, RetryCount, CapturedOnComplete]
+		[WeakSelf, CapturedVerb, CapturedUrl, CapturedContentType, CapturedAcceptContentType, CapturedPayload, bUseSessionToken, RetryCount, CapturedOnComplete]
 		(FHttpRequestPtr /*Req*/, FHttpResponsePtr Resp, bool bConnected)
 		{
 			UHorizonHttpClient* Self = WeakSelf.Get();
@@ -329,7 +345,7 @@ void UHorizonHttpClient::SendRequest(
 						*CapturedVerb, *CapturedUrl, RetryAfter, RetryCount + 1, Self->MaxRetryAttempts);
 
 					Self->ScheduleRetry(CapturedVerb, CapturedUrl, CapturedContentType, CapturedPayload,
-						bUseSessionToken, RetryCount, RetryAfter, CapturedOnComplete);
+						bUseSessionToken, RetryCount, RetryAfter, CapturedOnComplete, CapturedAcceptContentType);
 					return;
 				}
 
@@ -347,7 +363,7 @@ void UHorizonHttpClient::SendRequest(
 					Self->RetryDelaySeconds, RetryCount + 1, Self->MaxRetryAttempts);
 
 				Self->ScheduleRetry(CapturedVerb, CapturedUrl, CapturedContentType, CapturedPayload,
-					bUseSessionToken, RetryCount, Self->RetryDelaySeconds, CapturedOnComplete);
+					bUseSessionToken, RetryCount, Self->RetryDelaySeconds, CapturedOnComplete, CapturedAcceptContentType);
 				return;
 			}
 
@@ -365,7 +381,8 @@ void UHorizonHttpClient::SendRequest(
 void UHorizonHttpClient::ApplyHeaders(
 	TSharedRef<IHttpRequest, ESPMode::ThreadSafe> Request,
 	const FString& ContentType,
-	bool bUseSessionToken) const
+	bool bUseSessionToken,
+	const FString& AcceptContentType) const
 {
 	for (const auto& Header : HorizonTransportContract::BuildHeaders(
 		TCHAR_TO_UTF8(*ApiKey), TCHAR_TO_UTF8(*SessionToken), bUseSessionToken))
@@ -374,8 +391,12 @@ void UHorizonHttpClient::ApplyHeaders(
 	}
 	Request->SetHeader(TEXT("Content-Type"), ContentType);
 
-	// For binary GET requests, also set the Accept header
-	if (ContentType == TEXT("application/octet-stream") && Request->GetVerb() == TEXT("GET"))
+	// Preserve explicit response negotiation on every retry.
+	if (!AcceptContentType.IsEmpty())
+	{
+		Request->SetHeader(TEXT("Accept"), AcceptContentType);
+	}
+	else if (ContentType == TEXT("application/octet-stream") && Request->GetVerb() == TEXT("GET"))
 	{
 		Request->SetHeader(TEXT("Accept"), TEXT("application/octet-stream"));
 	}
@@ -483,7 +504,8 @@ void UHorizonHttpClient::ScheduleRetry(
 	bool bUseSessionToken,
 	int32 RetryCount,
 	float DelaySeconds,
-	FOnHttpResponse OnComplete)
+	FOnHttpResponse OnComplete,
+	const FString& AcceptContentType)
 {
 	TWeakObjectPtr<UHorizonHttpClient> WeakSelf(this);
 
@@ -491,6 +513,7 @@ void UHorizonHttpClient::ScheduleRetry(
 	FString CapturedVerb = Verb;
 	FString CapturedUrl = Url;
 	FString CapturedContentType = ContentType;
+	FString CapturedAcceptContentType = AcceptContentType;
 	TArray<uint8> CapturedPayload = Payload;
 	FOnHttpResponse CapturedOnComplete = OnComplete;
 	int32 NextRetryCount = RetryCount + 1;
@@ -511,13 +534,13 @@ void UHorizonHttpClient::ScheduleRetry(
 		FTimerHandle TimerHandle;
 		World->GetTimerManager().SetTimer(
 			TimerHandle,
-			[WeakSelf, CapturedVerb, CapturedUrl, CapturedContentType, CapturedPayload, bUseSessionToken, NextRetryCount, CapturedOnComplete]()
+			[WeakSelf, CapturedVerb, CapturedUrl, CapturedContentType, CapturedAcceptContentType, CapturedPayload, bUseSessionToken, NextRetryCount, CapturedOnComplete]()
 			{
 				UHorizonHttpClient* Self = WeakSelf.Get();
 				if (Self)
 				{
 					Self->SendRequest(CapturedVerb, CapturedUrl, CapturedContentType, CapturedPayload,
-						bUseSessionToken, NextRetryCount, CapturedOnComplete);
+						bUseSessionToken, NextRetryCount, CapturedOnComplete, CapturedAcceptContentType);
 				}
 			},
 			DelaySeconds,
@@ -529,7 +552,7 @@ void UHorizonHttpClient::ScheduleRetry(
 		// Fallback: FTSTicker (works even without a world, e.g. in editor utilities)
 		FTSTicker::GetCoreTicker().AddTicker(
 			FTickerDelegate::CreateLambda(
-				[WeakSelf, CapturedVerb, CapturedUrl, CapturedContentType, CapturedPayload, bUseSessionToken, NextRetryCount, CapturedOnComplete, DelaySeconds]
+				[WeakSelf, CapturedVerb, CapturedUrl, CapturedContentType, CapturedAcceptContentType, CapturedPayload, bUseSessionToken, NextRetryCount, CapturedOnComplete, DelaySeconds]
 				(float DeltaTime) mutable -> bool
 				{
 					DelaySeconds -= DeltaTime;
@@ -542,7 +565,7 @@ void UHorizonHttpClient::ScheduleRetry(
 					if (Self)
 					{
 						Self->SendRequest(CapturedVerb, CapturedUrl, CapturedContentType, CapturedPayload,
-							bUseSessionToken, NextRetryCount, CapturedOnComplete);
+							bUseSessionToken, NextRetryCount, CapturedOnComplete, CapturedAcceptContentType);
 					}
 					return false; // Remove ticker
 				}

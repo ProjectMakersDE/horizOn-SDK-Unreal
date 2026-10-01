@@ -27,10 +27,10 @@ public:
 	// --- Sign Up ---
 
 	/**
-	 * Register a new anonymous user.
+	 * Register a new anonymous user and sign in with the server-issued token.
 	 * @param DisplayName  Visible username.
 	 * @param OnComplete   Called with true on success.
-	 * @param AnonymousToken  Optional pre-existing token. If empty a new GUID is generated.
+	 * @param AnonymousToken  Deprecated and ignored. Use SignInAnonymous for an existing account.
 	 */
 	void SignUpAnonymous(const FString& DisplayName, FOnAuthComplete OnComplete, const FString& AnonymousToken = TEXT(""));
 

@@ -4,7 +4,6 @@
 #include "HorizonSDKModule.h"
 #include "HorizonSessionSave.h"
 #include "Dom/JsonObject.h"
-#include "Misc/Guid.h"
 #include "GenericPlatform/GenericPlatformProcess.h"
 #include "HAL/PlatformProcess.h"
 
@@ -28,10 +27,9 @@ void UHorizonAuthManager::Initialize(UHorizonHttpClient* InHttpClient)
 
 void UHorizonAuthManager::SignUpAnonymous(const FString& DisplayName, FOnAuthComplete OnComplete, const FString& AnonymousToken)
 {
-	FString Token = AnonymousToken;
-	if (Token.IsEmpty())
+	if (!AnonymousToken.IsEmpty())
 	{
-		Token = FGuid::NewGuid().ToString(EGuidFormats::DigitsLower);
+		UE_LOG(LogHorizonSDK, Warning, TEXT("SignUpAnonymous -- The token argument is ignored. Use SignInAnonymous for an existing account."));
 	}
 
 	TSharedRef<FJsonObject> Body = MakeShared<FJsonObject>();
@@ -40,10 +38,45 @@ void UHorizonAuthManager::SignUpAnonymous(const FString& DisplayName, FOnAuthCom
 	{
 		Body->SetStringField(TEXT("username"), DisplayName);
 	}
-	Body->SetStringField(TEXT("anonymousToken"), Token);
 
+	TWeakObjectPtr<UHorizonAuthManager> WeakSelf(this);
 	HttpClient->PostJson(Body, TEXT("api/v1/app/user-management/signup"), false,
-		FOnHttpResponse::CreateUObject(this, &UHorizonAuthManager::HandleAuthResponse, OnComplete));
+		FOnHttpResponse::CreateLambda(
+			[WeakSelf, OnComplete](const FHorizonNetworkResponse& Response)
+			{
+				UHorizonAuthManager* Self = WeakSelf.Get();
+				if (!Self)
+				{
+					return;
+				}
+				FString IssuedToken;
+				if (!Response.bSuccess || !Response.JsonData.IsValid() ||
+					!Response.JsonData->TryGetStringField(TEXT("anonymousToken"), IssuedToken) || IssuedToken.IsEmpty())
+				{
+					UE_LOG(LogHorizonSDK, Warning, TEXT("SignUpAnonymous -- Signup failed or did not return an anonymous token."));
+					OnComplete.ExecuteIfBound(false);
+					return;
+				}
+
+				// Persist the server-issued credential before sign-in. If sign-in fails,
+				// RestoreAnonymousSession can still recover the newly created account.
+				Self->ClearSession();
+				Self->CurrentUser.UserId = Response.JsonData->GetStringField(TEXT("userId"));
+				Response.JsonData->TryGetStringField(TEXT("username"), Self->CurrentUser.DisplayName);
+				Self->CurrentUser.AnonymousToken = IssuedToken;
+				Self->CurrentUser.bIsAnonymous = true;
+				Self->CacheSession();
+
+				FString AccessToken;
+				if (Response.JsonData->TryGetStringField(TEXT("accessToken"), AccessToken) && !AccessToken.IsEmpty())
+				{
+					Self->HandleAuthResponse(Response, OnComplete);
+				}
+				else
+				{
+					Self->SignInAnonymous(IssuedToken, OnComplete);
+				}
+			}));
 }
 
 void UHorizonAuthManager::SignUpEmail(const FString& Email, const FString& Password, const FString& Username, FOnAuthComplete OnComplete)
@@ -147,8 +180,25 @@ void UHorizonAuthManager::SignInAnonymous(const FString& AnonymousToken, FOnAuth
 		Body->SetStringField(TEXT("anonymousToken"), AnonymousToken);
 	}
 
+	TWeakObjectPtr<UHorizonAuthManager> WeakSelf(this);
 	HttpClient->PostJson(Body, TEXT("api/v1/app/user-management/signin"), false,
-		FOnHttpResponse::CreateUObject(this, &UHorizonAuthManager::HandleAuthResponse, OnComplete));
+		FOnHttpResponse::CreateLambda(
+			[WeakSelf, AnonymousToken, OnComplete](const FHorizonNetworkResponse& Response)
+			{
+				UHorizonAuthManager* Self = WeakSelf.Get();
+				if (!Self)
+				{
+					return;
+				}
+				if (Response.bSuccess && Response.JsonData.IsValid())
+				{
+					// SignInResponse omits the anonymous identity fields.
+					Response.JsonData->SetStringField(TEXT("anonymousToken"), AnonymousToken);
+					Response.JsonData->SetBoolField(TEXT("isAnonymous"), true);
+					Response.JsonData->SetBoolField(TEXT("isVerified"), true);
+				}
+				Self->HandleAuthResponse(Response, OnComplete);
+			}));
 }
 
 void UHorizonAuthManager::SignInGoogle(const FString& GoogleAuthCode, const FString& RedirectUri, FOnAuthComplete OnComplete)
@@ -248,10 +298,22 @@ void UHorizonAuthManager::SignInWithApple(FOnAuthComplete OnComplete)
 void UHorizonAuthManager::RestoreAnonymousSession(FOnAuthComplete OnComplete)
 {
 	UHorizonSessionSave* Save = UHorizonSessionSave::LoadFromDisk();
-	if (!Save || Save->CachedUserId.IsEmpty() || Save->CachedAccessToken.IsEmpty())
+	if (!Save)
 	{
 		UE_LOG(LogHorizonSDK, Log, TEXT("RestoreAnonymousSession -- No saved session found."));
 		OnComplete.ExecuteIfBound(false);
+		return;
+	}
+	if (Save->CachedUserId.IsEmpty() || Save->CachedAccessToken.IsEmpty())
+	{
+		if (!Save->CachedAnonymousToken.IsEmpty())
+		{
+			SignInAnonymous(Save->CachedAnonymousToken, OnComplete);
+		}
+		else
+		{
+			OnComplete.ExecuteIfBound(false);
+		}
 		return;
 	}
 
@@ -266,9 +328,10 @@ void UHorizonAuthManager::RestoreAnonymousSession(FOnAuthComplete OnComplete)
 
 	TWeakObjectPtr<UHorizonAuthManager> WeakSelf(this);
 	FOnAuthComplete CapturedOnComplete = OnComplete;
+	const FString CachedAnonymousToken = Save->CachedAnonymousToken;
 
 	CheckAuth(FOnAuthComplete::CreateLambda(
-		[WeakSelf, CapturedOnComplete](bool bSuccess)
+		[WeakSelf, CapturedOnComplete, CachedAnonymousToken](bool bSuccess)
 		{
 			UHorizonAuthManager* Self = WeakSelf.Get();
 			if (!Self)
@@ -281,13 +344,19 @@ void UHorizonAuthManager::RestoreAnonymousSession(FOnAuthComplete OnComplete)
 				UE_LOG(LogHorizonSDK, Log, TEXT("Session restored for user %s."), *Self->CurrentUser.UserId);
 				Self->OnUserSignedIn.Broadcast();
 				CapturedOnComplete.ExecuteIfBound(true);
+			}
+			else
+			{
+				Self->ClearSession();
+				if (!CachedAnonymousToken.IsEmpty())
+				{
+					Self->SignInAnonymous(CachedAnonymousToken, CapturedOnComplete);
 				}
 				else
 				{
-					UE_LOG(LogHorizonSDK, Warning, TEXT("RestoreAnonymousSession -- CheckAuth failed. Session cleared."));
-					Self->ClearSession();
 					CapturedOnComplete.ExecuteIfBound(false);
 				}
+			}
 		}
 		));
 }
