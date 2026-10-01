@@ -3,6 +3,8 @@
 #include "Http/HorizonHttpClient.h"
 #include "HorizonConfig.h"
 #include "HorizonSDKModule.h"
+#include "Transport/HorizonLeaderboardTransportContract.h"
+#include "Transport/HorizonValidatedActionsTransportContract.h"
 
 #include "HttpModule.h"
 #include "Interfaces/IHttpRequest.h"
@@ -11,6 +13,7 @@
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
 #include "Dom/JsonObject.h"
+#include "Dom/JsonValue.h"
 #include "Misc/App.h"
 #include "Containers/Ticker.h"
 #include "TimerManager.h"
@@ -207,6 +210,36 @@ void UHorizonHttpClient::PostJson(const TSharedRef<FJsonObject>& Body, const FSt
 	SendRequest(TEXT("POST"), Url, TEXT("application/json"), Payload, bUseSessionToken, 0, OnComplete);
 }
 
+void UHorizonHttpClient::PostJsonForBinary(const TSharedRef<FJsonObject>& Body, const FString& Endpoint, bool bUseSessionToken, FOnHttpResponse OnComplete)
+{
+	const FString Url = ActiveHost / Endpoint;
+	FString JsonString;
+	TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&JsonString);
+	FJsonSerializer::Serialize(Body, Writer);
+	TArray<uint8> Payload;
+	FTCHARToUTF8 Converter(*JsonString);
+	Payload.Append(reinterpret_cast<const uint8*>(Converter.Get()), Converter.Length());
+
+	SendRequest(TEXT("POST"), Url, TEXT("application/json"), Payload, bUseSessionToken, 0, OnComplete,
+		TEXT("application/octet-stream"));
+}
+
+void UHorizonHttpClient::PutJson(const TSharedRef<FJsonObject>& Body, const FString& Endpoint, bool bUseSessionToken, FOnHttpResponse OnComplete)
+{
+	const FString Url = ActiveHost / Endpoint;
+
+	FString JsonString;
+	TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&JsonString);
+	FJsonSerializer::Serialize(Body, Writer);
+
+	TArray<uint8> Payload;
+	FTCHARToUTF8 Converter(*JsonString);
+	Payload.Append(reinterpret_cast<const uint8*>(Converter.Get()), Converter.Length());
+
+	// Same headers, retries and 429 handling as PostJson (shared SendRequest).
+	SendRequest(TEXT("PUT"), Url, TEXT("application/json"), Payload, bUseSessionToken, 0, OnComplete);
+}
+
 void UHorizonHttpClient::PostBinary(const FString& Endpoint, const TArray<uint8>& Data, bool bUseSessionToken, FOnHttpResponse OnComplete)
 {
 	const FString Url = ActiveHost / Endpoint;
@@ -238,14 +271,15 @@ void UHorizonHttpClient::SendRequest(
 	const TArray<uint8>& Payload,
 	bool bUseSessionToken,
 	int32 RetryCount,
-	FOnHttpResponse OnComplete)
+	FOnHttpResponse OnComplete,
+	const FString& AcceptContentType)
 {
 	TSharedRef<IHttpRequest, ESPMode::ThreadSafe> Request = FHttpModule::Get().CreateRequest();
 	Request->SetVerb(Verb);
 	Request->SetURL(Url);
 	Request->SetTimeout(ConnectionTimeoutSeconds);
 
-	ApplyHeaders(Request, ContentType, bUseSessionToken);
+	ApplyHeaders(Request, ContentType, bUseSessionToken, AcceptContentType);
 
 	if (Payload.Num() > 0)
 	{
@@ -256,11 +290,12 @@ void UHorizonHttpClient::SendRequest(
 	FString CapturedVerb = Verb;
 	FString CapturedUrl = Url;
 	FString CapturedContentType = ContentType;
+	FString CapturedAcceptContentType = AcceptContentType;
 	TArray<uint8> CapturedPayload = Payload;
 	FOnHttpResponse CapturedOnComplete = OnComplete;
 
 	Request->OnProcessRequestComplete().BindLambda(
-		[WeakSelf, CapturedVerb, CapturedUrl, CapturedContentType, CapturedPayload, bUseSessionToken, RetryCount, CapturedOnComplete]
+		[WeakSelf, CapturedVerb, CapturedUrl, CapturedContentType, CapturedAcceptContentType, CapturedPayload, bUseSessionToken, RetryCount, CapturedOnComplete]
 		(FHttpRequestPtr /*Req*/, FHttpResponsePtr Resp, bool bConnected)
 		{
 			UHorizonHttpClient* Self = WeakSelf.Get();
@@ -294,15 +329,30 @@ void UHorizonHttpClient::SendRequest(
 					}
 				}
 
-				UE_LOG(LogHorizonSDK, Warning, TEXT("Rate limited (429) on %s %s. Retrying after %.1fs (attempt %d/%d)."),
-					*CapturedVerb, *CapturedUrl, RetryAfter, RetryCount + 1, Self->MaxRetryAttempts);
+				// Validated Actions run limits (RUN_RATE_LIMITED, RUN_CAPACITY_REACHED) can mean a wait
+				// of up to an hour: deliver them right away instead of retrying.
+				if (HorizonTransportContract::IsNonRetryableRateLimitCode(TCHAR_TO_UTF8(*Response.ServerErrorCode)))
+				{
+					UE_LOG(LogHorizonSDK, Warning, TEXT("Rate limited (429, %s) on %s %s. Not retried: %s"),
+						*Response.ServerErrorCode, *CapturedVerb, *CapturedUrl, *Response.ErrorMessage);
+					CapturedOnComplete.ExecuteIfBound(Response);
+					return;
+				}
 
 				if (RetryCount < Self->MaxRetryAttempts)
 				{
+					UE_LOG(LogHorizonSDK, Warning, TEXT("Rate limited (429) on %s %s. Retrying after %.1fs (attempt %d/%d)."),
+						*CapturedVerb, *CapturedUrl, RetryAfter, RetryCount + 1, Self->MaxRetryAttempts);
+
 					Self->ScheduleRetry(CapturedVerb, CapturedUrl, CapturedContentType, CapturedPayload,
-						bUseSessionToken, RetryCount, RetryAfter, CapturedOnComplete);
+						bUseSessionToken, RetryCount, RetryAfter, CapturedOnComplete, CapturedAcceptContentType);
 					return;
 				}
+
+				// Still rate limited after the last attempt: deliver the 429 with its clear
+				// message from ParseResponse (no 5xx retry below, 429 is not retryable there).
+				UE_LOG(LogHorizonSDK, Warning, TEXT("Rate limited (429) on %s %s. Giving up after %d retries: %s"),
+					*CapturedVerb, *CapturedUrl, Self->MaxRetryAttempts, *Response.ErrorMessage);
 			}
 
 			// Handle 5xx / connection failure with retry
@@ -313,7 +363,7 @@ void UHorizonHttpClient::SendRequest(
 					Self->RetryDelaySeconds, RetryCount + 1, Self->MaxRetryAttempts);
 
 				Self->ScheduleRetry(CapturedVerb, CapturedUrl, CapturedContentType, CapturedPayload,
-					bUseSessionToken, RetryCount, Self->RetryDelaySeconds, CapturedOnComplete);
+					bUseSessionToken, RetryCount, Self->RetryDelaySeconds, CapturedOnComplete, CapturedAcceptContentType);
 				return;
 			}
 
@@ -331,21 +381,26 @@ void UHorizonHttpClient::SendRequest(
 void UHorizonHttpClient::ApplyHeaders(
 	TSharedRef<IHttpRequest, ESPMode::ThreadSafe> Request,
 	const FString& ContentType,
-	bool bUseSessionToken) const
+	bool bUseSessionToken,
+	const FString& AcceptContentType) const
 {
-	Request->SetHeader(TEXT("X-API-Key"), ApiKey);
+	for (const auto& Header : HorizonTransportContract::BuildHeaders(
+		TCHAR_TO_UTF8(*ApiKey), TCHAR_TO_UTF8(*SessionToken), bUseSessionToken))
+	{
+		Request->SetHeader(UTF8_TO_TCHAR(Header.first.c_str()), UTF8_TO_TCHAR(Header.second.c_str()));
+	}
 	Request->SetHeader(TEXT("Content-Type"), ContentType);
 
-	// For binary GET requests, also set the Accept header
-	if (ContentType == TEXT("application/octet-stream") && Request->GetVerb() == TEXT("GET"))
+	// Preserve explicit response negotiation on every retry.
+	if (!AcceptContentType.IsEmpty())
+	{
+		Request->SetHeader(TEXT("Accept"), AcceptContentType);
+	}
+	else if (ContentType == TEXT("application/octet-stream") && Request->GetVerb() == TEXT("GET"))
 	{
 		Request->SetHeader(TEXT("Accept"), TEXT("application/octet-stream"));
 	}
 
-	if (bUseSessionToken && !SessionToken.IsEmpty())
-	{
-		Request->SetHeader(TEXT("Authorization"), FString::Printf(TEXT("Bearer %s"), *SessionToken));
-	}
 }
 
 // ============================================================
@@ -392,9 +447,27 @@ FHorizonNetworkResponse UHorizonHttpClient::ParseResponse(FHttpResponsePtr HttpR
 	// Extract error message for non-success responses
 	if (!Response.bSuccess)
 	{
+		// Machine readable server code (for example "COSMETIC_LOCKED"), only when it is a JSON string.
+		if (Response.JsonData.IsValid())
+		{
+			const TSharedPtr<FJsonValue> CodeValue = Response.JsonData->TryGetField(TEXT("code"));
+			if (CodeValue.IsValid() && CodeValue->Type == EJson::String)
+			{
+				Response.ServerErrorCode = CodeValue->AsString();
+			}
+		}
+
 		if (Response.JsonData.IsValid() && Response.JsonData->HasField(TEXT("message")))
 		{
 			Response.ErrorMessage = Response.JsonData->GetStringField(TEXT("message"));
+		}
+		else if (Response.StatusCode == 429)
+		{
+			// The server answers 429 with an empty body and a Retry-After header (seconds).
+			const float RetryAfterSeconds = FCString::Atof(*HttpResponse->GetHeader(TEXT("Retry-After")));
+			Response.ErrorMessage = RetryAfterSeconds > 0.0f
+				? FString::Printf(TEXT("Rate limit exceeded (HTTP 429). Try again in %d seconds."), FMath::CeilToInt(RetryAfterSeconds))
+				: FString(TEXT("Rate limit exceeded (HTTP 429). Try again later."));
 		}
 		else
 		{
@@ -408,6 +481,7 @@ FHorizonNetworkResponse UHorizonHttpClient::ParseResponse(FHttpResponsePtr HttpR
 		Response.bSuccess = true;
 		Response.ErrorCode = EHorizonErrorCode::None;
 		Response.ErrorMessage.Empty();
+		Response.ServerErrorCode.Empty();
 	}
 
 	return Response;
@@ -430,7 +504,8 @@ void UHorizonHttpClient::ScheduleRetry(
 	bool bUseSessionToken,
 	int32 RetryCount,
 	float DelaySeconds,
-	FOnHttpResponse OnComplete)
+	FOnHttpResponse OnComplete,
+	const FString& AcceptContentType)
 {
 	TWeakObjectPtr<UHorizonHttpClient> WeakSelf(this);
 
@@ -438,6 +513,7 @@ void UHorizonHttpClient::ScheduleRetry(
 	FString CapturedVerb = Verb;
 	FString CapturedUrl = Url;
 	FString CapturedContentType = ContentType;
+	FString CapturedAcceptContentType = AcceptContentType;
 	TArray<uint8> CapturedPayload = Payload;
 	FOnHttpResponse CapturedOnComplete = OnComplete;
 	int32 NextRetryCount = RetryCount + 1;
@@ -458,13 +534,13 @@ void UHorizonHttpClient::ScheduleRetry(
 		FTimerHandle TimerHandle;
 		World->GetTimerManager().SetTimer(
 			TimerHandle,
-			[WeakSelf, CapturedVerb, CapturedUrl, CapturedContentType, CapturedPayload, bUseSessionToken, NextRetryCount, CapturedOnComplete]()
+			[WeakSelf, CapturedVerb, CapturedUrl, CapturedContentType, CapturedAcceptContentType, CapturedPayload, bUseSessionToken, NextRetryCount, CapturedOnComplete]()
 			{
 				UHorizonHttpClient* Self = WeakSelf.Get();
 				if (Self)
 				{
 					Self->SendRequest(CapturedVerb, CapturedUrl, CapturedContentType, CapturedPayload,
-						bUseSessionToken, NextRetryCount, CapturedOnComplete);
+						bUseSessionToken, NextRetryCount, CapturedOnComplete, CapturedAcceptContentType);
 				}
 			},
 			DelaySeconds,
@@ -476,7 +552,7 @@ void UHorizonHttpClient::ScheduleRetry(
 		// Fallback: FTSTicker (works even without a world, e.g. in editor utilities)
 		FTSTicker::GetCoreTicker().AddTicker(
 			FTickerDelegate::CreateLambda(
-				[WeakSelf, CapturedVerb, CapturedUrl, CapturedContentType, CapturedPayload, bUseSessionToken, NextRetryCount, CapturedOnComplete, DelaySeconds]
+				[WeakSelf, CapturedVerb, CapturedUrl, CapturedContentType, CapturedAcceptContentType, CapturedPayload, bUseSessionToken, NextRetryCount, CapturedOnComplete, DelaySeconds]
 				(float DeltaTime) mutable -> bool
 				{
 					DelaySeconds -= DeltaTime;
@@ -489,7 +565,7 @@ void UHorizonHttpClient::ScheduleRetry(
 					if (Self)
 					{
 						Self->SendRequest(CapturedVerb, CapturedUrl, CapturedContentType, CapturedPayload,
-							bUseSessionToken, NextRetryCount, CapturedOnComplete);
+							bUseSessionToken, NextRetryCount, CapturedOnComplete, CapturedAcceptContentType);
 					}
 					return false; // Remove ticker
 				}

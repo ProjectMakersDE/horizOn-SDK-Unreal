@@ -15,6 +15,7 @@ FHorizonLeaderboardBoard FHorizonLeaderboardBoard::FromJson(const TSharedPtr<FJs
 	JsonObject->TryGetStringField(TEXT("name"), Board.Name);
 	JsonObject->TryGetStringField(TEXT("sortOrder"), Board.SortOrder);
 	JsonObject->TryGetBoolField(TEXT("isActive"), Board.bIsActive);
+	JsonObject->TryGetBoolField(TEXT("validatedOnly"), Board.bValidatedOnly);
 	JsonObject->TryGetStringField(TEXT("createdAt"), Board.CreatedAt);
 	JsonObject->TryGetStringField(TEXT("updatedAt"), Board.UpdatedAt);
 

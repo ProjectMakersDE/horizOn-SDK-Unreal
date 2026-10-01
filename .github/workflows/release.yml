@@ -2,14 +2,24 @@ name: Release
 
 on:
   push:
-    branches: [main]
+    branches: [release]
 
 permissions:
   contents: write
 
 jobs:
+  transport-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run leaderboard transport contract
+        run: bash Tests/run_transport_test.sh
+
   release:
     runs-on: ubuntu-latest
+    needs: transport-test
     outputs:
       released: ${{ steps.semantic.outputs.new_release_published }}
       version: ${{ steps.semantic.outputs.new_release_version }}
@@ -73,7 +83,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: main
+          ref: release
 
       - name: Create plugin ZIP
         run: |

@@ -22,7 +22,9 @@ Official Unreal Engine SDK for **horizOn** Backend-as-a-Service by [ProjectMaker
 | ⚙️ **Remote Config** | `UHorizonRemoteConfigManager` | Typed key-value retrieval (string, int, float, bool) with caching |
 | 🌐 **Localization** | `UHorizonLocalizationManager` | Translated strings in 15 languages with an active language and caching |
 | 📰 **News** | `UHorizonNewsManager` | In-game news feed with language filtering and TTL cache |
-| 🎁 **Gift Codes** | `UHorizonGiftCodeManager` | Validate and redeem promotional codes |
+| 🎁 **Gift Codes** | `UHorizonGiftCodeManager` | Validate and redeem promotional codes, cosmetic unlocks via `grants` |
+| 🧑‍🎤 **Player Profile** | `UHorizonPlayerProfileManager` | Avatar, frame and badges per player, cosmetic unlocks, shown in leaderboards |
+| ✅ **Validated Actions** | `UHorizonValidatedActionsManager` | Server-checked runs: ticket with seed, validated submit with input log hash, rule codes, server-owned currency and loot, input log upload as evidence |
 | 💬 **Feedback** | `UHorizonFeedbackManager` | Submit bug reports, feature requests, and general feedback |
 | 📊 **User Logs** | `UHorizonUserLogManager` | Server-side structured logging for analytics and debugging |
 | 💥 **Crash Reporting** | `UHorizonCrashManager` | Crash capture, exception tracking, breadcrumbs |
@@ -95,6 +97,8 @@ Horizon->Disconnect();
 
 ### Authentication
 
+Anonymous signup omits client tokens and stores the token issued by the server. It signs in with that token when signup returns no session. The deprecated token argument is ignored. Use `SignInAnonymous` for an existing account. `RestoreAnonymousSession` reuses the cached token if its session has expired.
+
 ```cpp
 // Anonymous sign-up
 Horizon->Auth->SignUpAnonymous(TEXT("PlayerName"),
@@ -154,7 +158,29 @@ Horizon->Leaderboard->GetAround(5, true,
     FOnLeaderboardEntriesComplete::CreateLambda([](bool bSuccess, const TArray<FHorizonLeaderboardEntry>& Entries) { }));
 ```
 
+A board can accept validated runs only (`FHorizonLeaderboardBoard::bValidatedOnly`, from
+`ListBoards`). `SubmitScore` to such a board fails with the code `VALIDATED_SUBMIT_REQUIRED`
+and writes nothing; the SDK does not retry it. The `OnComplete` signature is unchanged, read
+the code with `Horizon->Leaderboard->GetLastSubmitErrorCode()` and submit through
+[Validated Actions](#validated-actions) instead. A player banned from a board gets
+`PLAYER_BANNED` from `SubmitScore` (same way, nothing written, not retried).
+
+Every entry of top, around and rank carries the player's profile in `Entry.Profile`
+(`AvatarId`, `FrameId`, `Badges`). Empty values mean "not set"; treat IDs your game
+does not know as "not set" as well and fall back to a default avatar.
+
+```cpp
+for (const FHorizonLeaderboardEntry& Entry : Entries)
+{
+    const FString Avatar = Entry.Profile.HasAvatar() ? Entry.Profile.AvatarId : TEXT("avatar.default");
+    UE_LOG(LogTemp, Log, TEXT("#%d %s %lld (%s, %d badges)"),
+        Entry.Position, *Entry.Username, Entry.Score, *Avatar, Entry.Profile.Badges.Num());
+}
+```
+
 ### Cloud Saves
+
+Sign in first. All save/load requests carry the player session. Binary loads POST a JSON `userId` body with `Accept: application/octet-stream`. HTTP 204 completes with `false` and empty bytes when no save exists.
 
 ```cpp
 // Save JSON object
@@ -236,6 +262,8 @@ Horizon->News->LoadNews(20, TEXT("en"), true,
 
 ### Gift Codes
 
+`Redeem` needs a signed-in player and sends the player session (`Authorization: Bearer`). The server only redeems codes for the player who owns that session.
+
 ```cpp
 // Validate
 Horizon->GiftCodes->Validate(TEXT("ABCD-1234"),
@@ -243,14 +271,285 @@ Horizon->GiftCodes->Validate(TEXT("ABCD-1234"),
 
 // Redeem
 Horizon->GiftCodes->Redeem(TEXT("ABCD-1234"),
-    FOnGiftCodeRedeemComplete::CreateLambda([](bool bSuccess, const FString& GiftData, const FString& Message)
+    FOnGiftCodeRedeemComplete::CreateLambda([Horizon](bool bSuccess, const FString& GiftData, const FString& Message)
     {
         if (bSuccess)
         {
-            // Parse GiftData for rewards
+            // Parse GiftData for rewards.
+            // Cosmetics from the code's "grants" are unlocked on the server:
+            const TArray<FString>& Unlocked = Horizon->GiftCodes->GetLastGrantedUnlocks();
+            // The cached player profile was cleared; GetProfile now shows the unlocks.
         }
     }));
 ```
+
+A code whose `giftData` contains `grants` (for example `{"grants": ["badge.supporter"]}`)
+unlocks those cosmetics for the player. `GetLastGrantedUnlocks()` returns them after a
+successful redeem (empty when the code had no grants); in Blueprints use
+**"Get Horizon Last Granted Unlocks"**.
+
+### Player Profile
+
+Each player has a small profile that leaderboards show next to name and score: an
+avatar, an optional frame and up to three badges. The catalog of cosmetics (IDs with
+type `avatar`, `frame` or `badge`, free or locked) is maintained per API key in the
+horizOn Dashboard. The server stores IDs only; your game maps them to its own assets.
+Locked cosmetics need an unlock, granted by a gift code with `grants` or in the Dashboard.
+
+Both calls need a signed-in player and send the player session (`Authorization: Bearer`).
+
+```cpp
+// Load profile, unlocks and the catalog (with an availability flag per entry)
+Horizon->PlayerProfile->GetProfile(
+    FOnPlayerProfileComplete::CreateLambda([](bool bSuccess, const FHorizonPlayerProfileResult& Result,
+        const FString& ErrorCode, const FString& ErrorMessage)
+    {
+        if (!bSuccess) { return; }
+        for (const FHorizonCosmetic& Avatar : Result.GetCosmetics(TEXT("avatar")))
+        {
+            // Build the picker: Avatar.Id, Avatar.bLocked, Avatar.bAvailable
+        }
+    }));
+
+// Replace the whole profile (pass the current values for slots you keep)
+Horizon->PlayerProfile->SetProfile(
+    TEXT("avatar.zombie_07"),
+    TEXT(""),                          // empty clears the frame
+    { TEXT("badge.supporter") },       // at most 3, empty array clears the badges
+    FOnPlayerProfileComplete::CreateLambda([](bool bSuccess, const FHorizonPlayerProfileResult& Result,
+        const FString& ErrorCode, const FString& ErrorMessage)
+    {
+        if (!bSuccess && ErrorCode == TEXT("COSMETIC_LOCKED"))
+        {
+            // The player does not own this cosmetic yet
+        }
+    }));
+
+// Last result, cached until sign-in, sign-out or a gift code that granted unlocks
+if (Horizon->PlayerProfile->HasCurrentProfile())
+{
+    const FHorizonPlayerProfileResult& Current = Horizon->PlayerProfile->GetCurrentProfile();
+    bool bCanUse = Current.IsAvailable(TEXT("frame.gold"));
+}
+```
+
+`ErrorCode` is the server code: `INVALID_COSMETIC_ID`, `INVALID_BADGES` (more than 3 or
+listed twice), `COSMETIC_NOT_FOUND`, `COSMETIC_TYPE_MISMATCH`, `COSMETIC_LOCKED`,
+`SESSION_REQUIRED`, `SESSION_FORBIDDEN`, `PLAYER_NOT_FOUND`. Without a signed-in player
+the SDK fails locally with `SESSION_REQUIRED` and sends nothing; more than 3 badges or a
+malformed ID fail locally too. Without a server code the SDK reports the HTTP mapping
+(`RATE_LIMITED`, `CONNECTION_FAILED`, `SERVER_ERROR`, ...). Cosmetic IDs are 1 to 32
+characters: lowercase letters, digits, `.`, `_`, `-`.
+
+#### Blueprints
+
+- **"Get Player Profile"**: Loads profile, unlocks and catalog (On Success: Result, On Failure: Error Code, Error Message)
+- **"Set Player Profile"**: Replaces avatar, frame and badges
+- **"Get Horizon Current Player Profile"**: The last cached result
+- **"Get Horizon Cosmetics Of Type"** / **"Is Horizon Cosmetic Available"**: Picker helpers
+- **"Get Horizon Last Granted Unlocks"**: Unlocks from the last redeemed gift code
+
+### Validated Actions
+
+Validated Actions let the server check a run before its result counts. A run starts with a
+single use ticket and a server seed. Seed all randomness of the run with that seed, record the
+player's inputs as bytes, and submit the result together with the SHA-256 of that input log.
+The server checks the rules of your API key (maximum and minimum score, minimum duration,
+score per second, stages; set in the horizOn Dashboard) before anything is written and answers
+a rejection with a machine readable code. Rule values never reach the client.
+
+Both calls need a signed-in player and send the player session (`Authorization: Bearer`).
+
+```cpp
+#include "Managers/HorizonValidatedActionsManager.h"
+
+// 1. Start a run (bound to the board "weekly"; an empty key starts an unbound run)
+Horizon->ValidatedActions->StartRun(TEXT("weekly"),
+    FOnValidatedRunStarted::CreateLambda([](bool bSuccess, const FHorizonValidatedRun& Run,
+        const FString& ErrorCode, const FString& ErrorMessage)
+    {
+        if (!bSuccess) { return; } // for example RUN_RATE_LIMITED
+        FRandomStream Random(Run.Seed); // all randomness of the run from the server seed
+    }));
+
+// 2. Play, append every input to TArray<uint8> InputLog, then submit the current run
+Horizon->ValidatedActions->SubmitValidated(18250, InputLog, TEXT(""), TEXT(""), {},
+    FOnValidatedSubmitComplete::CreateLambda([](bool bSuccess, const FHorizonValidatedSubmitResult& Result,
+        const FString& ErrorCode, const FString& ErrorMessage)
+    {
+        if (!bSuccess)
+        {
+            // Rule codes such as DURATION_TOO_SHORT or SCORE_ABOVE_MAX, ticket codes such as TICKET_EXPIRED
+            UE_LOG(LogTemp, Warning, TEXT("Run rejected: %s"), *ErrorCode);
+            return;
+        }
+        UE_LOG(LogTemp, Log, TEXT("Best %lld, rank %lld, %lld s"), Result.BestScore, Result.Rank, Result.DurationSeconds);
+    }));
+
+// With a hash computed elsewhere (64 hex characters)
+const FString Hash = UHorizonValidatedActionsManager::ComputeInputLogHash(InputLog);
+Horizon->ValidatedActions->SubmitValidatedWithHash(18250, Hash, TEXT("wave_10"), TEXT("weekly"), {}, OnComplete);
+```
+
+- `SubmitValidated` parameters: `Score` (ignored by the server for a run without board),
+  `InputLog`, `Stage` (for stage rules, empty when none), `LeaderboardKey` (empty uses the
+  ticket's board), `Earned` (`TArray<FHorizonEarnedValue>`, see
+  [Server-owned state](#server-owned-state); leave it empty unless the rules define values).
+- The manager keeps the started run: `GetCurrentRun()`, `HasActiveRun()`, `DiscardRun()`.
+  A ticket is single use: after an accepted run, the ticket codes (`TICKET_*`), every rule
+  or value rejection (422) and 403 `SCORE_LIMIT_REACHED` the current run is cleared. The
+  server checks the board and the request before it touches the ticket, so the run stays on
+  `LEADERBOARD_NOT_FOUND`, `LEADERBOARD_MISMATCH`, `SCORE_REQUIRED` and
+  `PLAYER_NAME_REQUIRED` (fix the call and submit again), and also on network errors, 401,
+  429 and 5xx. Sign-out clears the run.
+- 403 `PLAYER_BANNED`: the player is banned from the board. The server checks this before it
+  touches the ticket, so the run stays (the ticket works again after an unban). Drop it with
+  `DiscardRun()` or start a run without board.
+- `GetLastErrorCode()` returns the code of the last failed call.
+- An accepted run with a board clears the leaderboard cache, like `SubmitScore`.
+
+Error codes: `SESSION_REQUIRED`, `NO_ACTIVE_RUN` (no started run) and
+`INVALID_INPUT_LOG_HASH` fail locally without a request. Server codes: `TICKET_INVALID`,
+`TICKET_EXPIRED`, `TICKET_FOREIGN`, `TICKET_CONSUMED`, `LEADERBOARD_MISMATCH`,
+`STAGE_REQUIRED`, `STAGE_UNKNOWN`, `SCORE_ABOVE_MAX`, `SCORE_BELOW_MIN`,
+`STAGE_SCORE_ABOVE_MAX`, `STAGE_SCORE_BELOW_MIN`, `DURATION_TOO_SHORT`,
+`SCORE_RATE_TOO_HIGH`, `UNKNOWN_VALUE_KEY`, `DUPLICATE_VALUE_KEY`, `EARNED_ABOVE_MAX`,
+`EARNED_BELOW_MIN`, `INSUFFICIENT_BALANCE`, `SCORE_LIMIT_REACHED`, `PLAYER_BANNED`, `SCORE_REQUIRED`, `PLAYER_NAME_REQUIRED`,
+`LEADERBOARD_NOT_FOUND`, `PLAYER_NOT_FOUND`, `SESSION_FORBIDDEN`,
+`VALIDATED_ACTIONS_UNAVAILABLE`, `RUN_RATE_LIMITED` and `RUN_CAPACITY_REACHED`. The two run
+limits are not retried automatically (the wait can be up to an hour). A backend without the
+feature (for example a Simple Server) gives `NOT_SUPPORTED`.
+
+#### Server-owned state
+
+The rules of your API key can define values (currency, loot counters) under `values`, for
+example `"gold": {"maxPerRun": 500, "dailyCap": 5000}`. Only the server writes them. A run
+earns (positive) or spends (negative) them through `Earned` of the submit; the server checks
+the key (`UNKNOWN_VALUE_KEY`, also when the rules define no values), duplicates
+(`DUPLICATE_VALUE_KEY`), `maxPerRun` / `minPerRun` (`EARNED_ABOVE_MAX`, `EARNED_BELOW_MIN`)
+and the balance of a spend (`INSUFFICIENT_BALANCE`). These are 422 rejections: the ticket is
+used up. The daily cap and `maxBalance` clamp a credit without rejecting the run.
+
+```cpp
+// Earn 250 gold and spend one chest key in the same run
+TArray<FHorizonEarnedValue> Earned;
+Earned.Add(FHorizonEarnedValue(TEXT("gold"), 250));
+Earned.Add(FHorizonEarnedValue(TEXT("chest.key"), -1));
+
+Horizon->ValidatedActions->SubmitValidated(18250, InputLog, TEXT(""), TEXT(""), Earned,
+    FOnValidatedSubmitComplete::CreateLambda([](bool bSuccess, const FHorizonValidatedSubmitResult& Result,
+        const FString& ErrorCode, const FString& ErrorMessage)
+    {
+        if (!bSuccess) { return; } // for example INSUFFICIENT_BALANCE
+        const FHorizonPlayerStateValue* Key = Result.State.FindValue(TEXT("chest.key"));
+        if (Key && Key->IsFullyCredited())
+        {
+            // The spend was applied: open the chest
+        }
+        UE_LOG(LogTemp, Log, TEXT("Gold: %lld"), Result.State.GetBalance(TEXT("gold")));
+    }));
+
+// Read the state at any time (for example at game start)
+Horizon->ValidatedActions->GetState(FOnPlayerStateLoaded::CreateLambda(
+    [](bool bSuccess, const FHorizonPlayerState& State, const FString& ErrorCode, const FString& ErrorMessage)
+    {
+        for (const FHorizonPlayerStateValue& Value : State.Values)
+        {
+            // "250 / 5000 today"; DailyCap 0 means no cap
+            UE_LOG(LogTemp, Log, TEXT("%s: %lld (%lld / %lld today)"), *Value.Key, Value.Balance, Value.EarnedToday, Value.DailyCap);
+        }
+    }));
+```
+
+- `FHorizonPlayerState`: `Day` (current UTC day), `Values` (every key of the rules, sorted,
+  balance 0 when never earned), `GetBalance(Key)`, `FindValue(Key)`. `UserId` is set by
+  `GetState` only.
+- `FHorizonPlayerStateValue`: `Key`, `Balance`, `EarnedToday`, `DailyCap` (0 = no cap),
+  `Requested` and `Credited` (int64). `Requested` / `Credited` are set in a submit result for
+  the values the run touched and 0 otherwise. `Credited < Requested` for a credit means the
+  daily cap or `maxBalance` clamped it. A spend is either applied in full or `Credited` is 0
+  (a parallel run of the same player used the balance first): grant a purchase only when
+  `IsFullyCredited()`.
+- `Result.State` is empty when the rules define no values.
+- The manager caches the last known state: `GetCurrentState()`, `HasState()`,
+  `GetBalance(Key)`, updated by `GetState` and every accepted run with a state, cleared on
+  sign-out. `OnStateChanged` (Blueprint assignable) fires on every change.
+- There is no method that writes the state. Support corrects balances in the horizOn
+  Dashboard.
+
+**Cloud save as a mirror.** The cloud save stays a blob the client writes. Keep server-owned
+values there only as a copy:
+
+1. After every accepted run copy `Result.State` into your save data (for display and an
+   offline start).
+2. At game start call `GetState` and overwrite the copy with it, never the other way round.
+3. Never send a value from the cloud save back as a balance. Balances change only through
+   `Earned` of a validated run.
+4. Values earned offline are sent as `Earned` with the next validated run; the per run and
+   daily limits apply as usual.
+
+`AHorizonValidatedActionsExample::BuildCloudSaveMirror(State)` shows one compact format
+(`{"day":"2026-09-29","balances":{"gold":1250}}`).
+
+#### Evidence
+
+The server can ask for the input log of an accepted run, for example when the run is flagged
+or lands in the board's top N (`evidenceTopN`, set per board in the horizOn Dashboard). The
+result then carries `Result.Evidence` with `bRequired = true`, `RunId`, `UploadBefore` (24 h)
+and `MaxBytes` (32,768). You can review and download the logs in the horizOn Dashboard and
+replay them with the run's seed.
+
+- After `SubmitValidated` the SDK uploads the same bytes by itself
+  (`PUT /api/v1/app/validated-actions/runs/{runId}/evidence`, the log as standard base64).
+  Turn this off with `Horizon->ValidatedActions->bAutoUploadEvidence = false`.
+- After `SubmitValidatedWithHash` the SDK does not know the bytes. Call `UploadEvidence`
+  yourself with the exact bytes of the submitted hash:
+
+```cpp
+if (Result.Evidence.bRequired)
+{
+    Horizon->ValidatedActions->UploadEvidence(Result.Evidence.RunId, InputLog,
+        FOnEvidenceUploaded::CreateLambda([](bool bSuccess, const FHorizonEvidenceUploadResult& Upload,
+            const FString& ErrorCode, const FString& ErrorMessage)
+        {
+            if (!bSuccess && UHorizonValidatedActionsManager::IsEvidenceUploadRetryable(ErrorCode))
+            {
+                // EVIDENCE_HASH_MISMATCH (send the correct bytes) or a network error: try again later
+            }
+        }));
+}
+```
+
+- Every upload, automatic or manual, fires `OnEvidenceUploaded(RunId, Bytes)` or
+  `OnEvidenceUploadFailed(RunId, ErrorCode, ErrorMessage)` (Blueprint assignable).
+  `GetLastEvidenceErrorCode()` holds the last upload error. An upload never changes the
+  submit result or `GetLastErrorCode()`: the run counts either way.
+- Upload codes: `EVIDENCE_HASH_MISMATCH` (422, the request stays open, send the correct bytes
+  again), `EVIDENCE_NOT_REQUESTED` (404), `EVIDENCE_ALREADY_UPLOADED` (409),
+  `EVIDENCE_EXPIRED` (410, past `UploadBefore`), `EVIDENCE_TOO_LARGE` (413, also checked
+  locally against `MaxBytes` of the evidence request), `EVIDENCE_INVALID_ENCODING` (400).
+  Local codes: `SESSION_REQUIRED`, `INVALID_RUN_ID`, `EMPTY_INPUT_LOG`.
+- Send an upload again only when `IsEvidenceUploadRetryable(ErrorCode)` is true:
+  `EVIDENCE_HASH_MISMATCH` and network errors (`CONNECTION_FAILED`). All other codes are
+  final. The SDK itself never repeats an upload beyond the HTTP client's network retries.
+- The automatic upload starts after the submit callback ran, with `Result.Evidence.RunId`
+  (falling back to `Result.RunId`).
+
+#### Blueprints
+
+- **"Start Validated Run"**: Starts a run (On Success: Run, On Failure: Error Code, Error Message)
+- **"Submit Validated Run"**: Hashes the input log and submits the current run (On Success: Result, with `State`)
+- **"Submit Validated Run With Hash"**: Same with a ready SHA-256 hash
+- **"Get Validated Player State"**: Loads the server-owned values (On Success: State)
+- **"Upload Validated Run Evidence"**: Uploads the input log of an accepted run (On Success: Result with `RunId`, `Status`, `Bytes`)
+- **"Compute Input Log Hash"**, **"Has Active Run"**, **"Get Last Error Code"**, **"Discard Run"**,
+  **"Has State"**, **"Get Balance"**, **"Is Evidence Upload Retryable"**, **"Get Last Evidence Error Code"**,
+  the property **Auto Upload Evidence** and the events **On State Changed**, **On Evidence Uploaded**,
+  **On Evidence Upload Failed** on `ValidatedActions`
+- **"Get Horizon Current Validated Run"**: The current run
+- **"Get Horizon Validated Player State"**: The cached state
+- **"Get Horizon Validated Balance"**, **"Find Horizon Validated Value"**,
+  **"Is Horizon Value Fully Credited"**: Helpers for a state and its values
 
 ### Feedback
 
@@ -495,6 +794,8 @@ The horizOn SDKs work with both the **managed horizOn BaaS** and the **free, ope
 
 Simple Server is a lightweight PHP backend with no dependencies — perfect as a starting point if you want full control over your infrastructure. It supports core features like leaderboards, cloud saves, remote config, news, gift codes, feedback, and crash reporting.
 
+Validated Actions are cloud only: a Simple Server does not have them, the SDK reports `NOT_SUPPORTED`.
+
 To connect to your own server, set the **Backend Hosts** in Project Settings > Plugins > horizOn SDK to your server URL.
 
 > **Note:** Simple Server is a starting point, not a full replacement. For the complete experience with dashboard, user authentication, multi-region deployment, and more, use [horizOn BaaS](https://horizon.pm).
@@ -520,6 +821,10 @@ Plugins/HorizonSDK/
 ├── Docs/
 └── Config/
 ```
+
+## Transport checks
+
+Run `bash Tests/run_transport_test.sh` from the repository root. The standalone tests include selected production auth, user-model, binary-load and HTTP helper methods compiled against in-memory engine boundaries. They cover server-issued token signup, direct signup sessions, failed and expired session recovery, returning accounts, binary headers/body, 204 and 401. A full plugin build still requires an Unreal Engine 5.5+ project.
 
 ## Documentation
 

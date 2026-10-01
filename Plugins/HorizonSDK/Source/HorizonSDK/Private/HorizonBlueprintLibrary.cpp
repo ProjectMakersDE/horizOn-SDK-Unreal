@@ -4,6 +4,9 @@
 #include "HorizonSubsystem.h"
 #include "Managers/HorizonAuthManager.h"
 #include "Managers/HorizonCrashManager.h"
+#include "Managers/HorizonGiftCodeManager.h"
+#include "Managers/HorizonPlayerProfileManager.h"
+#include "Managers/HorizonValidatedActionsManager.h"
 #include "Kismet/GameplayStatics.h"
 #include "Engine/GameInstance.h"
 
@@ -83,4 +86,76 @@ void UHorizonBlueprintLibrary::HorizonSetCrashCustomKey(const UObject* WorldCont
 	{
 		Subsystem->Crashes->SetCustomKey(Key, Value);
 	}
+}
+
+FHorizonPlayerProfileResult UHorizonBlueprintLibrary::GetHorizonCurrentPlayerProfile(const UObject* WorldContextObject)
+{
+	UHorizonSubsystem* Subsystem = GetHorizonSubsystem(WorldContextObject);
+	if (!Subsystem || !Subsystem->PlayerProfile)
+	{
+		return FHorizonPlayerProfileResult();
+	}
+	return Subsystem->PlayerProfile->GetCurrentProfile();
+}
+
+TArray<FHorizonCosmetic> UHorizonBlueprintLibrary::GetHorizonCosmeticsOfType(const FHorizonPlayerProfileResult& Result, const FString& Type)
+{
+	return Result.GetCosmetics(Type);
+}
+
+bool UHorizonBlueprintLibrary::IsHorizonCosmeticAvailable(const FHorizonPlayerProfileResult& Result, const FString& CosmeticId)
+{
+	return Result.IsAvailable(CosmeticId);
+}
+
+TArray<FString> UHorizonBlueprintLibrary::GetHorizonLastGrantedUnlocks(const UObject* WorldContextObject)
+{
+	UHorizonSubsystem* Subsystem = GetHorizonSubsystem(WorldContextObject);
+	if (!Subsystem || !Subsystem->GiftCodes)
+	{
+		return TArray<FString>();
+	}
+	return Subsystem->GiftCodes->GetLastGrantedUnlocks();
+}
+
+FHorizonValidatedRun UHorizonBlueprintLibrary::GetHorizonCurrentValidatedRun(const UObject* WorldContextObject)
+{
+	UHorizonSubsystem* Subsystem = GetHorizonSubsystem(WorldContextObject);
+	if (!Subsystem || !Subsystem->ValidatedActions)
+	{
+		return FHorizonValidatedRun();
+	}
+	return Subsystem->ValidatedActions->GetCurrentRun();
+}
+
+FHorizonPlayerState UHorizonBlueprintLibrary::GetHorizonValidatedPlayerState(const UObject* WorldContextObject)
+{
+	UHorizonSubsystem* Subsystem = GetHorizonSubsystem(WorldContextObject);
+	if (!Subsystem || !Subsystem->ValidatedActions)
+	{
+		return FHorizonPlayerState();
+	}
+	return Subsystem->ValidatedActions->GetCurrentState();
+}
+
+int64 UHorizonBlueprintLibrary::GetHorizonValidatedBalance(const FHorizonPlayerState& State, const FString& Key)
+{
+	return State.GetBalance(Key);
+}
+
+bool UHorizonBlueprintLibrary::FindHorizonValidatedValue(const FHorizonPlayerState& State, const FString& Key, FHorizonPlayerStateValue& Value)
+{
+	const FHorizonPlayerStateValue* Found = State.FindValue(Key);
+	if (!Found)
+	{
+		Value = FHorizonPlayerStateValue();
+		return false;
+	}
+	Value = *Found;
+	return true;
+}
+
+bool UHorizonBlueprintLibrary::IsHorizonValueFullyCredited(const FHorizonPlayerStateValue& Value)
+{
+	return Value.IsFullyCredited();
 }

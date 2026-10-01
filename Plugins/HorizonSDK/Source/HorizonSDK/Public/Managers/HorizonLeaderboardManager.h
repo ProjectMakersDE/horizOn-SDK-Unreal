@@ -34,7 +34,10 @@ public:
 	 * Clears the leaderboard cache on success.
 	 * @param Score      The score to submit.
 	 * @param OnComplete Called with (bSuccess, ErrorMessage).
-	 * @param Metadata   Optional metadata string.
+	 * @param Metadata   Deprecated and ignored: the server has no score metadata, the SDK
+	 *                   never sends it. Kept for source compatibility; the parameter is
+	 *                   removed in the next major version. Store per-player data in the
+	 *                   player profile or Cloud Save instead.
 	 * @param BoardKey   Optional board key for multi-board leaderboards.
 	 */
 	void SubmitScore(int64 Score, FOnRequestComplete OnComplete, const FString& Metadata = TEXT(""), const FString& BoardKey = TEXT(""));
@@ -75,6 +78,17 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "horizOn|Leaderboard")
 	void ClearCache();
 
+	/**
+	 * Error code of the last failed SubmitScore, empty after a success (the OnComplete
+	 * signature is unchanged). "VALIDATED_SUBMIT_REQUIRED" means the board accepts
+	 * validated runs only (FHorizonLeaderboardBoard::bValidatedOnly): nothing was written,
+	 * the SDK does not retry, submit through ValidatedActions->SubmitValidated instead.
+	 * "PLAYER_BANNED" (403) means the player is banned from this board: nothing was written,
+	 * the SDK does not retry. Otherwise the server `code`, "SESSION_REQUIRED" or the HTTP mapping.
+	 */
+	UFUNCTION(BlueprintPure, Category = "horizOn|Leaderboard")
+	FString GetLastSubmitErrorCode() const { return LastSubmitErrorCode; }
+
 private:
 	UPROPERTY()
 	UHorizonHttpClient* HttpClient;
@@ -87,6 +101,9 @@ private:
 
 	/** Cache for the current user's rank, keyed by board. */
 	TMap<FString, FHorizonLeaderboardEntry> RankCache;
+
+	/** See GetLastSubmitErrorCode(). */
+	FString LastSubmitErrorCode;
 
 	/** Parse an array of leaderboard entries from a JSON "entries" field. */
 	static TArray<FHorizonLeaderboardEntry> ParseEntries(const TSharedPtr<FJsonObject>& JsonData);

@@ -31,6 +31,14 @@ struct HORIZONSDK_API FHorizonLeaderboardBoard
 	UPROPERTY(BlueprintReadOnly, Category = "horizOn|Leaderboard")
 	int64 ScoreCount = 0;
 
+	/**
+	 * True when the board accepts validated runs only (Validated Actions, TASK-883):
+	 * SubmitScore is rejected with VALIDATED_SUBMIT_REQUIRED, use
+	 * ValidatedActions->SubmitValidated instead.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "horizOn|Leaderboard")
+	bool bValidatedOnly = false;
+
 	UPROPERTY(BlueprintReadOnly, Category = "horizOn|Leaderboard")
 	FString CreatedAt;
 

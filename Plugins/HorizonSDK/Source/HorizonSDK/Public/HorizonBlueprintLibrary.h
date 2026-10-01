@@ -5,6 +5,8 @@
 #include "CoreMinimal.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "Models/HorizonUserData.h"
+#include "Models/HorizonPlayerProfile.h"
+#include "Models/HorizonValidatedActions.h"
 #include "HorizonBlueprintLibrary.generated.h"
 
 class UHorizonSubsystem;
@@ -52,4 +54,49 @@ public:
 	/** Set a custom key-value pair for crash reports (max 10). */
 	UFUNCTION(BlueprintCallable, Category = "horizOn|CrashReport", meta = (WorldContext = "WorldContextObject"))
 	static void HorizonSetCrashCustomKey(const UObject* WorldContextObject, const FString& Key, const FString& Value);
+
+	// --- Player Profile (TASK-881) ---
+
+	/** Last loaded or saved player profile result (empty before the first Get/Set Player Profile and after sign-out). */
+	UFUNCTION(BlueprintPure, Category = "horizOn|PlayerProfile", meta = (WorldContext = "WorldContextObject"))
+	static FHorizonPlayerProfileResult GetHorizonCurrentPlayerProfile(const UObject* WorldContextObject);
+
+	/** Catalog entries of one type ("avatar", "frame" or "badge") from a player profile result. */
+	UFUNCTION(BlueprintPure, Category = "horizOn|PlayerProfile")
+	static TArray<FHorizonCosmetic> GetHorizonCosmeticsOfType(const FHorizonPlayerProfileResult& Result, const FString& Type);
+
+	/** True when the catalog contains the cosmetic and the player may select it now. */
+	UFUNCTION(BlueprintPure, Category = "horizOn|PlayerProfile")
+	static bool IsHorizonCosmeticAvailable(const FHorizonPlayerProfileResult& Result, const FString& CosmeticId);
+
+	/** Cosmetic IDs unlocked by the last successful "Redeem Gift Code" (empty when the code had no grants). */
+	UFUNCTION(BlueprintPure, Category = "horizOn|GiftCode", meta = (WorldContext = "WorldContextObject"))
+	static TArray<FString> GetHorizonLastGrantedUnlocks(const UObject* WorldContextObject);
+
+	// --- Validated Actions (TASK-883) ---
+
+	/** The current validated run (empty before "Start Validated Run" and after its submit, a discard or sign-out). */
+	UFUNCTION(BlueprintPure, Category = "horizOn|ValidatedActions", meta = (WorldContext = "WorldContextObject"))
+	static FHorizonValidatedRun GetHorizonCurrentValidatedRun(const UObject* WorldContextObject);
+
+	// --- Validated Actions: server-owned state (TASK-887) ---
+
+	/** The cached server-owned values of the signed-in player (from "Get Validated Player State" or the last accepted run). */
+	UFUNCTION(BlueprintPure, Category = "horizOn|ValidatedActions", meta = (WorldContext = "WorldContextObject"))
+	static FHorizonPlayerState GetHorizonValidatedPlayerState(const UObject* WorldContextObject);
+
+	/** Balance of one value in a player state, 0 when the key is not defined. */
+	UFUNCTION(BlueprintPure, Category = "horizOn|ValidatedActions")
+	static int64 GetHorizonValidatedBalance(const FHorizonPlayerState& State, const FString& Key);
+
+	/** Finds one value in a player state; returns false when the key is not defined. */
+	UFUNCTION(BlueprintPure, Category = "horizOn|ValidatedActions")
+	static bool FindHorizonValidatedValue(const FHorizonPlayerState& State, const FString& Key, FHorizonPlayerStateValue& Value);
+
+	/**
+	 * True when a value of a submit result was applied in full (Credited == Requested).
+	 * Grant a purchase paid with a spend only when this is true.
+	 */
+	UFUNCTION(BlueprintPure, Category = "horizOn|ValidatedActions")
+	static bool IsHorizonValueFullyCredited(const FHorizonPlayerStateValue& Value);
 };

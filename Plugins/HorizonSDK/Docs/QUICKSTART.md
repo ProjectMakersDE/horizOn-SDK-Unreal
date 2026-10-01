@@ -85,6 +85,8 @@ Once connected and signed in, call any manager method:
 | Remote Config | `Horizon->RemoteConfig->GetAllConfigs()` | Get All Remote Configs |
 | News          | `Horizon->News->LoadNews()`   | Load News                  |
 | Gift Codes    | `Horizon->GiftCodes->Redeem()`| Redeem Gift Code           |
+| Player Profile | `Horizon->PlayerProfile->GetProfile()` / `SetProfile()` | Get Player Profile / Set Player Profile |
+| Validated Actions | `Horizon->ValidatedActions->StartRun()` / `SubmitValidated()` / `GetState()` / `UploadEvidence()` | Start Validated Run / Submit Validated Run / Get Validated Player State / Upload Validated Run Evidence |
 | Feedback      | `Horizon->Feedback->Submit()` | Submit Feedback            |
 | User Logs     | `Horizon->UserLogs->Info()`   | none (C++ only)            |
 
@@ -93,7 +95,9 @@ All async operations use callbacks (C++) or output execution pins (Blueprints) f
 ## Troubleshooting
 
 - **"HttpClient not initialized"** -- Make sure you call `ConnectToServer()` before any other operation.
-- **Authentication required** -- Cloud Save, Leaderboard, Gift Codes, and User Logs require the player to be signed in first.
+- **Authentication required** -- Cloud Save, Leaderboard, Gift Codes, Player Profile, Validated Actions, and User Logs require the player to be signed in first.
+- **`PLAYER_BANNED`** -- The player is banned from that leaderboard. `SubmitScore` reports it through `GetLastSubmitErrorCode()`, `SubmitValidated` through its error code (the run stays, `DiscardRun()` drops it).
+- **Evidence upload** -- `SubmitValidated` uploads the input log by itself when the result asks for it (`Result.Evidence.bRequired`). After `SubmitValidatedWithHash` call `UploadEvidence(Result.Evidence.RunId, InputLog)` yourself. Results arrive on `OnEvidenceUploaded` / `OnEvidenceUploadFailed`.
 - **Multiple hosts** -- If you configure multiple backend hosts, the SDK automatically pings each one and selects the fastest.
 - **Session caching** -- The SDK saves session tokens to disk. Call `Horizon->Auth->RestoreAnonymousSession()` (Blueprint: **"Restore Anonymous Session"**) to sign a returning anonymous player back in.
 - **Clear cache** -- Use **Tools > horizOn > Clear Session Cache** in the editor to wipe local session data.

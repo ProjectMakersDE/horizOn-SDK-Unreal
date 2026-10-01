@@ -21,8 +21,10 @@ void FHorizonUserData::UpdateFromAuthResponse(const TSharedPtr<FJsonObject>& Jso
 
     UserId = JsonObject->GetStringField(TEXT("userId"));
     DisplayName = JsonObject->GetStringField(TEXT("username"));
-    Email = JsonObject->GetStringField(TEXT("email"));
-    AccessToken = JsonObject->GetStringField(TEXT("accessToken"));
+    Email.Empty();
+    JsonObject->TryGetStringField(TEXT("email"), Email);
+    AccessToken.Empty();
+    JsonObject->TryGetStringField(TEXT("accessToken"), AccessToken);
     bIsAnonymous = JsonObject->GetBoolField(TEXT("isAnonymous"));
     bIsEmailVerified = JsonObject->GetBoolField(TEXT("isVerified"));
 

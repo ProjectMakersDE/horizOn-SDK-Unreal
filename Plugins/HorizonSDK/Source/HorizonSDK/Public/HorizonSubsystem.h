@@ -19,6 +19,8 @@ class UHorizonFeedbackManager;
 class UHorizonUserLogManager;
 class UHorizonCrashManager;
 class UHorizonEmailSendingManager;
+class UHorizonPlayerProfileManager;
+class UHorizonValidatedActionsManager;
 
 /**
  * Main entry point for the horizOn SDK.
@@ -74,6 +76,14 @@ public:
 
 	UPROPERTY(BlueprintReadOnly, Category = "horizOn")
 	UHorizonEmailSendingManager* EmailSending;
+
+	/** Avatar, frame, badges and cosmetic unlocks of the signed-in player (TASK-881). */
+	UPROPERTY(BlueprintReadOnly, Category = "horizOn")
+	UHorizonPlayerProfileManager* PlayerProfile = nullptr;
+
+	/** Server-checked runs: tickets with a seed, validated submit with rule codes (TASK-883). */
+	UPROPERTY(BlueprintReadOnly, Category = "horizOn")
+	UHorizonValidatedActionsManager* ValidatedActions = nullptr;
 
 	// --- Connection ---
 
