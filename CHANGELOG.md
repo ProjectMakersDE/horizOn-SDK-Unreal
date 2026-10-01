@@ -1,3 +1,25 @@
+# [1.7.0](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/compare/v1.6.0...v1.7.0) (2026-10-01)
+
+
+### Bug Fixes
+
+* **ci:** run transport tests on develop ([715a7e6](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/715a7e6389b090c0034e18556b9ebe9086050deb))
+* **crash-reporting:** hash crash fingerprints with the SDK's own SHA-256 ([753ec4f](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/753ec4fb8b0d357d9634d3b9382bc1586a9fdd04))
+* **gift-codes:** require a player session before redeeming a code ([a26b7e9](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/a26b7e9130dc870852b0fe94b9f297e2b382c1f3))
+* **http:** clear error when still rate limited after the last retry (TASK-885) ([5bc5453](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/5bc5453e771b090f310f3adc103db8d4d877cc45))
+* **sdk:** restore anonymous auth and POST binary cloud loads ([68002c3](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/68002c340a66a04d92fd7f3da51ffc0a0b257206))
+* **security:** test signed leaderboard transport ([d48d138](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/d48d138cab12c95e75195e7968cb82ad12fdd312))
+* **validated-actions:** keep the run on checks that run before the ticket is consumed ([eb4ce51](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/eb4ce51a09c4fff8261933d8ca21c28cb9ae1ede))
+* **validated-actions:** report NOT_SUPPORTED for the simpleServer's generic 404 NOT_FOUND ([bd6a8dc](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/bd6a8dc3e315b93e398681ba3703fcc250f5b9bd))
+
+
+### Features
+
+* **player-profile:** add player profile manager, leaderboard profiles and granted unlocks ([0f160b4](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/0f160b499fe22d6fde233818e51a9f94d2cf79f3))
+* **validated-actions:** add validated actions manager, run tickets and validated submit ([cc5fa1d](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/cc5fa1db15835e4fd8799c6d502ba38ae7d94beb))
+* **validated-actions:** server-owned player state with GetState and cached state ([3965fd4](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/3965fd41aebaadcfc2d6fbdf04272fe19d9eaafc))
+* **validated-actions:** upload the input log as evidence and report PLAYER_BANNED ([4f591e0](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/4f591e03bd3d0a9ce477b063ec8662ff6d0fcc62))
+
 # [1.6.0](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/compare/v1.5.0...v1.6.0) (2026-06-24)
 
 
