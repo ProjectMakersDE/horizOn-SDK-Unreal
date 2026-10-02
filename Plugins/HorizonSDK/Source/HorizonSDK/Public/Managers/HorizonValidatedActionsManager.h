@@ -13,8 +13,10 @@ class UHorizonLeaderboardManager;
 
 /**
  * Completion of StartRun.
- * On failure ErrorCode is the server `code` (for example "RUN_RATE_LIMITED"),
- * "SESSION_REQUIRED" for the local session check, "NOT_SUPPORTED" for a backend without
+ * On failure ErrorCode is the server `code` (for example "RUN_RATE_LIMITED", and for a run start
+ * context "INITIAL_STATE_TOO_LARGE" or "INITIAL_STATE_INVALID_ENCODING"), "SESSION_REQUIRED" for
+ * the local session check, "INVALID_CONTENT_DIGEST" for a malformed context digest (local, no
+ * request), "NOT_SUPPORTED" for a backend without
  * the feature (404 without code), or the HTTP mapping ("RATE_LIMITED", "CONNECTION_FAILED",
  * ...) when the server sent no code. Both strings are empty on success.
  */
@@ -65,7 +67,8 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FOnHorizonEvidenceUploadFailed, c
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnHorizonPlayerStateChanged, const FHorizonPlayerState&, State);
 
 /**
- * Validated Actions Manager for the horizOn SDK (TASK-883 Part 1, TASK-887 Part 2, TASK-888 Part 3).
+ * Validated Actions Manager for the horizOn SDK (TASK-883 Part 1, TASK-887 Part 2, TASK-888 Part 3,
+ * TASK-911 run start context and sus runs).
  *
  * A run starts with a single use ticket and a server seed (StartRun). The game seeds its
  * deterministic randomness with the seed, records its input log and submits the result
@@ -94,6 +97,10 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnHorizonPlayerStateChanged, const 
  * Upload outcomes arrive through OnEvidenceUploaded / OnEvidenceUploadFailed and never change
  * the submit result.
  *
+ * Run start context and sus runs (TASK-911): StartRun can declare what the run starts from
+ * (FHorizonRunContext). Result.bSus marks an accepted run that crossed a soft threshold; the
+ * server keeps it for a review and requests its log through Result.Evidence like a top N record.
+ *
  * Every call needs a signed-in player and sends the player session (Authorization: Bearer).
  */
 UCLASS(BlueprintType)
@@ -111,10 +118,30 @@ public:
 	/**
 	 * Start a run: POST /api/v1/app/validated-actions/runs.
 	 * On success the run becomes the current run (a previous current run is dropped).
+	 * Sends DefaultRunContext as the run start context (nothing when it is empty).
 	 * @param LeaderboardKey Board to bind the ticket to; empty for an unbound ticket.
 	 * @param OnComplete     Called with (bSuccess, Run, ErrorCode, ErrorMessage).
 	 */
 	void StartRun(const FString& LeaderboardKey, FOnValidatedRunStarted OnComplete);
+
+	/**
+	 * Start a run with a run start context (TASK-911): versions, content digest and the initial
+	 * state of the simulation. The server binds it to the run and keeps it with a sus run.
+	 * Context replaces DefaultRunContext completely (no merge); an empty Context sends none.
+	 * A ContentDigest that is not 64 hex characters fails locally with INVALID_CONTENT_DIGEST.
+	 * @param LeaderboardKey Board to bind the ticket to; empty for an unbound ticket.
+	 * @param Context        What the run starts from; every field optional.
+	 * @param OnComplete     Called with (bSuccess, Run, ErrorCode, ErrorMessage).
+	 */
+	void StartRun(const FString& LeaderboardKey, const FHorizonRunContext& Context, FOnValidatedRunStarted OnComplete);
+
+	/**
+	 * Run start context sent by StartRun(LeaderboardKey, OnComplete) (TASK-911). Set it once with
+	 * the versions of your build, for example GameVersion and ContentVersion. Empty (default) sends
+	 * no context. StartRun with an explicit Context ignores it.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "horizOn|ValidatedActions")
+	FHorizonRunContext DefaultRunContext;
 
 	/**
 	 * Submit the current run: hashes InputLog (SHA-256) and sends
@@ -165,7 +192,10 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "horizOn|ValidatedActions|Events")
 	FOnHorizonPlayerStateChanged OnStateChanged;
 
-	/** SHA-256 of the raw input log as 64 lower case hex characters. */
+	/**
+	 * SHA-256 of the raw input log as 64 lower case hex characters. Also the helper for
+	 * FHorizonRunContext::ContentDigest: pass the content bytes.
+	 */
 	UFUNCTION(BlueprintPure, Category = "horizOn|ValidatedActions")
 	static FString ComputeInputLogHash(const TArray<uint8>& InputLog);
 

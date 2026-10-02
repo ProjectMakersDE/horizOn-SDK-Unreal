@@ -12,14 +12,14 @@
 
 /**
  * Engine free transport contract of Validated Actions (TASK-883 Part 1, TASK-887 Part 2,
- * TASK-888 Part 3).
+ * TASK-888 Part 3, TASK-911 run start context).
  *
  * Holds everything that decides what goes over the wire so it can be compiled and
  * checked without the engine: the SHA-256 input log hash, the local pre-checks
  * (SESSION_REQUIRED, NO_ACTIVE_RUN, INVALID_INPUT_LOG_HASH), the request plans of
  * start run, submit, (Part 2) the player state read and (Part 3) the evidence upload
- * with its standard base64 encoding, and the rules for keeping or clearing the current
- * run and for retrying an upload.
+ * with its standard base64 encoding, (TASK-911) the optional run start context, and the rules
+ * for keeping or clearing the current run and for retrying an upload.
  */
 namespace HorizonTransportContract
 {
@@ -45,6 +45,13 @@ namespace HorizonTransportContract
 	/** Local error codes of the evidence upload (Part 3, no request is sent). */
 	constexpr const char* ValidatedCodeInvalidRunId = "INVALID_RUN_ID";
 	constexpr const char* ValidatedCodeEmptyInputLog = "EMPTY_INPUT_LOG";
+
+	/** Local error code of the run start context (TASK-911): a set content digest that is not 64 hex characters. */
+	constexpr const char* ValidatedCodeInvalidContentDigest = "INVALID_CONTENT_DIGEST";
+
+	/** Server codes of the run start context (TASK-911): the run is not started, both are final. */
+	constexpr const char* ValidatedCodeInitialStateInvalidEncoding = "INITIAL_STATE_INVALID_ENCODING";
+	constexpr const char* ValidatedCodeInitialStateTooLarge = "INITIAL_STATE_TOO_LARGE";
 
 	/** A 404 without a server code (for example a simpleServer) means the feature is missing. */
 	constexpr const char* ValidatedCodeNotSupported = "NOT_SUPPORTED";
@@ -603,5 +610,123 @@ namespace HorizonTransportContract
 	{
 		return ErrorCode == ValidatedCodeEvidenceHashMismatch
 			|| ErrorCode == HttpCodeConnectionFailed;
+	}
+
+	// ============================================================
+	// TASK-911: run start context
+	// ============================================================
+
+	/**
+	 * What a run starts from, declared by the game. Every field is optional; blank strings and an
+	 * empty InitialState count as absent and are not sent. Versions are at most 64 printable ASCII
+	 * characters (checked by the server), ContentDigest is the SHA-256 of the game content as 64
+	 * hex characters (checked locally), InitialState holds the raw bytes the simulation starts from.
+	 */
+	struct FValidatedRunContext
+	{
+		std::string GameVersion;
+		std::string ContentVersion;
+		std::string SimulationVersion;
+		std::string ReplayFormatVersion;
+		std::string ContentDigest;
+		std::vector<std::uint8_t> InitialState;
+	};
+
+	/** True when no field of the context is set; such a context is left out of the request. */
+	inline bool IsEmptyRunContext(const FValidatedRunContext& Context)
+	{
+		return Trim(Context.GameVersion).empty()
+			&& Trim(Context.ContentVersion).empty()
+			&& Trim(Context.SimulationVersion).empty()
+			&& Trim(Context.ReplayFormatVersion).empty()
+			&& Trim(Context.ContentDigest).empty()
+			&& Context.InitialState.empty();
+	}
+
+	/**
+	 * The `context` object of a run start, or "" when nothing is set (the field is then left out
+	 * and older servers see the request they know). camelCase fields in a fixed order, blank fields
+	 * left out, versions sent unchanged, the digest trimmed and in lower case, InitialState as
+	 * standard base64 with padding. The caller checks the digest first (IsValidInputLogHash).
+	 */
+	inline std::string BuildValidatedRunContextJson(const FValidatedRunContext& Context)
+	{
+		if (IsEmptyRunContext(Context))
+		{
+			return std::string();
+		}
+
+		std::string Json;
+		const auto Append = [&Json](const char* Field, const std::string& Value)
+		{
+			Json += Json.empty() ? "{" : ",";
+			Json += "\"";
+			Json += Field;
+			Json += "\":\"" + EscapeJson(Value) + "\"";
+		};
+		if (!Trim(Context.GameVersion).empty())
+		{
+			Append("gameVersion", Context.GameVersion);
+		}
+		if (!Trim(Context.ContentVersion).empty())
+		{
+			Append("contentVersion", Context.ContentVersion);
+		}
+		if (!Trim(Context.SimulationVersion).empty())
+		{
+			Append("simulationVersion", Context.SimulationVersion);
+		}
+		if (!Trim(Context.ReplayFormatVersion).empty())
+		{
+			Append("replayFormatVersion", Context.ReplayFormatVersion);
+		}
+		const std::string Digest = Trim(Context.ContentDigest);
+		if (!Digest.empty())
+		{
+			Append("contentDigest", NormalizeInputLogHash(Digest));
+		}
+		if (!Context.InitialState.empty())
+		{
+			Append("initialState", Base64Encode(Context.InitialState));
+		}
+		Json += "}";
+		return Json;
+	}
+
+	/**
+	 * POST /api/v1/app/validated-actions/runs with an optional run start context:
+	 * `{"userId", "leaderboardKey", "context"}`. An empty context is left out, so the body equals
+	 * the one of BuildValidatedStartRunPlan without context.
+	 *
+	 * Local checks in this order: SESSION_REQUIRED (no user or session token),
+	 * INVALID_CONTENT_DIGEST (a set digest that is not 64 hex characters). Everything else (version
+	 * format, initial state size) is left to the server: 400 INITIAL_STATE_INVALID_ENCODING,
+	 * 413 INITIAL_STATE_TOO_LARGE, 400 without code for a bad version.
+	 */
+	inline FValidatedRequestPlan BuildValidatedStartRunPlan(
+		const std::string& UserId,
+		const std::string& SessionToken,
+		const std::string& LeaderboardKey,
+		const FValidatedRunContext& Context)
+	{
+		if (UserId.empty() || SessionToken.empty())
+		{
+			return ValidatedFailedPlan(ValidatedCodeSessionRequired, "A signed-in player is required.");
+		}
+		const std::string Digest = Trim(Context.ContentDigest);
+		if (!Digest.empty() && !IsValidInputLogHash(Digest))
+		{
+			return ValidatedFailedPlan(ValidatedCodeInvalidContentDigest,
+				"The content digest must be 64 hex characters (SHA-256).");
+		}
+
+		FValidatedRequestPlan Plan = BuildValidatedStartRunPlan(UserId, SessionToken, LeaderboardKey);
+		const std::string ContextJson = BuildValidatedRunContextJson(Context);
+		if (!ContextJson.empty())
+		{
+			// Insert before the closing brace of {"userId", "leaderboardKey"}.
+			Plan.BodyJson.insert(Plan.BodyJson.size() - 1, ",\"context\":" + ContextJson);
+		}
+		return Plan;
 	}
 }

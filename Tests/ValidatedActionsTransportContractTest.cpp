@@ -34,9 +34,9 @@ namespace
 	}
 }
 
-// Validated Actions (TASK-883 Part 1, TASK-887 Part 2, TASK-888 Part 3): input log hash, start
-// run, submit, player state and evidence upload plans, run lifecycle, value codes, base64 and
-// the upload retry rule.
+// Validated Actions (TASK-883 Part 1, TASK-887 Part 2, TASK-888 Part 3, TASK-911): input log hash,
+// start run (with and without run start context), submit, player state and evidence upload plans,
+// run lifecycle, value codes, base64 and the upload retry rule.
 int main()
 {
 	using namespace HorizonTransportContract;
@@ -272,6 +272,44 @@ int main()
 	// Part 3: PLAYER_BANNED is checked before the ticket is consumed, so the run stays.
 	Require(!ShouldClearRunAfterSubmit(403, "PLAYER_BANNED"), "PLAYER_BANNED must keep the run");
 	Require(MapValidatedErrorCode(403, "PLAYER_BANNED", "FORBIDDEN") == "PLAYER_BANNED", "PLAYER_BANNED keeps its code");
+
+	// TASK-911: run start context. camelCase fields, blank fields and an empty context left out,
+	// the digest in lower case, the initial state as standard base64 with padding.
+	const FValidatedRunContext EmptyContext;
+	Require(BuildValidatedStartRunPlan("user-883", "session-token-883", "weekly", EmptyContext).BodyJson
+		== "{\"userId\":\"user-883\",\"leaderboardKey\":\"weekly\"}", "an empty context must keep the old start body");
+	FValidatedRunContext BlankContext;
+	BlankContext.GameVersion = "  ";
+	Require(IsEmptyRunContext(BlankContext) && BuildValidatedRunContextJson(BlankContext).empty(), "a blank context is empty");
+
+	FValidatedRunContext FullContext;
+	FullContext.GameVersion = "1.4.2";
+	FullContext.ContentVersion = "levels-7";
+	FullContext.SimulationVersion = "sim-3";
+	FullContext.ReplayFormatVersion = " ";
+	FullContext.ContentDigest = " BA7816BF8F01CFEA414140DE5DAE2223B00361A396177A9CB410FF61F20015AD ";
+	FullContext.InitialState = {0x00, 0x01, 0x02, 0xFF};
+	const FValidatedRequestPlan ContextPlan = BuildValidatedStartRunPlan("user-883", "session-token-883", "", FullContext);
+	Require(ContextPlan.bShouldSend && ContextPlan.Endpoint == "/api/v1/app/validated-actions/runs", "context start plan");
+	Require(ContextPlan.BodyJson == "{\"userId\":\"user-883\",\"context\":{\"gameVersion\":\"1.4.2\",\"contentVersion\":\"levels-7\","
+		"\"simulationVersion\":\"sim-3\",\"contentDigest\":\"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad\","
+		"\"initialState\":\"AAEC/w==\"}}", "incorrect start body with context");
+
+	FValidatedRunContext StateOnly;
+	StateOnly.InitialState = Bytes("hi");
+	Require(BuildValidatedStartRunPlan("user-883", "session-token-883", "weekly", StateOnly).BodyJson
+		== "{\"userId\":\"user-883\",\"leaderboardKey\":\"weekly\",\"context\":{\"initialState\":\"aGk=\"}}",
+		"an initial state alone is sent with padding");
+
+	FValidatedRunContext BadDigest;
+	BadDigest.ContentDigest = "abc";
+	const FValidatedRequestPlan BadDigestPlan = BuildValidatedStartRunPlan("user-883", "session-token-883", "weekly", BadDigest);
+	Require(!BadDigestPlan.bShouldSend && BadDigestPlan.ErrorCode == "INVALID_CONTENT_DIGEST", "a short digest must fail locally");
+	Require(BuildValidatedStartRunPlan("", "session-token-883", "weekly", BadDigest).ErrorCode == "SESSION_REQUIRED",
+		"the session is checked before the context");
+	Require(MapValidatedErrorCode(413, "INITIAL_STATE_TOO_LARGE", "UNKNOWN") == "INITIAL_STATE_TOO_LARGE", "413 initial state keeps its code");
+	Require(MapValidatedErrorCode(400, "INITIAL_STATE_INVALID_ENCODING", "BAD_REQUEST") == "INITIAL_STATE_INVALID_ENCODING",
+		"400 initial state keeps its code");
 
 	std::cout << "Unreal SDK validated actions transport contract passed\n";
 	return 0;

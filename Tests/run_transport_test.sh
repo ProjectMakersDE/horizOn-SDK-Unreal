@@ -24,4 +24,19 @@ c++ -std=c++17 \
   -o "$build_dir/validated-actions-transport-test"
 "$build_dir/validated-actions-transport-test"
 
+# The production Validated Actions models against an in-memory UE boundary: the engine headers
+# they include are empty stand-ins, the test itself defines the few UE types the models use.
+model_boundary="$build_dir/ue-boundary"
+mkdir -p "$model_boundary/Dom"
+: > "$model_boundary/CoreMinimal.h"
+: > "$model_boundary/HorizonValidatedActions.generated.h"
+: > "$model_boundary/Dom/JsonObject.h"
+: > "$model_boundary/Dom/JsonValue.h"
+c++ -std=c++17 \
+  -I "$model_boundary" \
+  -I Plugins/HorizonSDK/Source/HorizonSDK/Public \
+  Tests/ValidatedActionsModelParseTest.cpp \
+  -o "$build_dir/validated-actions-model-test"
+"$build_dir/validated-actions-model-test"
+
 python3 Tests/run_auth_cloud_save_runtime_test.py

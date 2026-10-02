@@ -18,6 +18,15 @@ UHorizonAsync_StartRun* UHorizonAsync_StartRun::StartRun(const UObject* WorldCon
 	return Action;
 }
 
+UHorizonAsync_StartRun* UHorizonAsync_StartRun::StartRunWithContext(const UObject* WorldContextObject,
+	const FString& LeaderboardKey, const FHorizonRunContext& Context)
+{
+	UHorizonAsync_StartRun* Action = StartRun(WorldContextObject, LeaderboardKey);
+	Action->RunContext = Context;
+	Action->bHasRunContext = true;
+	return Action;
+}
+
 void UHorizonAsync_StartRun::Activate()
 {
 	UHorizonSubsystem* Subsystem = UHorizonBlueprintLibrary::GetHorizonSubsystem(WorldContext.Get());
@@ -25,6 +34,16 @@ void UHorizonAsync_StartRun::Activate()
 	{
 		OnFailure.Broadcast(TEXT("UNKNOWN"), TEXT("horizOn Subsystem or ValidatedActions manager not found."));
 		SetReadyToDestroy();
+		return;
+	}
+
+	if (bHasRunContext)
+	{
+		Subsystem->ValidatedActions->StartRun(
+			LeaderboardKeyStr,
+			RunContext,
+			FOnValidatedRunStarted::CreateUObject(this, &UHorizonAsync_StartRun::HandleResult)
+		);
 		return;
 	}
 

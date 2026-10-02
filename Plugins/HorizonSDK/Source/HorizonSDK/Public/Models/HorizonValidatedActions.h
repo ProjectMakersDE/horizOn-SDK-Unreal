@@ -16,6 +16,7 @@ class FJsonObject;
  * Part 2 (TASK-887) fills FHorizonPlayerState: from GET .../state and as
  * FHorizonValidatedSubmitResult::State. Part 3 (TASK-888) fills FHorizonEvidenceRequest
  * (FHorizonValidatedSubmitResult::Evidence) and FHorizonEvidenceUploadResult (PUT .../evidence).
+ * TASK-911 adds FHorizonRunContext (sent with StartRun) and FHorizonValidatedSubmitResult::bSus.
  */
 
 /**
@@ -60,6 +61,61 @@ struct HORIZONSDK_API FHorizonValidatedRun
 
 	/** Null safe parse of the start run response. */
 	static FHorizonValidatedRun FromJson(const TSharedPtr<FJsonObject>& JsonObject);
+};
+
+/**
+ * What a validated run starts from, declared by the game (optional, TASK-911). Sent as the
+ * `context` object of StartRun. The server binds it to the run together with the values it fixes
+ * itself (rule version, cloud save, server-owned values, seed, start time) and keeps it with a sus
+ * run, so the run can be replayed with the same build and state. Every field is optional: blank
+ * strings and an empty InitialState are not sent, and an empty context is not sent at all.
+ */
+USTRUCT(BlueprintType)
+struct HORIZONSDK_API FHorizonRunContext
+{
+	GENERATED_BODY()
+
+	/** Version of the game build, at most 64 printable ASCII characters (for example "1.4.2"). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "horizOn|ValidatedActions")
+	FString GameVersion;
+
+	/** Version of the game content (levels, balancing data), at most 64 printable ASCII characters. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "horizOn|ValidatedActions")
+	FString ContentVersion;
+
+	/** Version of the deterministic simulation, at most 64 printable ASCII characters. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "horizOn|ValidatedActions")
+	FString SimulationVersion;
+
+	/** Version of the input log format, at most 64 printable ASCII characters. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "horizOn|ValidatedActions")
+	FString ReplayFormatVersion;
+
+	/**
+	 * SHA-256 of the game content the run uses as 64 hex characters, checked locally
+	 * (INVALID_CONTENT_DIGEST without a request). Compute it with
+	 * UHorizonValidatedActionsManager::ComputeInputLogHash(ContentBytes), the same SHA-256 helper.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "horizOn|ValidatedActions")
+	FString ContentDigest;
+
+	/**
+	 * Raw bytes the simulation starts from (for example a serialized level state). Sent as standard
+	 * base64; decoded at most evidenceMaxBytes on the server (otherwise INITIAL_STATE_TOO_LARGE).
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "horizOn|ValidatedActions")
+	TArray<uint8> InitialState;
+
+	/** True when no field is set; such a context is not sent. */
+	bool IsEmpty() const
+	{
+		return GameVersion.TrimStartAndEnd().IsEmpty()
+			&& ContentVersion.TrimStartAndEnd().IsEmpty()
+			&& SimulationVersion.TrimStartAndEnd().IsEmpty()
+			&& ReplayFormatVersion.TrimStartAndEnd().IsEmpty()
+			&& ContentDigest.TrimStartAndEnd().IsEmpty()
+			&& InitialState.Num() == 0;
+	}
 };
 
 /**
@@ -256,6 +312,15 @@ struct HORIZONSDK_API FHorizonValidatedSubmitResult
 	/** Part 3: evidence request. Required is false in Part 1. */
 	UPROPERTY(BlueprintReadOnly, Category = "horizOn|ValidatedActions")
 	FHorizonEvidenceRequest Evidence;
+
+	/**
+	 * TASK-911: true when the run was accepted but crossed a soft threshold of the rules. Not a
+	 * rejection: the score counts. The server keeps the run with its start context for a review and
+	 * asks for the input log through Evidence, which the SDK uploads after SubmitValidated like a top
+	 * N record. The reasons stay on the server. False when absent (older servers).
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "horizOn|ValidatedActions")
+	bool bSus = false;
 
 	/** True when the run wrote to a leaderboard. */
 	bool HasLeaderboard() const { return !LeaderboardKey.IsEmpty(); }
