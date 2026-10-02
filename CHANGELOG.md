@@ -1,3 +1,10 @@
+# [1.8.0](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/compare/v1.7.0...v1.8.0) (2026-10-02)
+
+
+### Features
+
+* **validated-actions:** optional run start context and sus result ([4d99257](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/4d992573e1af17b67905acb3fab4686cac201dac))
+
 # [1.7.0](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/compare/v1.6.0...v1.7.0) (2026-10-01)
 
 
