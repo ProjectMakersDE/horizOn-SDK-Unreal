@@ -408,8 +408,10 @@ Horizon->ValidatedActions->SubmitValidatedWithHash(18250, Hash, TEXT("wave_10"),
 - `GetLastErrorCode()` returns the code of the last failed call.
 - An accepted run with a board clears the leaderboard cache, like `SubmitScore`.
 
-Error codes: `SESSION_REQUIRED`, `NO_ACTIVE_RUN` (no started run) and
-`INVALID_INPUT_LOG_HASH` fail locally without a request. Server codes: `TICKET_INVALID`,
+Error codes: `SESSION_REQUIRED`, `NO_ACTIVE_RUN` (no started run),
+`INVALID_INPUT_LOG_HASH` and `INVALID_CONTENT_DIGEST` (run start context) fail locally without a
+request. Server codes: `INITIAL_STATE_INVALID_ENCODING` (400) and `INITIAL_STATE_TOO_LARGE` (413)
+for the run start context, `TICKET_INVALID`,
 `TICKET_EXPIRED`, `TICKET_FOREIGN`, `TICKET_CONSUMED`, `LEADERBOARD_MISMATCH`,
 `STAGE_REQUIRED`, `STAGE_UNKNOWN`, `SCORE_ABOVE_MAX`, `SCORE_BELOW_MIN`,
 `STAGE_SCORE_ABOVE_MAX`, `STAGE_SCORE_BELOW_MIN`, `DURATION_TOO_SHORT`,
@@ -419,6 +421,37 @@ Error codes: `SESSION_REQUIRED`, `NO_ACTIVE_RUN` (no started run) and
 `VALIDATED_ACTIONS_UNAVAILABLE`, `RUN_RATE_LIMITED` and `RUN_CAPACITY_REACHED`. The two run
 limits are not retried automatically (the wait can be up to an hour). A backend without the
 feature (for example a Simple Server) gives `NOT_SUPPORTED`.
+
+#### Run start context and sus runs
+
+`StartRun` takes an optional `FHorizonRunContext`: what the run starts from. Every field is
+optional; empty fields are not sent, and an empty context leaves the request as it was.
+
+```cpp
+FHorizonRunContext Context;
+Context.GameVersion = TEXT("1.4.2");          // at most 64 printable ASCII characters
+Context.ContentVersion = TEXT("levels-7");
+Context.SimulationVersion = TEXT("sim-3");
+Context.ReplayFormatVersion = TEXT("inputs-v1");
+Context.ContentDigest = UHorizonValidatedActionsManager::ComputeInputLogHash(LevelBytes); // SHA-256, 64 hex
+Context.InitialState = InitialStateBytes;     // TArray<uint8>, sent as base64
+
+Horizon->ValidatedActions->StartRun(TEXT("weekly"), Context, OnStarted);
+
+// Or set it once: StartRun(Key, OnComplete) sends DefaultRunContext (an explicit Context replaces it)
+Horizon->ValidatedActions->DefaultRunContext.GameVersion = TEXT("1.4.2");
+```
+
+The server binds the context to the run together with what it fixes itself (rule version,
+cloud save, server-owned values, seed, start time). A `ContentDigest` that is not 64 hex
+characters fails locally with `INVALID_CONTENT_DIGEST`; the server answers
+`INITIAL_STATE_TOO_LARGE` (413, above the game's evidence size limit) or
+`INITIAL_STATE_INVALID_ENCODING` (400).
+
+`Result.bSus` is true when an accepted run crossed a soft threshold of the rules. The score
+counts; the server keeps the run with its start context for a review and asks for the input
+log through `Result.Evidence`, which the SDK uploads by itself after `SubmitValidated`, like a
+top N record. The reasons stay on the server. Older servers do not send the field (`false`).
 
 #### Server-owned state
 
@@ -538,13 +571,14 @@ if (Result.Evidence.bRequired)
 #### Blueprints
 
 - **"Start Validated Run"**: Starts a run (On Success: Run, On Failure: Error Code, Error Message)
+- **"Start Validated Run With Context"**: Same with a run start context (`FHorizonRunContext`)
 - **"Submit Validated Run"**: Hashes the input log and submits the current run (On Success: Result, with `State`)
 - **"Submit Validated Run With Hash"**: Same with a ready SHA-256 hash
 - **"Get Validated Player State"**: Loads the server-owned values (On Success: State)
 - **"Upload Validated Run Evidence"**: Uploads the input log of an accepted run (On Success: Result with `RunId`, `Status`, `Bytes`)
 - **"Compute Input Log Hash"**, **"Has Active Run"**, **"Get Last Error Code"**, **"Discard Run"**,
   **"Has State"**, **"Get Balance"**, **"Is Evidence Upload Retryable"**, **"Get Last Evidence Error Code"**,
-  the property **Auto Upload Evidence** and the events **On State Changed**, **On Evidence Uploaded**,
+  the properties **Auto Upload Evidence** and **Default Run Context** and the events **On State Changed**, **On Evidence Uploaded**,
   **On Evidence Upload Failed** on `ValidatedActions`
 - **"Get Horizon Current Validated Run"**: The current run
 - **"Get Horizon Validated Player State"**: The cached state

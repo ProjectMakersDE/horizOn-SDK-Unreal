@@ -53,6 +53,12 @@ FString UHorizonValidatedActionsManager::ComputeInputLogHash(const TArray<uint8>
 
 void UHorizonValidatedActionsManager::StartRun(const FString& LeaderboardKey, FOnValidatedRunStarted OnComplete)
 {
+	StartRun(LeaderboardKey, DefaultRunContext, OnComplete);
+}
+
+void UHorizonValidatedActionsManager::StartRun(const FString& LeaderboardKey, const FHorizonRunContext& Context,
+	FOnValidatedRunStarted OnComplete)
+{
 	if (!HttpClient || !AuthManager || !AuthManager->IsSignedIn())
 	{
 		LastErrorCode = TEXT("SESSION_REQUIRED");
@@ -62,11 +68,25 @@ void UHorizonValidatedActionsManager::StartRun(const FString& LeaderboardKey, FO
 	}
 
 	const FString UserId = AuthManager->GetCurrentUser().UserId;
+
+	// TASK-911: an empty context is left out by the transport contract (old request body).
+	HorizonTransportContract::FValidatedRunContext RunContext;
+	RunContext.GameVersion = TCHAR_TO_UTF8(*Context.GameVersion);
+	RunContext.ContentVersion = TCHAR_TO_UTF8(*Context.ContentVersion);
+	RunContext.SimulationVersion = TCHAR_TO_UTF8(*Context.SimulationVersion);
+	RunContext.ReplayFormatVersion = TCHAR_TO_UTF8(*Context.ReplayFormatVersion);
+	RunContext.ContentDigest = TCHAR_TO_UTF8(*Context.ContentDigest);
+	if (Context.InitialState.Num() > 0)
+	{
+		RunContext.InitialState.assign(Context.InitialState.GetData(), Context.InitialState.GetData() + Context.InitialState.Num());
+	}
+
 	const HorizonTransportContract::FValidatedRequestPlan Plan =
 		HorizonTransportContract::BuildValidatedStartRunPlan(
 			TCHAR_TO_UTF8(*UserId),
 			TCHAR_TO_UTF8(*HttpClient->GetSessionToken()),
-			TCHAR_TO_UTF8(*LeaderboardKey));
+			TCHAR_TO_UTF8(*LeaderboardKey),
+			RunContext);
 	if (!Plan.bShouldSend)
 	{
 		LastErrorCode = UTF8_TO_TCHAR(Plan.ErrorCode.c_str());
@@ -260,8 +280,9 @@ void UHorizonValidatedActionsManager::HandleSubmitResponse(const FHorizonNetwork
 	LastErrorCode.Empty();
 	OnRunAccepted(Result, RequestUserId);
 
-	UE_LOG(LogHorizonSDK, Log, TEXT("ValidatedActions::SubmitValidated -- Run %s accepted (board '%s', score %lld, best %lld, rank %lld, %lld s)."),
-		*Result.RunId, *Result.LeaderboardKey, Result.Score, Result.BestScore, Result.Rank, Result.DurationSeconds);
+	UE_LOG(LogHorizonSDK, Log, TEXT("ValidatedActions::SubmitValidated -- Run %s accepted (board '%s', score %lld, best %lld, rank %lld, %lld s)%s."),
+		*Result.RunId, *Result.LeaderboardKey, Result.Score, Result.BestScore, Result.Rank, Result.DurationSeconds,
+		Result.bSus ? TEXT(", sus") : TEXT(""));
 	OnComplete.ExecuteIfBound(true, Result, FString(), FString());
 
 	// Part 3: the evidence upload starts only after the submit result was delivered, so it can

@@ -30,15 +30,29 @@ public:
 	UPROPERTY(BlueprintAssignable)
 	FOnValidatedActionsAsyncFailure OnFailure;
 
-	/** Start a run. LeaderboardKey binds the ticket to a board; leave it empty for an unbound ticket. */
+	/**
+	 * Start a run. LeaderboardKey binds the ticket to a board; leave it empty for an unbound ticket.
+	 * Sends the manager's DefaultRunContext (nothing when it is empty).
+	 */
 	UFUNCTION(BlueprintCallable, meta = (BlueprintInternalUseOnly = "true", WorldContext = "WorldContextObject", DisplayName = "Start Validated Run"), Category = "horizOn|ValidatedActions")
 	static UHorizonAsync_StartRun* StartRun(const UObject* WorldContextObject, const FString& LeaderboardKey);
+
+	/**
+	 * Start a run with a run start context (versions, content digest, initial state). Context
+	 * replaces the manager's DefaultRunContext; an empty Context sends none. Failure codes include
+	 * INVALID_CONTENT_DIGEST (local), INITIAL_STATE_TOO_LARGE and INITIAL_STATE_INVALID_ENCODING.
+	 */
+	UFUNCTION(BlueprintCallable, meta = (BlueprintInternalUseOnly = "true", WorldContext = "WorldContextObject", DisplayName = "Start Validated Run With Context"), Category = "horizOn|ValidatedActions")
+	static UHorizonAsync_StartRun* StartRunWithContext(const UObject* WorldContextObject, const FString& LeaderboardKey,
+		const FHorizonRunContext& Context);
 
 	virtual void Activate() override;
 
 private:
 	TWeakObjectPtr<const UObject> WorldContext;
 	FString LeaderboardKeyStr;
+	FHorizonRunContext RunContext;
+	bool bHasRunContext = false;
 
 	void HandleResult(bool bSuccess, const FHorizonValidatedRun& Run, const FString& ErrorCode, const FString& ErrorMessage);
 };

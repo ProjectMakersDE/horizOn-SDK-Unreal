@@ -98,6 +98,7 @@ All async operations use callbacks (C++) or output execution pins (Blueprints) f
 - **Authentication required** -- Cloud Save, Leaderboard, Gift Codes, Player Profile, Validated Actions, and User Logs require the player to be signed in first.
 - **`PLAYER_BANNED`** -- The player is banned from that leaderboard. `SubmitScore` reports it through `GetLastSubmitErrorCode()`, `SubmitValidated` through its error code (the run stays, `DiscardRun()` drops it).
 - **Evidence upload** -- `SubmitValidated` uploads the input log by itself when the result asks for it (`Result.Evidence.bRequired`). After `SubmitValidatedWithHash` call `UploadEvidence(Result.Evidence.RunId, InputLog)` yourself. Results arrive on `OnEvidenceUploaded` / `OnEvidenceUploadFailed`.
+- **Run start context and sus runs**: `StartRun(Key, Context, OnComplete)` (Blueprint: Start Validated Run With Context) declares versions, content digest and initial state (`FHorizonRunContext`); `DefaultRunContext` is sent when no context is passed. `Result.bSus` marks an accepted run the server keeps for a review; its input log is uploaded like a top N record.
 - **Multiple hosts** -- If you configure multiple backend hosts, the SDK automatically pings each one and selects the fastest.
 - **Session caching** -- The SDK saves session tokens to disk. Call `Horizon->Auth->RestoreAnonymousSession()` (Blueprint: **"Restore Anonymous Session"**) to sign a returning anonymous player back in.
 - **Clear cache** -- Use **Tools > horizOn > Clear Session Cache** in the editor to wipe local session data.

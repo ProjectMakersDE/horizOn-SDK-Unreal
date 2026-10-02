@@ -114,15 +114,35 @@ void AHorizonValidatedActionsExample::StartAndSubmitRun()
 		Earned.Add(FHorizonEarnedValue(ValueKey, EarnedAmount));
 	}
 
+	// Optional run start context (TASK-911): what the run starts from. The server binds it to the
+	// run together with what it fixes itself (rules, cloud save, seed, start time) and keeps it with
+	// a sus run, so the run can be replayed with the same build and state. Set the versions once
+	// with ValidatedActions->DefaultRunContext, or pass a context per run as here.
+	const FString LevelData = TEXT("level-1:walls=12;coins=40");
+	const FTCHARToUTF8 LevelBytes(*LevelData);
+	const FString InitialStateText = TEXT("hp=100;x=0;y=0");
+	const FTCHARToUTF8 InitialStateBytes(*InitialStateText);
+
+	FHorizonRunContext Context;
+	Context.GameVersion = TEXT("1.0.0");
+	Context.ContentVersion = TEXT("levels-1");
+	Context.SimulationVersion = TEXT("sim-1");
+	Context.ReplayFormatVersion = TEXT("inputs-v1");
+	// SHA-256 of the content bytes: the input log hash helper works for any bytes.
+	Context.ContentDigest = UHorizonValidatedActionsManager::ComputeInputLogHash(
+		TArray<uint8>(reinterpret_cast<const uint8*>(LevelBytes.Get()), LevelBytes.Length()));
+	Context.InitialState.Append(reinterpret_cast<const uint8*>(InitialStateBytes.Get()), InitialStateBytes.Length());
+
 	UE_LOG(LogTemp, Log, TEXT("[ValidatedActionsExample] Starting run..."));
 
-	ValidatedActions->StartRun(LeaderboardKey, FOnValidatedRunStarted::CreateLambda(
+	ValidatedActions->StartRun(LeaderboardKey, Context, FOnValidatedRunStarted::CreateLambda(
 		[WeakThis, ValidatedActions, Earned](bool bStarted, const FHorizonValidatedRun& Run,
 			const FString& ErrorCode, const FString& ErrorMessage)
 		{
 			if (!bStarted)
 			{
-				// For example RUN_RATE_LIMITED (retry later, not automatically) or NOT_SUPPORTED.
+				// For example RUN_RATE_LIMITED (retry later, not automatically), NOT_SUPPORTED,
+				// INITIAL_STATE_TOO_LARGE (413) or INVALID_CONTENT_DIGEST (local, no request).
 				UE_LOG(LogTemp, Error, TEXT("[ValidatedActionsExample] FAILED to start run (%s): %s"), *ErrorCode, *ErrorMessage);
 				return;
 			}
@@ -166,8 +186,17 @@ void AHorizonValidatedActionsExample::StartAndSubmitRun()
 							return;
 						}
 
-						UE_LOG(LogTemp, Log, TEXT("[ValidatedActionsExample] SUCCESS: best %lld, rank %lld, measured %lld s"),
-							Result.BestScore, Result.Rank, Result.DurationSeconds);
+						UE_LOG(LogTemp, Log, TEXT("[ValidatedActionsExample] SUCCESS: best %lld, rank %lld, measured %lld s, sus %s"),
+							Result.BestScore, Result.Rank, Result.DurationSeconds, Result.bSus ? TEXT("true") : TEXT("false"));
+
+						if (Result.bSus)
+						{
+							// The run counts, but it crossed a soft threshold of the rules. The server keeps it
+							// with its start context for a review and requests the input log
+							// (Result.Evidence.bRequired); the SDK uploads it by itself, like for a top N
+							// record. The reasons stay on the server.
+							UE_LOG(LogTemp, Log, TEXT("[ValidatedActionsExample] The run was marked sus and is kept for review."));
+						}
 
 						if (AHorizonValidatedActionsExample* Self = WeakThis.Get())
 						{

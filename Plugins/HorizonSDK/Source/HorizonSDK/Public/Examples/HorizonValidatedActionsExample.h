@@ -14,13 +14,15 @@ class UHorizonSubsystem;
  *
  * What it does: connects, signs up anonymously (runs need a signed-in player), reads the
  * player's server-owned values (GetState), starts a run bound to the leaderboard
- * LeaderboardKey, seeds a random stream with the server seed, records a tiny input log, and
+ * LeaderboardKey with a run start context (versions, content digest, initial state), seeds a
+ * random stream with the server seed, records a tiny input log, and
  * submits score plus log hash. With ValueKey set, the run also earns EarnedAmount of that
  * value, and the state after the run is logged (Requested, Credited, EarnedToday / DailyCap).
  * Finally it shows how to mirror the state into the cloud save (log only, unless
  * bMirrorToCloudSave is on). A rejected run logs the code (for example DURATION_TOO_SHORT).
  * When the server asks for the input log (Result.Evidence.bRequired, for example a run in the
- * board's top N), the SDK uploads it by itself and the example logs the evidence events. With
+ * board's top N, or a sus run), the SDK uploads it by itself and the example logs the evidence
+ * events. A sus run (Result.bSus) counts but is kept by the server for a review. With
  * bUploadEvidenceManually the automatic upload is off and the example calls UploadEvidence.
  * A player banned from the board gets PLAYER_BANNED; the run stays and the example discards it.
  *
@@ -40,7 +42,7 @@ class UHorizonSubsystem;
  *   [ValidatedActionsExample] Starting run...
  *   [ValidatedActionsExample] Run <id> started, seed <n>
  *   [ValidatedActionsExample] Submitting score <n>, input log hash <hash>
- *   [ValidatedActionsExample] SUCCESS: best <n>, rank <n>, measured <n> s
+ *   [ValidatedActionsExample] SUCCESS: best <n>, rank <n>, measured <n> s, sus <true|false>
  *   [ValidatedActionsExample]   gold: balance <n>, requested <n>, credited <n>, today <n> / <cap>
  *   [ValidatedActionsExample] Cloud save mirror: {"day":"<day>","balances":{"gold":<n>}}
  *   [ValidatedActionsExample] Evidence requested for run <id> until <time> (max <n> bytes)

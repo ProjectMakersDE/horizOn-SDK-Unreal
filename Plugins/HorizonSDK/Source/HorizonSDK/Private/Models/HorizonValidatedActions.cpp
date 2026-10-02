@@ -201,5 +201,7 @@ FHorizonValidatedSubmitResult FHorizonValidatedSubmitResult::FromJson(const TSha
 	Result.DurationSeconds = ReadValidatedInt64(JsonObject, TEXT("durationSeconds"));
 	Result.State = FHorizonPlayerState::FromJson(ReadValidatedObject(JsonObject, TEXT("state")));
 	Result.Evidence = FHorizonEvidenceRequest::FromJson(ReadValidatedObject(JsonObject, TEXT("evidence")));
+	// TASK-911: older servers omit `sus`; missing or null reads as false.
+	Result.bSus = ReadValidatedBool(JsonObject, TEXT("sus"));
 	return Result;
 }
