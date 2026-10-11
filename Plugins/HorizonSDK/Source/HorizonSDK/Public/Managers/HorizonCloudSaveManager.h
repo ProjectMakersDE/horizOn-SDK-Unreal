@@ -6,6 +6,7 @@
 #include "HorizonTypes.h"
 #include "Http/HorizonHttpClient.h"
 #include "Managers/HorizonAuthManager.h"
+#include "Models/HorizonCloudSave.h"
 #include "HorizonCloudSaveManager.generated.h"
 
 /**
@@ -56,6 +57,33 @@ public:
 	 * @param OnComplete Called with (bSuccess, Data).
 	 */
 	void LoadBytes(FOnBinaryComplete OnComplete);
+
+	// -- Several devices: revision-checked saves --
+
+	/**
+	 * Load the string save together with its server revision.
+	 * Pass Snapshot.Revision as ExpectedRevision to Save(Data, ExpectedRevision, OnComplete).
+	 * bFound is false and Revision 0 for an empty slot. Revision is -1 when the server sent
+	 * none: the state is unknown, not empty.
+	 */
+	void LoadSnapshot(FOnCloudSaveSnapshotComplete OnComplete);
+
+	/**
+	 * Load the binary save together with its server revision.
+	 * Pass Snapshot.Revision as ExpectedRevision to SaveBytes(Data, ExpectedRevision, OnComplete).
+	 */
+	void LoadBytesSnapshot(FOnCloudSaveSnapshotComplete OnComplete);
+
+	/**
+	 * Save string data only if the cloud save is still at ExpectedRevision (sends If-Match).
+	 * When another device saved first, nothing is written and the result is Conflict:
+	 * load a new snapshot and decide. A conflict is never retried or overwritten by the SDK.
+	 * @param ExpectedRevision Revision from the last snapshot or save, 0 for an empty slot.
+	 */
+	void Save(const FString& Data, int64 ExpectedRevision, FOnCloudSaveWriteComplete OnComplete);
+
+	/** Save binary data only if the cloud save is still at ExpectedRevision. See Save. */
+	void SaveBytes(const TArray<uint8>& Data, int64 ExpectedRevision, FOnCloudSaveWriteComplete OnComplete);
 
 private:
 	UPROPERTY()

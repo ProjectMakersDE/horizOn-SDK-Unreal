@@ -202,6 +202,25 @@ Horizon->CloudSave->LoadBytes(
     FOnBinaryComplete::CreateLambda([](bool bSuccess, const TArray<uint8>& Data) { }));
 ```
 
+**Saving from several devices.** The plain save methods overwrite whatever is stored. When a player plays on more than one device, load a snapshot with its revision and save against that revision. The server writes only while the save is still at that revision. Otherwise it answers HTTP 409, nothing is written and the result is `Conflict`. The SDK never retries or overwrites a conflict: load again, merge or let the player choose, then save with the new revision.
+
+```cpp
+Horizon->CloudSave->LoadSnapshot(FOnCloudSaveSnapshotComplete::CreateLambda(  // or LoadBytesSnapshot
+    [Horizon, NewJson](const FHorizonCloudSaveSnapshot& Snapshot)
+    {
+        if (!Snapshot.bSuccess) { return; }
+        // Build NewJson from Snapshot.Data: only the snapshot's data belongs to its revision.
+        Horizon->CloudSave->Save(NewJson, Snapshot.Revision,  // or SaveBytes(Bytes, Revision, ...)
+            FOnCloudSaveWriteComplete::CreateLambda([](const FHorizonCloudSaveWriteResult& Result)
+            {
+                if (Result.IsConflict()) { /* another device saved first: load a new snapshot and decide */ }
+                else if (Result.IsSaved()) { /* pass Result.Revision to the next save */ }
+            }));
+    }));
+```
+
+`Revision` is `0` for an empty slot. It is `-1` when the server sends no revision, for example a self-hosted simpleServer: the state is then unknown, not empty, and the server does not detect conflicts. Blueprint nodes: **Cloud Load Data Snapshot**, **Cloud Load Bytes Snapshot**, **Cloud Save Data At Revision** and **Cloud Save Bytes At Revision** (pins Saved, Conflict, Failure).
+
 ### Remote Config
 
 ```cpp

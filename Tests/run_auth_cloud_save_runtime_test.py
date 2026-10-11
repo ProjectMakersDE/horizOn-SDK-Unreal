@@ -4,7 +4,9 @@
 This exercises the actual anonymous signup/signin/restore and binary load code
 without an installed UE project. It does not replace UnrealBuildTool validation.
 Server contract: UserService.createAnonymousUser, SignUpResponse, SignInResponse,
-AppCloudSaveController.loadCloudSave, inspected 2026-10-01.
+AppCloudSaveController.loadCloudSave, inspected 2026-10-01. Cloud save revisions
+(X-Cloud-Save-Revision, If-Match, 409): AppCloudSaveController and
+CloudSaveExceptionHandler, inspected 2026-10-11.
 """
 from pathlib import Path
 import os
@@ -12,9 +14,9 @@ import subprocess
 import tempfile
 
 
-def extract(path, name):
+def extract(path, name, signature=None):
     source = path.read_text()
-    start = source.index("void " + name + "(")
+    start = source.index(signature or "void " + name + "(")
     opening = source.index("{", start)
     depth = 1
     position = opening + 1
@@ -31,10 +33,25 @@ cloud = private / "Managers/HorizonCloudSaveManager.cpp"
 methods = [extract(auth, "UHorizonAuthManager::" + name) for name in
            ["SignUpAnonymous", "SignInAnonymous", "RestoreAnonymousSession", "HandleAuthResponse", "CacheSession", "CheckAuth"]]
 methods.append(extract(private / "Models/HorizonUserData.cpp", "FHorizonUserData::UpdateFromAuthResponse"))
-methods.append(extract(cloud, "UHorizonCloudSaveManager::LoadBytes"))
+methods.append(extract(private / "Models/HorizonNetworkResponse.cpp", None,
+                       "FString FHorizonNetworkResponse::GetHeader("))
+methods.extend(extract(cloud, None, signature) for signature in
+               ["static bool TryGetCloudSaveBool(",
+                "static bool TryGetCloudSaveString(",
+                "static FHorizonCloudSaveSnapshot CloudSaveSnapshotFrom(",
+                "static FHorizonCloudSaveWriteResult CloudSaveWriteResultFrom(",
+                "static FString CheckConditionalSave(",
+                "static TMap<FString, FString> CloudSaveIfMatch(",
+                "static void LogCloudSaveWrite("])
+methods.extend(extract(cloud, "UHorizonCloudSaveManager::" + name) for name in
+               ["LoadBytes", "LoadSnapshot", "LoadBytesSnapshot"])
+methods.append(extract(cloud, None, "void UHorizonCloudSaveManager::Save(const FString& Data, int64"))
+methods.append(extract(cloud, None, "void UHorizonCloudSaveManager::SaveBytes(const TArray<uint8>& Data, int64"))
+methods.append(extract(cloud, None, "void UHorizonCloudSaveManager::Save(const FString& Data, FOnRequestComplete"))
+methods.append(extract(cloud, None, "void UHorizonCloudSaveManager::SaveBytes(const TArray<uint8>& Data, FOnRequestComplete"))
 http = private / "Http/HorizonHttpClient.cpp"
 methods.extend(extract(http, "UHorizonHttpClient::" + name) for name in
-               ["PostJsonForBinary", "ApplyHeaders"])
+               ["PostJson", "PostJsonForBinary", "PostBinary", "ApplyHeaders"])
 with tempfile.TemporaryDirectory(prefix="horizon-unreal-manager-test-") as temporary:
     folder = Path(temporary)
     (folder / "ManagerMethods.inc").write_text("\n\n".join(methods))

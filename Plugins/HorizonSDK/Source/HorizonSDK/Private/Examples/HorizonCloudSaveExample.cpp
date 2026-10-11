@@ -72,7 +72,7 @@ void AHorizonCloudSaveExample::HandleConnected()
 					UE_LOG(LogTemp, Log, TEXT("[CloudSaveExample] Saved. Loading it back..."));
 
 					CloudSave->Load(FOnStringComplete::CreateLambda(
-						[](bool bLoadSuccess, const FString& Data)
+						[CloudSave](bool bLoadSuccess, const FString& Data)
 						{
 							if (!bLoadSuccess)
 							{
@@ -81,6 +81,39 @@ void AHorizonCloudSaveExample::HandleConnected()
 							}
 
 							UE_LOG(LogTemp, Log, TEXT("[CloudSaveExample] SUCCESS: loaded %s"), *Data);
+
+							// Several devices: load a snapshot with its revision, then save only while the
+							// cloud save is still at that revision. On a conflict another device saved
+							// first: nothing was written, load again and decide.
+							CloudSave->LoadSnapshot(FOnCloudSaveSnapshotComplete::CreateLambda(
+								[CloudSave](const FHorizonCloudSaveSnapshot& Snapshot)
+								{
+									if (!Snapshot.bSuccess)
+									{
+										UE_LOG(LogTemp, Error, TEXT("[CloudSaveExample] FAILED to load snapshot: %s"), *Snapshot.ErrorMessage);
+										return;
+									}
+
+									// Snapshot.Data is {"level":3,"coins":120}. A game builds the new save from
+									// Snapshot.Data: only the snapshot's data belongs to its revision.
+									const FString Updated = TEXT("{\"level\":3,\"coins\":130}");
+									CloudSave->Save(Updated, Snapshot.Revision, FOnCloudSaveWriteComplete::CreateLambda(
+										[](const FHorizonCloudSaveWriteResult& Result)
+										{
+											if (Result.IsConflict())
+											{
+												UE_LOG(LogTemp, Warning, TEXT("[CloudSaveExample] Another device saved first. Load the new snapshot and merge."));
+											}
+											else if (Result.IsSaved())
+											{
+												UE_LOG(LogTemp, Log, TEXT("[CloudSaveExample] Saved at revision %lld."), Result.Revision);
+											}
+											else
+											{
+												UE_LOG(LogTemp, Error, TEXT("[CloudSaveExample] FAILED to save: %s"), *Result.ErrorMessage);
+											}
+										}));
+								}));
 						}));
 				}));
 		}));

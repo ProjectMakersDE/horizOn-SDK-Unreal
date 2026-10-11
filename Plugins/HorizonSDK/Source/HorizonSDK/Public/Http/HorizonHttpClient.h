@@ -45,11 +45,14 @@ public:
 
 	// -- HTTP convenience methods --
 	void Get(const FString& Endpoint, bool bUseSessionToken, FOnHttpResponse OnComplete);
-	void PostJson(const TSharedRef<FJsonObject>& Body, const FString& Endpoint, bool bUseSessionToken, FOnHttpResponse OnComplete);
+	/** ExtraHeaders are sent on every attempt, for example If-Match for a conditional cloud save. */
+	void PostJson(const TSharedRef<FJsonObject>& Body, const FString& Endpoint, bool bUseSessionToken, FOnHttpResponse OnComplete,
+		const TMap<FString, FString>& ExtraHeaders = TMap<FString, FString>());
 	/** POST a JSON body and negotiate a binary response. */
 	void PostJsonForBinary(const TSharedRef<FJsonObject>& Body, const FString& Endpoint, bool bUseSessionToken, FOnHttpResponse OnComplete);
 	void PutJson(const TSharedRef<FJsonObject>& Body, const FString& Endpoint, bool bUseSessionToken, FOnHttpResponse OnComplete);
-	void PostBinary(const FString& Endpoint, const TArray<uint8>& Data, bool bUseSessionToken, FOnHttpResponse OnComplete);
+	void PostBinary(const FString& Endpoint, const TArray<uint8>& Data, bool bUseSessionToken, FOnHttpResponse OnComplete,
+		const TMap<FString, FString>& ExtraHeaders = TMap<FString, FString>());
 	void Delete(const FString& Endpoint, bool bUseSessionToken, FOnHttpResponse OnComplete);
 	void GetBinary(const FString& Endpoint, bool bUseSessionToken, FOnHttpResponse OnComplete);
 
@@ -71,11 +74,13 @@ private:
 		bool bUseSessionToken,
 		int32 RetryCount,
 		FOnHttpResponse OnComplete,
-		const FString& AcceptContentType = TEXT("")
+		const FString& AcceptContentType = TEXT(""),
+		const TMap<FString, FString>& ExtraHeaders = TMap<FString, FString>()
 	);
 
 	/** Build and apply standard headers to a request. */
-	void ApplyHeaders(TSharedRef<IHttpRequest, ESPMode::ThreadSafe> Request, const FString& ContentType, bool bUseSessionToken, const FString& AcceptContentType = TEXT("")) const;
+	void ApplyHeaders(TSharedRef<IHttpRequest, ESPMode::ThreadSafe> Request, const FString& ContentType, bool bUseSessionToken, const FString& AcceptContentType = TEXT(""),
+		const TMap<FString, FString>& ExtraHeaders = TMap<FString, FString>()) const;
 
 	/** Parse an HTTP response into FHorizonNetworkResponse. */
 	FHorizonNetworkResponse ParseResponse(FHttpResponsePtr HttpResponse, bool bConnectedSuccessfully) const;
@@ -93,7 +98,8 @@ private:
 		int32 RetryCount,
 		float DelaySeconds,
 		FOnHttpResponse OnComplete,
-		const FString& AcceptContentType = TEXT("")
+		const FString& AcceptContentType = TEXT(""),
+		const TMap<FString, FString>& ExtraHeaders = TMap<FString, FString>()
 	);
 
 	/** Ping a single host, measure latency, call back when all pings are done. */
