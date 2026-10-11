@@ -36,6 +36,12 @@ struct HORIZONSDK_API FHorizonNetworkResponse
     UPROPERTY(BlueprintReadOnly, Category = "horizOn|Network")
     TArray<uint8> BinaryData;
 
+    /** Response headers as "Name: value" lines. Empty when no response arrived. */
+    TArray<FString> Headers;
+
+    /** Value of a response header, name matched case-insensitively. Empty when missing. */
+    FString GetHeader(const FString& Name) const;
+
     /** Map HTTP status code to SDK error code */
     static EHorizonErrorCode StatusToErrorCode(int32 HttpStatus);
 

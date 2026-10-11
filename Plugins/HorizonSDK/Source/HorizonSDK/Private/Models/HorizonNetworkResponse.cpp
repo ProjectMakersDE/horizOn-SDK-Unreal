@@ -1,4 +1,5 @@
 #include "Models/HorizonNetworkResponse.h"
+#include "Transport/HorizonCloudSaveTransportContract.h"
 
 EHorizonErrorCode FHorizonNetworkResponse::StatusToErrorCode(int32 HttpStatus)
 {
@@ -53,4 +54,15 @@ FString FHorizonNetworkResponse::GetErrorCodeString() const
     }
     const FString Mapped = ErrorCodeToString(ErrorCode);
     return Mapped.IsEmpty() ? FString(TEXT("UNKNOWN")) : Mapped;
+}
+
+FString FHorizonNetworkResponse::GetHeader(const FString& Name) const
+{
+    std::vector<std::string> Lines;
+    Lines.reserve(Headers.Num());
+    for (const FString& Line : Headers)
+    {
+        Lines.emplace_back(TCHAR_TO_UTF8(*Line));
+    }
+    return UTF8_TO_TCHAR(HorizonTransportContract::FindHeader(Lines, TCHAR_TO_UTF8(*Name)).c_str());
 }

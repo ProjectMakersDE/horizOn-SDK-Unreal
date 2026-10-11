@@ -1,5 +1,6 @@
 // Runs actual manager methods, with only the UE and network/storage boundaries replaced.
 #include "Transport/HorizonLeaderboardTransportContract.h"
+#include "Transport/HorizonCloudSaveTransportContract.h"
 
 #include <cstring>
 #include <cstdarg>
@@ -18,6 +19,8 @@
 #define UTF8_TO_TCHAR(Value) Value
 enum class ESPMode { ThreadSafe };
 using uint8 = unsigned char;
+using int64 = long long;
+using TCHAR = char;
 struct FString : std::string
 {
     using std::string::string;
@@ -32,6 +35,14 @@ struct FString : std::string
 template <typename T> struct TArray : std::vector<T>
 { using std::vector<T>::vector; int Num() const { return this->size(); }
   void Append(const T* Data, int Length) { this->insert(this->end(), Data, Data + Length); } };
+template <typename K, typename V> struct TMap
+{
+    struct FPair { K Key; V Value; };
+    std::vector<FPair> Pairs;
+    void Add(const K& Key, const V& Value) { Pairs.push_back({Key, Value}); }
+    typename std::vector<FPair>::const_iterator begin() const { return Pairs.begin(); }
+    typename std::vector<FPair>::const_iterator end() const { return Pairs.end(); }
+};
 template <typename T, ESPMode Mode = ESPMode::ThreadSafe> struct TSharedPtr : std::shared_ptr<T>
 {
     using std::shared_ptr<T>::shared_ptr;
@@ -48,19 +59,53 @@ template <typename T> struct TWeakObjectPtr
     T* Get() const { return Value; }
     bool IsValid() const { return Value != nullptr; }
 };
+enum class EJson { None, Null, String, Number, Boolean, Array, Object };
+struct FJsonValue
+{
+    EJson Type = EJson::None;
+    bool Bool = false;
+    FString String;
+    bool AsBool() const { return Bool; }
+    FString AsString() const { return String; }
+};
 struct FJsonObject
 {
     std::map<FString, FString> Strings;
     std::map<FString, bool> Bools;
+    std::map<FString, double> Numbers;
     void SetStringField(const FString& Key, const FString& Value) { Strings[Key] = Value; }
     void SetBoolField(const FString& Key, bool Value) { Bools[Key] = Value; }
+    void SetNumberField(const FString& Key, double Value) { Numbers[Key] = Value; }
+    // Like UE 5.5, the typed getters convert: a number or "true" counts as a bool, a number as a string.
+    bool TryGetBoolField(const FString& Key, bool& Out) const
+    {
+        if (auto It = Bools.find(Key); It != Bools.end()) { Out = It->second; return true; }
+        if (auto It = Numbers.find(Key); It != Numbers.end()) { Out = It->second != 0.0; return true; }
+        if (auto It = Strings.find(Key); It != Strings.end()) { Out = It->second == "true"; return true; }
+        return false;
+    }
+    TSharedPtr<FJsonValue> TryGetField(const FString& Key) const
+    {
+        auto Value = std::make_shared<FJsonValue>();
+        if (auto It = Bools.find(Key); It != Bools.end()) { Value->Type = EJson::Boolean; Value->Bool = It->second; }
+        else if (auto It = Strings.find(Key); It != Strings.end()) { Value->Type = EJson::String; Value->String = It->second; }
+        else if (auto It = Numbers.find(Key); It != Numbers.end()) { Value->Type = EJson::Number; Value->String = std::to_string(It->second); }
+        else return TSharedPtr<FJsonValue>();
+        return Value;
+    }
+    bool TryGetNumberField(const FString& Key, double& Out) const
+    { auto It = Numbers.find(Key); if (It == Numbers.end()) return false; Out = It->second; return true; }
     FString GetStringField(const FString& Key) const
     { auto It = Strings.find(Key); return It == Strings.end() ? FString() : It->second; }
     bool TryGetStringField(const FString& Key, FString& Out) const
-    { auto It = Strings.find(Key); if (It == Strings.end()) return false; Out = It->second; return true; }
+    {
+        if (auto It = Strings.find(Key); It != Strings.end()) { Out = It->second; return true; }
+        if (auto It = Numbers.find(Key); It != Numbers.end()) { Out = std::to_string(It->second); return true; }
+        return false;
+    }
     bool GetBoolField(const FString& Key) const
     { auto It = Bools.find(Key); return It != Bools.end() && It->second; }
-    bool HasField(const FString& Key) const { return Strings.count(Key) || Bools.count(Key); }
+    bool HasField(const FString& Key) const { return Strings.count(Key) || Bools.count(Key) || Numbers.count(Key); }
 };
 template <typename T = void> struct TJsonWriter { FString* Output; };
 template <typename T = void> struct TJsonWriterFactory
@@ -98,6 +143,26 @@ struct FHorizonNetworkResponse
     FString ErrorMessage;
     TSharedPtr<FJsonObject> JsonData = MakeShared<FJsonObject>();
     TArray<uint8> BinaryData;
+    TArray<FString> Headers;
+    FString GetHeader(const FString& Name) const;
+};
+enum class EHorizonCloudSaveWriteStatus { Saved, Conflict, Failed };
+struct FHorizonCloudSaveSnapshot
+{
+    bool bSuccess = false, bFound = false;
+    FString Data;
+    TArray<uint8> BinaryData;
+    int64 Revision = -1;
+    FString ErrorMessage;
+    int StatusCode = 0;
+    bool HasRevision() const { return Revision >= 0; }
+};
+struct FHorizonCloudSaveWriteResult
+{
+    EHorizonCloudSaveWriteStatus Status = EHorizonCloudSaveWriteStatus::Failed;
+    int64 Revision = -1, DataSizeBytes = 0;
+    FString ErrorMessage;
+    int StatusCode = 0;
 };
 template <typename... Args> struct Delegate
 {
@@ -110,7 +175,10 @@ template <typename... Args> struct Delegate
 };
 using FOnAuthComplete = Delegate<bool>;
 using FOnBinaryComplete = Delegate<bool, const TArray<uint8>&>;
+using FOnRequestComplete = Delegate<bool, const FString&>;
 using FOnHttpResponse = Delegate<const FHorizonNetworkResponse&>;
+using FOnCloudSaveSnapshotComplete = Delegate<const FHorizonCloudSaveSnapshot&>;
+using FOnCloudSaveWriteComplete = Delegate<const FHorizonCloudSaveWriteResult&>;
 struct FGuid { static FGuid NewGuid() { return {}; } FString ToString(int) const { return "client-generated-token"; } };
 struct EGuidFormats { static constexpr int DigitsLower = 0; };
 enum class EHorizonAuthType { Anonymous, Email, Google, Apple };
@@ -131,7 +199,7 @@ struct UHorizonSessionSave
 };
 struct UHorizonHttpClient
 {
-    struct Request { FString Method, Endpoint; TSharedRef<FJsonObject> Body; bool UseSession; };
+    struct Request { FString Method, Endpoint; TSharedRef<FJsonObject> Body; bool UseSession; FString ContentType, Payload; };
     std::vector<Request> Requests;
     std::function<FHorizonNetworkResponse(const Request&)> Server;
     FString SessionToken, ApiKey = "project-key-892", ActiveHost = "http://loopback.invalid";
@@ -140,18 +208,22 @@ struct UHorizonHttpClient
     void ClearSessionToken() { SessionToken.Empty(); }
     void Send(const Request& Request, FOnHttpResponse Callback)
     { Requests.push_back(Request); Callback.ExecuteIfBound(Server(Request)); }
-    void PostJson(const TSharedRef<FJsonObject>& Body, const FString& Endpoint, bool Session, FOnHttpResponse Callback)
-    { Send({"POST", Endpoint, Body, Session}, Callback); }
+    void PostJson(const TSharedRef<FJsonObject>& Body, const FString& Endpoint, bool Session, FOnHttpResponse Callback,
+                  const TMap<FString, FString>& ExtraHeaders = TMap<FString, FString>());
     void PostJsonForBinary(const TSharedRef<FJsonObject>& Body, const FString& Endpoint, bool Session, FOnHttpResponse Callback);
-    void ApplyHeaders(TSharedRef<IHttpRequest, ESPMode::ThreadSafe>, const FString&, bool, const FString&) const;
+    void PostBinary(const FString& Endpoint, const TArray<uint8>& Data, bool Session, FOnHttpResponse Callback,
+                    const TMap<FString, FString>& ExtraHeaders = TMap<FString, FString>());
+    void ApplyHeaders(TSharedRef<IHttpRequest, ESPMode::ThreadSafe>, const FString&, bool, const FString&,
+                      const TMap<FString, FString>& = TMap<FString, FString>()) const;
     void SendRequest(const FString& Verb, const FString& Url, const FString& ContentType,
-                     const TArray<uint8>& Payload, bool Session, int, FOnHttpResponse Callback, const FString& Accept)
+                     const TArray<uint8>& Payload, bool Session, int, FOnHttpResponse Callback, const FString& Accept = "",
+                     const TMap<FString, FString>& ExtraHeaders = TMap<FString, FString>())
     {
         auto Request = MakeShared<IHttpRequest>(); Request->Verb = Verb;
-        ApplyHeaders(Request, ContentType, Session, Accept); LastHeaders = Request->Headers;
-        if (std::string(Payload.begin(), Payload.end()) != "{\"userId\":\"user-892\"}")
-            throw std::runtime_error("binary load did not serialize its JSON request");
-        Send({Verb, Url.substr(ActiveHost.size() + 1), FJsonSerializer::SerializedBody, Session}, Callback);
+        ApplyHeaders(Request, ContentType, Session, Accept, ExtraHeaders); LastHeaders = Request->Headers;
+        const bool Json = ContentType == "application/json";
+        Send({Verb, Url.substr(ActiveHost.size() + 1), Json ? FJsonSerializer::SerializedBody : MakeShared<FJsonObject>(),
+              Session, ContentType, FString(std::string(Payload.begin(), Payload.end()))}, Callback);
     }
     void GetBinary(const FString& Endpoint, bool Session, FOnHttpResponse Callback)
     { Send({"GET", Endpoint, MakeShared<FJsonObject>(), Session}, Callback); }
@@ -177,6 +249,12 @@ struct UHorizonCloudSaveManager
     UHorizonAuthManager* AuthManager;
     UHorizonHttpClient* HttpClient;
     void LoadBytes(FOnBinaryComplete);
+    void LoadSnapshot(FOnCloudSaveSnapshotComplete);
+    void LoadBytesSnapshot(FOnCloudSaveSnapshotComplete);
+    void Save(const FString&, int64, FOnCloudSaveWriteComplete);
+    void SaveBytes(const TArray<uint8>&, int64, FOnCloudSaveWriteComplete);
+    void Save(const FString&, FOnRequestComplete);
+    void SaveBytes(const TArray<uint8>&, FOnRequestComplete);
 };
 #include "ManagerMethods.inc"
 
@@ -245,6 +323,7 @@ int main()
         Require(Auth.IsSignedIn() && Auth.CurrentUser.AnonymousToken == Issued && Auth.CurrentUser.bIsAnonymous,
                 "anonymous identity was lost from the signin response");
         Require(Http.SessionToken == "signin-session", "signin session was not installed");
+        Require(!Http.LastHeaders.count("If-Match"), "requests without extra headers must not send If-Match");
         Require(UHorizonSessionSave::Stored->CachedAnonymousToken == Issued, "issued token was not persisted");
         Auth.ClearSession();
         Auth.RestoreAnonymousSession(Completion);
@@ -293,6 +372,8 @@ int main()
             Require(Request.Endpoint == "api/v1/app/cloud-save/load", "binary load must not use a query-only route");
             Require(Request.UseSession, "binary load must use the player session");
             Require(Request.Body->GetStringField("userId") == "user-892", "binary load needs JSON userId body");
+            Require(Request.Payload == "{\"userId\":\"user-892\"}", "binary load did not serialize its JSON request");
+            Require(!Http.LastHeaders.count("If-Match"), "unconditional binary load must not send If-Match");
             FHorizonNetworkResponse Response;
             Response.StatusCode = Status; Response.bSuccess = Status < 400;
             if (Status == 200) Response.BinaryData = Bytes;
@@ -311,12 +392,219 @@ int main()
         Status = 401;
         Cloud.LoadBytes(LoadCompletion);
         Require(!Success && Loaded.empty(), "401 must return failure");
+
+        // Revision-checked saves for several devices. Server contract: AppCloudSaveController and
+        // CloudSaveExceptionHandler in horizOn-Server, checked 2026-10-11 (released in 1.64.1).
+        struct FExpected
+        {
+            FString Endpoint, ContentType, Payload, IfMatch;
+            int Status = 200;
+            std::vector<FString> Headers;
+            std::function<void(FHorizonNetworkResponse&)> Fill;
+        };
+        std::vector<FExpected> Script;
+        Http.Server = [&](const auto& Request) {
+            Require(!Script.empty(), "unexpected cloud save request");
+            const FExpected Expected = Script.front();
+            Script.erase(Script.begin());
+            Require(Request.Method == "POST" && Request.UseSession, "cloud save must POST with the player session");
+            Require(Request.Endpoint == Expected.Endpoint, "wrong cloud save endpoint");
+            Require(Http.LastHeaders["Content-Type"] == Expected.ContentType, "wrong cloud save content type");
+            Require(Http.LastHeaders["Authorization"] == "Bearer signin-session", "cloud save must send Bearer session");
+            if (!Expected.Payload.IsEmpty()) Require(Request.Payload == Expected.Payload, "wrong cloud save payload");
+            const auto IfMatch = Http.LastHeaders.find("If-Match");
+            if (Expected.IfMatch.IsEmpty()) Require(IfMatch == Http.LastHeaders.end(), "request must not send If-Match");
+            else Require(IfMatch != Http.LastHeaders.end() && IfMatch->second == Expected.IfMatch, "wrong If-Match");
+            FHorizonNetworkResponse Response;
+            Response.StatusCode = Expected.Status;
+            Response.bSuccess = Expected.Status < 400;
+            if (!Response.bSuccess) Response.ErrorMessage = "HTTP " + std::to_string(Expected.Status);
+            for (const auto& Header : Expected.Headers) Response.Headers.push_back(Header);
+            if (Expected.Fill) Expected.Fill(Response);
+            return Response;
+        };
+        auto Found = [](const FString& Data) {
+            return [Data](FHorizonNetworkResponse& Response) {
+                Response.JsonData->SetBoolField("found", true);
+                Response.JsonData->SetStringField("saveData", Data);
+            };
+        };
+        auto Written = [](double Size, double Revision) {
+            return [Size, Revision](FHorizonNetworkResponse& Response) {
+                Response.JsonData->SetBoolField("success", true);
+                Response.JsonData->SetNumberField("dataSizeBytes", Size);
+                if (Revision > 0) Response.JsonData->SetNumberField("revision", Revision);
+            };
+        };
+        const FString Load = "api/v1/app/cloud-save/load", SaveJson = "api/v1/app/cloud-save/save";
+        const FString SaveBinary = "api/v1/app/cloud-save/save?userId=user-892";
+        FHorizonCloudSaveSnapshot Snapshot;
+        FHorizonCloudSaveWriteResult Write;
+        int Snapshots = 0, Writes = 0;
+        auto OnSnapshot = FOnCloudSaveSnapshotComplete::CreateLambda([&](const FHorizonCloudSaveSnapshot& Value) { ++Snapshots; Snapshot = Value; });
+        auto OnWrite = FOnCloudSaveWriteComplete::CreateLambda([&](const FHorizonCloudSaveWriteResult& Value) { ++Writes; Write = Value; });
+        const FString Saved = "{\"level\":4}";
+
+        Script.push_back({Load, "application/json", "", "", 200, {"x-cloud-save-revision: 3"}, Found("{\"level\":3}")});
+        Cloud.LoadSnapshot(OnSnapshot);
+        Require(Snapshot.bSuccess && Snapshot.bFound && Snapshot.Data == "{\"level\":3}" && Snapshot.Revision == 3,
+                "string snapshot must carry data and the header revision (case-insensitive)");
+        Require(Http.LastHeaders["Accept"].empty(), "string snapshot must not negotiate binary");
+
+        Script.push_back({SaveJson, "application/json", "", "3", 200, {}, Written(11, 4)});
+        Cloud.Save(Saved, 3, OnWrite);
+        Require(Http.Requests.back().Body->GetStringField("saveData") == Saved, "conditional save lost its data");
+        Require(Write.Status == EHorizonCloudSaveWriteStatus::Saved && Write.Revision == 4 && Write.DataSizeBytes == 11,
+                "conditional save must return the new revision");
+
+        Script.push_back({SaveJson, "application/json", "", "3", 409, {}, [](FHorizonNetworkResponse& Response) {
+            Response.JsonData->SetStringField("error", "Cloud save revision mismatch"); }});
+        Cloud.Save(Saved, 3, OnWrite);
+        Require(Write.Status == EHorizonCloudSaveWriteStatus::Conflict && Write.StatusCode == 409 &&
+                Write.ErrorMessage.find("another device") != std::string::npos && Write.Revision == -1,
+                "HTTP 409 must be a conflict, not a failure");
+
+        Script.push_back({Load, "application/json", "{\"userId\":\"user-892\"}", "", 200, {"X-Cloud-Save-Revision: 7"},
+                          [&](FHorizonNetworkResponse& Response) { Response.BinaryData = Bytes; }});
+        Cloud.LoadBytesSnapshot(OnSnapshot);
+        Require(Http.LastHeaders["Accept"] == "application/octet-stream", "bytes snapshot must negotiate binary");
+        Require(Snapshot.bSuccess && Snapshot.bFound && Snapshot.BinaryData == Bytes && Snapshot.Revision == 7,
+                "bytes snapshot must carry bytes and the header revision");
+
+        Script.push_back({Load, "application/json", "", "", 204, {"X-Cloud-Save-Revision: 0"}, nullptr});
+        Cloud.LoadBytesSnapshot(OnSnapshot);
+        Require(Snapshot.bSuccess && !Snapshot.bFound && Snapshot.BinaryData.empty() && Snapshot.Revision == 0 && Snapshot.HasRevision(),
+                "204 must be an empty slot at revision 0");
+
+        Script.push_back({SaveBinary, "application/octet-stream", FString(std::string(Bytes.begin(), Bytes.end())), "0", 200, {}, Written(4, 1)});
+        Cloud.SaveBytes(Bytes, 0, OnWrite);
+        Require(Write.Status == EHorizonCloudSaveWriteStatus::Saved && Write.Revision == 1,
+                "first conditional bytes save must return revision 1");
+
+        Script.push_back({SaveBinary, "application/octet-stream", "", "1", 409, {}, nullptr});
+        Cloud.SaveBytes(Bytes, 1, OnWrite);
+        Require(Write.Status == EHorizonCloudSaveWriteStatus::Conflict, "bytes conflict must be a conflict");
+
+        // simpleServer sends no revision: unknown, not an empty slot.
+        Script.push_back({Load, "application/json", "", "", 200, {}, Found("{}")});
+        Cloud.LoadSnapshot(OnSnapshot);
+        Require(Snapshot.bSuccess && Snapshot.Revision == -1 && !Snapshot.HasRevision(), "missing header must be unknown");
+        Script.push_back({Load, "application/json", "", "", 200, {"X-Cloud-Save-Revision: abc"}, Found("{}")});
+        Cloud.LoadSnapshot(OnSnapshot);
+        Require(Snapshot.Revision == -1, "a non-numeric header must be unknown");
+        Script.push_back({SaveJson, "application/json", "", "0", 200, {}, Written(2, 0)});
+        Cloud.Save("{}", 0, OnWrite);
+        Require(Write.Status == EHorizonCloudSaveWriteStatus::Saved && Write.Revision == -1, "save without revision must be unknown");
+
+        Script.push_back({Load, "application/json", "", "", 200, {"X-Cloud-Save-Revision: 0"}, [](FHorizonNetworkResponse& Response) {
+            Response.JsonData->SetBoolField("found", false); }});
+        Cloud.LoadSnapshot(OnSnapshot);
+        Require(Snapshot.bSuccess && !Snapshot.bFound && Snapshot.Data.empty() && Snapshot.Revision == 0,
+                "an empty JSON slot must be found=false at revision 0");
+        Script.push_back({Load, "application/json", "", "", 200, {}, [&](FHorizonNetworkResponse& Response) { Response.BinaryData = Bytes; }});
+        Cloud.LoadBytesSnapshot(OnSnapshot);
+        Require(Snapshot.bSuccess && Snapshot.bFound && Snapshot.Revision == -1, "a binary load without header must be unknown");
+        Script.push_back({Load, "application/json", "", "", 200, {"X-Cloud-Save-Revision: 9223372036854775807"}, Found("{}")});
+        Cloud.LoadSnapshot(OnSnapshot);
+        Require(Snapshot.Revision == 9223372036854775807LL, "the full int64 range must parse");
+        Script.push_back({Load, "application/json", "", "", 200, {"X-Cloud-Save-Revision: 9223372036854775808"}, Found("{}")});
+        Cloud.LoadSnapshot(OnSnapshot);
+        Require(Snapshot.Revision == -1, "an int64 overflow must be unknown");
+
+        // An unreadable 2xx answer is a failure, never an empty slot or a confirmed write.
+        Script.push_back({Load, "application/json", "", "", 200, {"X-Cloud-Save-Revision: 7"}, [](FHorizonNetworkResponse& Response) {
+            Response.JsonData = TSharedPtr<FJsonObject>(); }});
+        Cloud.LoadSnapshot(OnSnapshot);
+        Require(!Snapshot.bSuccess && Snapshot.Revision == -1 && !Snapshot.ErrorMessage.empty(), "a non-JSON load must fail");
+        Script.push_back({Load, "application/json", "", "", 200, {"X-Cloud-Save-Revision: 7"}, nullptr});
+        Cloud.LoadSnapshot(OnSnapshot);
+        Require(!Snapshot.bSuccess && Snapshot.Revision == -1, "a load without found must fail");
+        Script.push_back({Load, "application/json", "", "", 200, {"X-Cloud-Save-Revision: 7"}, [](FHorizonNetworkResponse& Response) {
+            Response.JsonData->SetBoolField("found", true); }});
+        Cloud.LoadSnapshot(OnSnapshot);
+        Require(!Snapshot.bSuccess && !Snapshot.bFound, "a found load without saveData must fail");
+        Script.push_back({SaveJson, "application/json", "", "2", 200, {}, nullptr});
+        Cloud.Save(Saved, 2, OnWrite);
+        Require(Write.Status == EHorizonCloudSaveWriteStatus::Failed && Write.ErrorMessage.find("did not confirm") != std::string::npos,
+                "a save answer without success must not count as written");
+        Script.push_back({SaveJson, "application/json", "", "2", 200, {}, [](FHorizonNetworkResponse& Response) {
+            Response.JsonData->SetBoolField("success", false); Response.JsonData->SetNumberField("revision", 3); }});
+        Cloud.Save(Saved, 2, OnWrite);
+        Require(Write.Status == EHorizonCloudSaveWriteStatus::Failed && Write.Revision == -1, "success=false must fail");
+        Script.push_back({SaveBinary, "application/octet-stream", "", "2", 200, {}, [](FHorizonNetworkResponse& Response) {
+            Response.JsonData = TSharedPtr<FJsonObject>(); }});
+        Cloud.SaveBytes(Bytes, 2, OnWrite);
+        Require(Write.Status == EHorizonCloudSaveWriteStatus::Failed, "a non-JSON save answer must fail");
+        // Wrong JSON types: UE's getters would convert them, the SDK must not.
+        Script.push_back({Load, "application/json", "", "", 200, {"X-Cloud-Save-Revision: 7"}, [](FHorizonNetworkResponse& Response) {
+            Response.JsonData->SetNumberField("found", 0); }});
+        Cloud.LoadSnapshot(OnSnapshot);
+        Require(!Snapshot.bSuccess, "a numeric found must fail");
+        Script.push_back({Load, "application/json", "", "", 200, {"X-Cloud-Save-Revision: 7"}, [](FHorizonNetworkResponse& Response) {
+            Response.JsonData->SetBoolField("found", true); Response.JsonData->SetNumberField("saveData", 5); }});
+        Cloud.LoadSnapshot(OnSnapshot);
+        Require(!Snapshot.bSuccess, "a numeric saveData must fail");
+        Script.push_back({SaveJson, "application/json", "", "2", 200, {}, [](FHorizonNetworkResponse& Response) {
+            Response.JsonData->SetNumberField("success", 1); Response.JsonData->SetNumberField("revision", 3); }});
+        Cloud.Save(Saved, 2, OnWrite);
+        Require(Write.Status == EHorizonCloudSaveWriteStatus::Failed, "a numeric success must not count as written");
+        Script.push_back({SaveJson, "application/json", "", "2", 200, {}, Written(11, 2.5)});
+        Cloud.Save(Saved, 2, OnWrite);
+        Require(Write.Status == EHorizonCloudSaveWriteStatus::Saved && Write.Revision == -1, "a fractional revision must be unknown");
+        Script.push_back({SaveJson, "application/json", "", "2", 200, {}, Written(11, 1e19)});
+        Cloud.Save(Saved, 2, OnWrite);
+        Require(Write.Status == EHorizonCloudSaveWriteStatus::Saved && Write.Revision == -1, "an out-of-range revision must be unknown");
+
+        // The unconditional methods stay as they were: no If-Match.
+        bool LegacySaved = false;
+        auto OnLegacy = FOnRequestComplete::CreateLambda([&](bool Value, const FString&) { LegacySaved = Value; });
+        Script.push_back({SaveJson, "application/json", "", "", 200, {}, Written(11, 5)});
+        Cloud.Save(Saved, OnLegacy);
+        Require(LegacySaved, "legacy save must still work without If-Match");
+        LegacySaved = false;
+        Script.push_back({SaveBinary, "application/octet-stream", "", "", 200, {}, Written(4, 6)});
+        Cloud.SaveBytes(Bytes, OnLegacy);
+        Require(LegacySaved, "legacy bytes save must still work without If-Match");
+
+        Script.push_back({SaveJson, "application/json", "", "5", 500, {}, nullptr});
+        Cloud.Save(Saved, 5, OnWrite);
+        Require(Write.Status == EHorizonCloudSaveWriteStatus::Failed && Write.ErrorMessage == "HTTP 500", "5xx must fail");
+        Script.push_back({Load, "application/json", "", "", 401, {"X-Cloud-Save-Revision: 9"}, nullptr});
+        Cloud.LoadSnapshot(OnSnapshot);
+        Require(!Snapshot.bSuccess && Snapshot.Revision == -1 && Snapshot.StatusCode == 401, "failed load must not report a revision");
+
+        const auto RequestsBefore = Http.Requests.size();
+        Cloud.Save(Saved, -1, OnWrite);
+        Require(Write.Status == EHorizonCloudSaveWriteStatus::Failed && Write.ErrorMessage.find("ExpectedRevision") == 0,
+                "negative revision must fail locally");
+        Cloud.Save("", 0, OnWrite);
+        Require(Write.ErrorMessage == "Save data is required.", "empty data must fail locally");
+        Cloud.Save("", -1, OnWrite);
+        Require(Write.ErrorMessage == "Save data is required.", "missing data must be reported before an invalid revision");
+        Cloud.SaveBytes(TArray<uint8>(), 0, OnWrite);
+        Require(Write.Status == EHorizonCloudSaveWriteStatus::Failed && Http.Requests.size() == RequestsBefore && Script.empty(),
+                "local failures must not send a request");
+        Require(Snapshots == 15 && Writes == 16, "every revision call must complete exactly once");
+
         Auth.ClearSession();
         const auto RequestCount = Http.Requests.size();
         Cloud.LoadBytes(LoadCompletion);
         Require(!Success && Http.Requests.size() == RequestCount && Loads == 4,
                 "unsigned binary load must fail locally and complete once");
-        std::cout << "Unreal production anonymous auth and Cloud Save manager methods passed\n";
+        Cloud.LoadSnapshot(OnSnapshot);
+        Require(!Snapshot.bSuccess && Snapshot.ErrorMessage == "User is not signed in.", "unsigned snapshot must fail locally");
+        Cloud.LoadBytesSnapshot(OnSnapshot);
+        Require(!Snapshot.bSuccess, "unsigned bytes snapshot must fail locally");
+        Cloud.Save(Saved, 0, OnWrite);
+        Require(Write.Status == EHorizonCloudSaveWriteStatus::Failed && Write.ErrorMessage == "User is not signed in.",
+                "unsigned conditional save must fail locally");
+        Cloud.SaveBytes(Bytes, 0, OnWrite);
+        Require(Write.Status == EHorizonCloudSaveWriteStatus::Failed, "unsigned conditional bytes save must fail locally");
+        Cloud.Save(Saved, -1, OnWrite);
+        Require(Write.ErrorMessage.find("ExpectedRevision") == 0, "an invalid revision must be reported before the missing sign-in");
+        Require(Http.Requests.size() == RequestCount && Snapshots == 17 && Writes == 19,
+                "unsigned revision calls must not send a request");
+        std::cout << "Unreal production anonymous auth and Cloud Save manager methods (incl. revisions) passed\n";
     }
     catch (const std::exception& Error)
     { std::cerr << Error.what() << '\n'; return 1; }

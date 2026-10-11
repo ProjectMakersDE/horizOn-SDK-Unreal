@@ -153,3 +153,123 @@ void UHorizonAsync_CloudSaveLoadBytes::HandleLoadBytesResult(bool bSuccess, cons
 	}
 	SetReadyToDestroy();
 }
+
+// ============================================================
+// UHorizonAsync_CloudSaveLoadSnapshot (load with revision)
+// ============================================================
+
+UHorizonAsync_CloudSaveLoadSnapshot* UHorizonAsync_CloudSaveLoadSnapshot::LoadDataSnapshot(const UObject* WorldContextObject)
+{
+	UHorizonAsync_CloudSaveLoadSnapshot* Action = NewObject<UHorizonAsync_CloudSaveLoadSnapshot>();
+	Action->WorldContext = WorldContextObject;
+	Action->RegisterWithGameInstance(WorldContextObject);
+	return Action;
+}
+
+UHorizonAsync_CloudSaveLoadSnapshot* UHorizonAsync_CloudSaveLoadSnapshot::LoadBytesSnapshot(const UObject* WorldContextObject)
+{
+	UHorizonAsync_CloudSaveLoadSnapshot* Action = NewObject<UHorizonAsync_CloudSaveLoadSnapshot>();
+	Action->WorldContext = WorldContextObject;
+	Action->bLoadBytes = true;
+	Action->RegisterWithGameInstance(WorldContextObject);
+	return Action;
+}
+
+void UHorizonAsync_CloudSaveLoadSnapshot::Activate()
+{
+	UHorizonSubsystem* Subsystem = UHorizonBlueprintLibrary::GetHorizonSubsystem(WorldContext.Get());
+	if (!Subsystem || !Subsystem->CloudSave)
+	{
+		OnFailure.Broadcast(TEXT("horizOn Subsystem or CloudSave manager not found."));
+		SetReadyToDestroy();
+		return;
+	}
+
+	FOnCloudSaveSnapshotComplete Callback = FOnCloudSaveSnapshotComplete::CreateUObject(this, &UHorizonAsync_CloudSaveLoadSnapshot::HandleSnapshot);
+	if (bLoadBytes)
+	{
+		Subsystem->CloudSave->LoadBytesSnapshot(Callback);
+	}
+	else
+	{
+		Subsystem->CloudSave->LoadSnapshot(Callback);
+	}
+}
+
+void UHorizonAsync_CloudSaveLoadSnapshot::HandleSnapshot(const FHorizonCloudSaveSnapshot& Snapshot)
+{
+	if (Snapshot.bSuccess)
+	{
+		OnSuccess.Broadcast(Snapshot);
+	}
+	else
+	{
+		OnFailure.Broadcast(Snapshot.ErrorMessage);
+	}
+	SetReadyToDestroy();
+}
+
+// ============================================================
+// UHorizonAsync_CloudSaveAtRevision (save with If-Match)
+// ============================================================
+
+UHorizonAsync_CloudSaveAtRevision* UHorizonAsync_CloudSaveAtRevision::SaveDataAtRevision(const UObject* WorldContextObject, const FString& Data, int64 ExpectedRevision)
+{
+	UHorizonAsync_CloudSaveAtRevision* Action = NewObject<UHorizonAsync_CloudSaveAtRevision>();
+	Action->WorldContext = WorldContextObject;
+	Action->StringData = Data;
+	Action->TargetRevision = ExpectedRevision;
+	Action->RegisterWithGameInstance(WorldContextObject);
+	return Action;
+}
+
+UHorizonAsync_CloudSaveAtRevision* UHorizonAsync_CloudSaveAtRevision::SaveBytesAtRevision(const UObject* WorldContextObject, const TArray<uint8>& Data, int64 ExpectedRevision)
+{
+	UHorizonAsync_CloudSaveAtRevision* Action = NewObject<UHorizonAsync_CloudSaveAtRevision>();
+	Action->WorldContext = WorldContextObject;
+	Action->bSaveBytes = true;
+	Action->BinaryData = Data;
+	Action->TargetRevision = ExpectedRevision;
+	Action->RegisterWithGameInstance(WorldContextObject);
+	return Action;
+}
+
+void UHorizonAsync_CloudSaveAtRevision::Activate()
+{
+	UHorizonSubsystem* Subsystem = UHorizonBlueprintLibrary::GetHorizonSubsystem(WorldContext.Get());
+	if (!Subsystem || !Subsystem->CloudSave)
+	{
+		FHorizonCloudSaveWriteResult Result;
+		Result.ErrorMessage = TEXT("horizOn Subsystem or CloudSave manager not found.");
+		OnFailure.Broadcast(Result);
+		SetReadyToDestroy();
+		return;
+	}
+
+	FOnCloudSaveWriteComplete Callback = FOnCloudSaveWriteComplete::CreateUObject(this, &UHorizonAsync_CloudSaveAtRevision::HandleWriteResult);
+	if (bSaveBytes)
+	{
+		Subsystem->CloudSave->SaveBytes(BinaryData, TargetRevision, Callback);
+	}
+	else
+	{
+		Subsystem->CloudSave->Save(StringData, TargetRevision, Callback);
+	}
+}
+
+void UHorizonAsync_CloudSaveAtRevision::HandleWriteResult(const FHorizonCloudSaveWriteResult& Result)
+{
+	switch (Result.Status)
+	{
+	case EHorizonCloudSaveWriteStatus::Saved:
+		OnSaved.Broadcast(Result);
+		break;
+	case EHorizonCloudSaveWriteStatus::Conflict:
+		OnConflict.Broadcast(Result);
+		break;
+	default:
+		OnFailure.Broadcast(Result);
+		break;
+	}
+	SetReadyToDestroy();
+}

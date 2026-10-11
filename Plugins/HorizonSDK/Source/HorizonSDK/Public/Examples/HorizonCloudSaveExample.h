@@ -11,6 +11,8 @@
  *
  * What it does: connects, signs up anonymously (cloud save needs a signed-in
  * user), saves a small JSON string, then loads it back and logs the result.
+ * Then saves again against the loaded revision, as a game does that runs on
+ * several devices.
  *
  * Where to set the API key: Project Settings > Plugins > horizOn SDK > API Key.
  * Drop this actor into a level and press Play to run the flow.
@@ -19,6 +21,7 @@
  *   [CloudSaveExample] Saving data...
  *   [CloudSaveExample] Saved. Loading it back...
  *   [CloudSaveExample] SUCCESS: loaded <data>
+ *   [CloudSaveExample] Saved at revision <n>.
  */
 UCLASS()
 class HORIZONSDK_API AHorizonCloudSaveExample : public AActor
