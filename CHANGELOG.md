@@ -1,3 +1,10 @@
+# [1.9.0](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/compare/v1.8.0...v1.9.0) (2026-10-11)
+
+
+### Features
+
+* **cloud-save:** revision-checked saves for several devices ([f65775f](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/f65775fd910246ab55c6d885081bb543ae2fe2cf))
+
 # [1.8.0](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/compare/v1.7.0...v1.8.0) (2026-10-02)
 
 
