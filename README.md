@@ -798,7 +798,7 @@ Alternatively, use **Tools > horizOn > Import Config...** to import a JSON confi
 
 ## Rate Limiting
 
-**Limit**: 10 requests per minute per client. Requests exceeding this limit receive an HTTP 429 response and are automatically retried after the cooldown period.
+**Limit**: counted per account, shared by all players of all your games. On the Free plan the soft limit is 10 and the hard limit 100 requests per minute. Paid plans have higher limits, see [horizon.pm/pricing](https://horizon.pm/pricing). Requests above the hard limit receive HTTP 429 and are automatically retried after the cooldown period.
 
 | Do | Don't |
 |----|-------|
