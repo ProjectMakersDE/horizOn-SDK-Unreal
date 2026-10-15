@@ -26,6 +26,7 @@ Official Unreal Engine SDK for **horizOn** Backend-as-a-Service by [ProjectMaker
 | 🎁 **Gift Codes** | `UHorizonGiftCodeManager` | Validate and redeem promotional codes, cosmetic unlocks via `grants` |
 | 🧑‍🎤 **Player Profile** | `UHorizonPlayerProfileManager` | Avatar, frame and badges per player, cosmetic unlocks, shown in leaderboards |
 | ✅ **Validated Actions** | `UHorizonValidatedActionsManager` | Server-checked runs: ticket with seed, validated submit with input log hash, rule codes, server-owned currency and loot, input log upload as evidence |
+| 📊 **Statistics** | `UHorizonStatisticsManager` | Explicit atomic session batches with sum/max/min/last counters, optional UTC resets and safe retries |
 | 💬 **Feedback** | `UHorizonFeedbackManager` | Submit bug reports, feature requests, and general feedback |
 | 📊 **User Logs** | `UHorizonUserLogManager` | Server-side structured logging for analytics and debugging |
 | 💥 **Crash Reporting** | `UHorizonCrashManager` | Crash capture, exception tracking, breadcrumbs |
@@ -911,3 +912,32 @@ Native WebSockets reconnect with jitter and reauthorize topics; events contain I
 Blueprints use `RequestState`, `RequestOffers`, `PurchaseOffer`, `AdjustValue` and receive `OnValuesResult`/`OnOffersResult`. `CreateOperationId`, `GetCurrentState`, `GetCurrentOffers`, `HasServerClock`, `ClearCache` are reflected. State is bound to the matching signed-in session/project/host; stale responses cannot repopulate a cleared cache. Revision/server-clock watermarks survive catalogue invalidation.
 
 Load state/offers before creating an operation ID to learn server time. IDs then advance using monotonic elapsed time; local UTC is the visible fallback (`HasServerClock()==false`). Persist one operation ID and immutable payload per logical action and retain it after a timeout. Never create a replacement automatically after `OPERATION_EXPIRED`; refresh and reconcile first. Integers are bounded to +/-9,007,199,254,740,991. Realtime remains optional and does not replace HTTP state refresh after validated runs or another balance mutation. No automatic purchase/poll loop exists.
+
+## Player statistics
+
+Configure `kills` with mode `sum` and `best_score` with mode `max` in the project's statistics catalog. Modes are `sum`, `max`, `min` and `last`; optional resets use UTC days or ISO weeks. Each player has one state document. Initialization and sign-in never load statistics automatically.
+
+```cpp
+#include "Managers/HorizonStatisticsManager.h"
+
+Horizon->Statistics->GetStatistics(FOnStatisticsLoaded::CreateLambda(
+    [Horizon](bool Success, const FHorizonStatisticsSnapshot& Snapshot, const FString& Code, const FString& Message)
+    {
+        if (!Success) return;
+        FHorizonStatisticUpdate Kills; Kills.Key = TEXT("kills"); Kills.Value = 3;
+        const FString OperationId = Horizon->Statistics->CreateOperationId();
+        // Persist OperationId + the original batch before sending; keep them after a timeout.
+        Horizon->Statistics->UpdateStatistics({Kills}, OperationId, FOnStatisticsLoaded::CreateLambda(
+            [](bool Applied, const FHorizonStatisticsSnapshot& Result, const FString& ErrorCode, const FString& ErrorMessage) {}));
+    }));
+```
+
+`GetDefinitions` loads the catalog explicitly. Snapshots cache definitions by `definitionVersion`, including conditional responses, and carry `Revision`, `Values`, `OperationWindow`, `OperationId`, `bReplayed` and reserved `NewlyUnlocked`. `GetCurrentStatistics`, `GetCurrentDefinitions` and `ClearCache` manage the local cache. Session/host/project changes clear it; late responses cannot restore old data. Revision and server-time fences survive a catalog refresh, preventing older counters or UTC projections from replacing newer state.
+
+Blueprint provides **Get Statistics**, **Get Statistics Definitions**, **Update Statistics** async nodes and **Create Operation Id** on the manager. Updates use Blueprint `int64`, bounded to ±9,007,199,254,740,991. Empty batches, duplicate or malformed keys, unsafe values and missing `<13-digit Unix milliseconds>:<UUID>` IDs fail locally. The server validates per-update bounds and rejects a whole batch on overflow.
+
+An uncertain request must use its original ID and unchanged payload on retry; the SDK never generates a replacement ID. The server replays a retained receipt first, rejects changed payloads with `OPERATION_CONFLICT`, and rejects expired/evicted unknown IDs with `OPERATION_EXPIRED`. Only eight receipts are retained; the persisted eviction floor can reject out-of-order delayed IDs before the 24-hour window ends. Snapshot/server operation time helps create new IDs within the allowed 30-second clock skew. Never create a fresh ID to retry an unknown outcome.
+
+C++ delegates and Blueprint failure pins expose server error codes. Other stable codes include `SESSION_REQUIRED`, `SESSION_CHANGED`, `STATE_CONFLICT`, `INVALID_REQUEST`, `INVALID_RESPONSE` and the HTTP transport's `CONNECTION_FAILED`/`RATE_LIMITED`. Cloud and simpleServer use the same statistics REST contract; realtime is optional and unrelated to these explicit batches.
+
+`AHorizonStatisticsExample` restores an anonymous player, explicitly loads a snapshot and persists a project/player-scoped pending batch before posting it. It keeps the original intent on errors or an uncertain timeout. Add it to a level to try the flow. Native fixture test `Horizon.SDK.Statistics.NativeTransport` uses `Tests/mock_statistics_server.py` at the fixed loopback URL in `HORIZON_STATISTICS_FIXTURE_URL`; `bash Tests/run_transport_test.sh` checks the shared C++ contract without Unreal.

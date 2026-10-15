@@ -18,6 +18,7 @@
 #include "Managers/HorizonEmailSendingManager.h"
 #include "Managers/HorizonPlayerProfileManager.h"
 #include "Managers/HorizonValidatedActionsManager.h"
+#include "Managers/HorizonStatisticsManager.h"
 
 // ============================================================
 // Subsystem lifecycle
@@ -79,6 +80,9 @@ void UHorizonSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 
 	ValidatedActions = NewObject<UHorizonValidatedActionsManager>(this);
 	ValidatedActions->Initialize(HttpClient, Auth);
+
+	Statistics = NewObject<UHorizonStatisticsManager>(this);
+	Statistics->Initialize(HttpClient, Auth);
 
 	// An accepted validated run with a board clears the leaderboard cache (like SubmitScore).
 	ValidatedActions->SetLeaderboardManager(Leaderboard);

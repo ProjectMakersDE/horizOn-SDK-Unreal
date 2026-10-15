@@ -36,6 +36,7 @@ public:
 	// -- State queries --
 	bool IsConnected() const;
 	FString GetActiveHost() const;
+	FString GetApiKey() const { return ApiKey; }
 	EHorizonConnectionStatus GetConnectionStatus() const;
 
 	/** Set the session token used for authenticated requests. */
