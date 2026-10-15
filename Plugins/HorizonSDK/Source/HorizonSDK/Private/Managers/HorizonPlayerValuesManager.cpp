@@ -1,6 +1,6 @@
 #include "Managers/HorizonPlayerValuesManager.h"
 #include "GenericPlatform/GenericPlatformHttp.h"
-#include "Misc/LexFromString.h"
+#include "String/LexFromString.h"
 
 namespace { constexpr int64 MaxSafe = 9007199254740991LL; const TCHAR* Endpoint = TEXT("/api/v1/app/player-values"); }
 void UHorizonPlayerValuesManager::Initialize(UHorizonHttpClient* Client, UHorizonAuthManager* Auth)
