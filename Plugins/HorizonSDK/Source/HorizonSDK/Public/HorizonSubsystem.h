@@ -7,6 +7,7 @@
 #include "HorizonTypes.h"
 #include "HorizonSubsystem.generated.h"
 
+class UHorizonRealtimeManager;
 class UHorizonHttpClient;
 class UHorizonAuthManager;
 class UHorizonCloudSaveManager;
@@ -84,6 +85,9 @@ public:
 	/** Server-checked runs: tickets with a seed, validated submit with rule codes (TASK-883). */
 	UPROPERTY(BlueprintReadOnly, Category = "horizOn")
 	UHorizonValidatedActionsManager* ValidatedActions = nullptr;
+
+	UPROPERTY(BlueprintReadOnly, Category = "horizOn")
+	UHorizonRealtimeManager* Realtime = nullptr;
 
 	// --- Connection ---
 

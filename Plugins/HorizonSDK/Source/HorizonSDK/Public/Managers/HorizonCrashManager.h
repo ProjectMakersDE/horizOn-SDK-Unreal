@@ -102,6 +102,7 @@ public:
 	FOnHorizonBreadcrumbRecorded OnBreadcrumbRecorded;
 
 private:
+    friend class UHorizonSubsystem;
 	// --- Dependencies ---
 
 	UPROPERTY()

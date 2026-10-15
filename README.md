@@ -19,6 +19,7 @@ Official Unreal Engine SDK for **horizOn** Backend-as-a-Service by [ProjectMaker
 | 🔐 **Authentication** | `UHorizonAuthManager` | Anonymous, email, Google, and Apple sign-up / sign-in with session caching |
 | 🏆 **Leaderboards** | `UHorizonLeaderboardManager` | Submit scores, retrieve top entries, rank, and surrounding entries |
 | ☁️ **Cloud Save** | `UHorizonCloudSaveManager` | Save and load player data in JSON or binary format |
+| 🔄 **Realtime** | `UHorizonRealtimeManager` | Optional Cloud invalidations for inbox, matches and chat; HTTP content reload |
 | ⚙️ **Remote Config** | `UHorizonRemoteConfigManager` | Typed key-value retrieval (string, int, float, bool) with caching |
 | 🌐 **Localization** | `UHorizonLocalizationManager` | Translated strings in 15 languages with an active language and caching |
 | 📰 **News** | `UHorizonNewsManager` | In-game news feed with language filtering and TTL cache |
@@ -896,3 +897,9 @@ Run `bash Tests/run_transport_test.sh` from the repository root. The standalone 
 MIT License - Copyright (c) [ProjectMakers](https://projectmakers.de)
 
 See [LICENSE](LICENSE) for details.
+
+## Realtime invalidations (Cloud)
+
+After sign-in, use the subsystem's `Realtime->Subscribe("inbox:" + Subsystem->Auth->GetCurrentUser().UserId)`. Blueprint exposes the same manager, subscription methods and `OnResyncRequired`, `OnEvent`, `OnPollingRequired`, `OnConnectionError` delegates. Reload authorized content through the feature HTTP API after events and resync signals. Respect `PollAfterSeconds` during HTTP fallback; chat never polls. Unsubscribe when no longer needed.
+
+Native WebSockets reconnect with jitter and reauthorize topics; events contain IDs and revisions only. Sign-out clears subscriptions, same-user token refresh reconnects. simpleServer reports `NOT_SUPPORTED`; realtime is Cloud only. The local native automation test `Horizon.Realtime.NativeTransport` runs against the Server repository's artificial SDK fixture when `HORIZON_REALTIME_FIXTURE_URL` is set to loopback.

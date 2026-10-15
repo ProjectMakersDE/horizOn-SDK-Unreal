@@ -129,7 +129,7 @@ void UHorizonRemoteConfigManager::GetAllConfigs(bool bUseCache, FOnAllConfigsCom
 							FString Value;
 							if (Pair.Value.IsValid() && Pair.Value->TryGetString(Value))
 							{
-								Configs.Add(Pair.Key, Value);
+				Configs.Add(FString(*Pair.Key), Value);
 							}
 						}
 					}
