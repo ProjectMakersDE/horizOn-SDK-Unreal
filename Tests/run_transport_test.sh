@@ -40,3 +40,9 @@ c++ -std=c++17 \
 "$build_dir/validated-actions-model-test"
 
 python3 Tests/run_auth_cloud_save_runtime_test.py
+
+c++ -std=c++17 \
+  -I Plugins/HorizonSDK/Source/HorizonSDK/Public \
+  Tests/StatisticsTransportContractTest.cpp \
+  -o "$build_dir/statistics-transport-test"
+"$build_dir/statistics-transport-test"

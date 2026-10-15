@@ -22,6 +22,7 @@ class UHorizonCrashManager;
 class UHorizonEmailSendingManager;
 class UHorizonPlayerProfileManager;
 class UHorizonValidatedActionsManager;
+class UHorizonStatisticsManager;
 
 /**
  * Main entry point for the horizOn SDK.
@@ -85,6 +86,10 @@ public:
 	/** Server-checked runs: tickets with a seed, validated submit with rule codes (TASK-883). */
 	UPROPERTY(BlueprintReadOnly, Category = "horizOn")
 	UHorizonValidatedActionsManager* ValidatedActions = nullptr;
+
+	/** Explicit atomic session statistics; no automatic sign-in fetch. */
+	UPROPERTY(BlueprintReadOnly, Category = "horizOn")
+	UHorizonStatisticsManager* Statistics = nullptr;
 
 	UPROPERTY(BlueprintReadOnly, Category = "horizOn")
 	UHorizonRealtimeManager* Realtime = nullptr;

@@ -1,6 +1,7 @@
 // Copyright (c) 2025-2026 horizOn. All rights reserved.
 
 #include "Example/HorizonExampleWidget.h"
+#include "Engine/GameInstance.h"
 #include "HorizonSubsystem.h"
 #include "Managers/HorizonAuthManager.h"
 #include "Managers/HorizonCloudSaveManager.h"

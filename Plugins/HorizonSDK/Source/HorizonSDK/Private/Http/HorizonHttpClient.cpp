@@ -1,6 +1,7 @@
 // Copyright (c) 2025-2026 horizOn. All rights reserved.
 
 #include "Http/HorizonHttpClient.h"
+#include "Engine/Engine.h"
 #include "HorizonConfig.h"
 #include "HorizonSDKModule.h"
 #include "Transport/HorizonLeaderboardTransportContract.h"
@@ -443,7 +444,8 @@ FHorizonNetworkResponse UHorizonHttpClient::ParseResponse(FHttpResponsePtr HttpR
 		{
 			TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(BodyString);
 			TSharedPtr<FJsonObject> JsonObject;
-			if (FJsonSerializer::Deserialize(Reader, JsonObject) && JsonObject.IsValid())
+			// Keep exact numeric lexemes for features with strict integer contracts.
+			if (FJsonSerializer::Deserialize(Reader, JsonObject, FJsonSerializer::EFlags::StoreNumbersAsStrings) && JsonObject.IsValid())
 			{
 				Response.JsonData = JsonObject;
 			}
