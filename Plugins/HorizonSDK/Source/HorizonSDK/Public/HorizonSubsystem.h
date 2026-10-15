@@ -8,6 +8,7 @@
 #include "HorizonSubsystem.generated.h"
 
 class UHorizonRealtimeManager;
+class UHorizonPlayerValuesManager;
 class UHorizonHttpClient;
 class UHorizonAuthManager;
 class UHorizonCloudSaveManager;
@@ -88,6 +89,8 @@ public:
 
 	UPROPERTY(BlueprintReadOnly, Category = "horizOn")
 	UHorizonRealtimeManager* Realtime = nullptr;
+	UPROPERTY(BlueprintReadOnly, Category = "horizOn")
+	UHorizonPlayerValuesManager* PlayerValues = nullptr;
 
 	// --- Connection ---
 

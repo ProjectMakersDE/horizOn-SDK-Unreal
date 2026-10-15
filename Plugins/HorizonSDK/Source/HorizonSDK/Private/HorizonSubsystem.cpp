@@ -2,6 +2,7 @@
 
 #include "HorizonSubsystem.h"
 #include "Managers/HorizonRealtimeManager.h"
+#include "Managers/HorizonPlayerValuesManager.h"
 #include "HorizonSDKModule.h"
 #include "Http/HorizonHttpClient.h"
 #include "Managers/HorizonAuthManager.h"
@@ -36,6 +37,8 @@ void UHorizonSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 
 	Realtime = NewObject<UHorizonRealtimeManager>(this);
 	Realtime->Initialize(HttpClient, Auth);
+	PlayerValues = NewObject<UHorizonPlayerValuesManager>(this);
+	PlayerValues->Initialize(HttpClient, Auth);
 
 	// Create all managers
 	CloudSave = NewObject<UHorizonCloudSaveManager>(this);
