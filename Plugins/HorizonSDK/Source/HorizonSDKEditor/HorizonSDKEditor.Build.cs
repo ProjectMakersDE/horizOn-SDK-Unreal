@@ -17,6 +17,7 @@ public class HorizonSDKEditor : ModuleRules
             "ToolMenus",
             "DesktopPlatform",
             "HTTP",
+            "Json",
             "InputCore",
             "HorizonSDK"
         });

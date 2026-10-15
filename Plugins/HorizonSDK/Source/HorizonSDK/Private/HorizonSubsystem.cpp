@@ -1,6 +1,7 @@
 // Copyright (c) 2025-2026 horizOn. All rights reserved.
 
 #include "HorizonSubsystem.h"
+#include "Managers/HorizonRealtimeManager.h"
 #include "HorizonSDKModule.h"
 #include "Http/HorizonHttpClient.h"
 #include "Managers/HorizonAuthManager.h"
@@ -32,6 +33,9 @@ void UHorizonSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 	// Create the Auth manager
 	Auth = NewObject<UHorizonAuthManager>(this);
 	Auth->Initialize(HttpClient);
+
+	Realtime = NewObject<UHorizonRealtimeManager>(this);
+	Realtime->Initialize(HttpClient, Auth);
 
 	// Create all managers
 	CloudSave = NewObject<UHorizonCloudSaveManager>(this);
@@ -87,6 +91,7 @@ void UHorizonSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 
 void UHorizonSubsystem::Deinitialize()
 {
+	if (Realtime) Realtime->Close();
 	if (Crashes)
 	{
 		Crashes->StopCapture();
