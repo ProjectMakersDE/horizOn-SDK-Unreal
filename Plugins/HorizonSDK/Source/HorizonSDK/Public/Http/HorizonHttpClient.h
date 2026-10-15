@@ -43,7 +43,6 @@ public:
 	void SetSessionToken(const FString& Token);
 	void ClearSessionToken();
 	FString GetSessionToken() const;
-	FString GetApiKey() const { return ApiKey; }
 
 	// -- HTTP convenience methods --
 	void Get(const FString& Endpoint, bool bUseSessionToken, FOnHttpResponse OnComplete);
