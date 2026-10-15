@@ -104,17 +104,19 @@ def main():
         with open(ready_file, "w") as handle:
             handle.write("ready\n")
 
-    server.timeout = 10
-    for _ in range(len(EXPECTED) + 2):
+    # Editor cold start must not consume the request budget while the socket is idle.
+    server.timeout = .2
+    deadline = time.monotonic() + 420
+    while ContractHandler.requests_seen < len(EXPECTED) and not ContractHandler.failure and time.monotonic() < deadline:
         server.handle_request()
     if ContractHandler.requests_seen != len(EXPECTED):
         print(f"expected {len(EXPECTED)} requests, saw {ContractHandler.requests_seen}", file=sys.stderr)
         return 1
 
-    # Grace period in which the locally rejected calls (no session, too many badges,
-    # invalid IDs) run. None of them may reach the server.
+    # Session-switch retries and locally rejected unsafe values must not reach HTTP.
     server.timeout = 1.5
     server.handle_request()
+    server.server_close()
     if ContractHandler.requests_seen != len(EXPECTED):
         print("a locally rejected player values call reached the server", file=sys.stderr)
         return 1
