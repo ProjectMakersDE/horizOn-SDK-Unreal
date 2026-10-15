@@ -3,7 +3,7 @@
 #include "String/LexFromString.h"
 namespace
 {
-    constexpr int64 MaxSafe = 9007199254740991LL;
+    constexpr int64 PlayerValuesModelMaxSafe = 9007199254740991LL;
     bool Number(const TSharedPtr<FJsonObject>& Json, const TCHAR* Key, int64& Out)
     {
         const auto Value = Json ? Json->TryGetField(Key) : nullptr;
@@ -11,7 +11,7 @@ namespace
         if (!Value || Value->Type != EJson::Number || !Value->TryGetString(Lexeme) || Lexeme.IsEmpty() || Lexeme.Len() > 17) return false;
         for (int32 Index = 0; Index < Lexeme.Len(); ++Index)
             if (!(Index == 0 && Lexeme[Index] == TCHAR('-')) && (Lexeme[Index] < TCHAR('0') || Lexeme[Index] > TCHAR('9'))) return false;
-        return LexTryParseString(Out, *Lexeme) && Out >= -MaxSafe && Out <= MaxSafe;
+        return LexTryParseString(Out, *Lexeme) && Out >= -PlayerValuesModelMaxSafe && Out <= PlayerValuesModelMaxSafe;
     }
     bool Balances(const TSharedPtr<FJsonObject>& Json, const TCHAR* Key, TArray<FHorizonPlayerValueBalance>& Out)
     {

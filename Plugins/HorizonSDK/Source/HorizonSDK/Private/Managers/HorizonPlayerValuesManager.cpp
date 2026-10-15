@@ -2,7 +2,7 @@
 #include "GenericPlatform/GenericPlatformHttp.h"
 #include "String/LexFromString.h"
 
-namespace { constexpr int64 MaxSafe = 9007199254740991LL; const TCHAR* Endpoint = TEXT("/api/v1/app/player-values"); }
+namespace { constexpr int64 PlayerValuesManagerMaxSafe = 9007199254740991LL; const TCHAR* PlayerValuesEndpoint = TEXT("/api/v1/app/player-values"); }
 void UHorizonPlayerValuesManager::Initialize(UHorizonHttpClient* Client, UHorizonAuthManager* Auth)
 {
     HttpClient = Client; AuthManager = Auth;
@@ -64,7 +64,7 @@ void UHorizonPlayerValuesManager::Purchase(const FString& UserId, const FString&
 }
 void UHorizonPlayerValuesManager::Adjust(const FString& UserId, const FString& Key, int64 Amount, const FString& Reason, const FString& OperationId, FOnPlayerValuesComplete OnComplete)
 {
-    if (Key.TrimStartAndEnd().IsEmpty() || Reason.TrimStartAndEnd().IsEmpty() || Amount == 0 || Amount < -MaxSafe || Amount > MaxSafe || !ValidOperationId(OperationId)) { LastErrorCode = TEXT("INVALID_REQUEST"); OnComplete.ExecuteIfBound(false, {}, TEXT("INVALID_REQUEST"), TEXT("Invalid adjustment")); return; }
+    if (Key.TrimStartAndEnd().IsEmpty() || Reason.TrimStartAndEnd().IsEmpty() || Amount == 0 || Amount < -PlayerValuesManagerMaxSafe || Amount > PlayerValuesManagerMaxSafe || !ValidOperationId(OperationId)) { LastErrorCode = TEXT("INVALID_REQUEST"); OnComplete.ExecuteIfBound(false, {}, TEXT("INVALID_REQUEST"), TEXT("Invalid adjustment")); return; }
     const auto Body = MakeShared<FJsonObject>(); Body->SetStringField(TEXT("userId"), UserId); Body->SetStringField(TEXT("key"), Key); Body->SetField(TEXT("amount"), MakeShared<FJsonValueNumberString>(LexToString(Amount))); Body->SetStringField(TEXT("reason"), Reason); Body->SetStringField(TEXT("operationId"), OperationId);
     StateCall(UserId, TEXT("/adjust"), Body, OnComplete);
 }
@@ -84,14 +84,14 @@ void UHorizonPlayerValuesManager::StateCall(const FString& UserId, const FString
         Self->LastErrorCode = Response.bSuccess ? TEXT("") : Response.GetErrorCodeString();
         OnComplete.ExecuteIfBound(Response.bSuccess, Value, Self->LastErrorCode, Response.ErrorMessage);
     });
-    if (Route.IsEmpty()) HttpClient->Get(FString(Endpoint) + TEXT("?userId=") + FGenericPlatformHttp::UrlEncode(UserId), true, Complete);
-    else HttpClient->PostJson(Body.ToSharedRef(), FString(Endpoint) + Route, true, Complete);
+    if (Route.IsEmpty()) HttpClient->Get(FString(PlayerValuesEndpoint) + TEXT("?userId=") + FGenericPlatformHttp::UrlEncode(UserId), true, Complete);
+    else HttpClient->PostJson(Body.ToSharedRef(), FString(PlayerValuesEndpoint) + Route, true, Complete);
 }
 void UHorizonPlayerValuesManager::GetOffers(const FString& UserId, FOnPlayerValuesOffersComplete OnComplete)
 {
     if (!Begin(UserId)) { OnComplete.ExecuteIfBound(false, {}, LastErrorCode, LastErrorCode); return; }
     const FString SentIdentity = Identity; const int64 SentEpoch = Epoch; TWeakObjectPtr<UHorizonPlayerValuesManager> Weak(this);
-    HttpClient->Get(FString(Endpoint) + TEXT("/offers?userId=") + FGenericPlatformHttp::UrlEncode(UserId), true, FOnHttpResponse::CreateLambda([Weak, SentIdentity, SentEpoch, OnComplete](const FHorizonNetworkResponse& Response)
+    HttpClient->Get(FString(PlayerValuesEndpoint) + TEXT("/offers?userId=") + FGenericPlatformHttp::UrlEncode(UserId), true, FOnHttpResponse::CreateLambda([Weak, SentIdentity, SentEpoch, OnComplete](const FHorizonNetworkResponse& Response)
     {
         auto* Self = Weak.Get(); if (!Self) return;
         if (!Self->IsCurrent(SentIdentity, SentEpoch)) { OnComplete.ExecuteIfBound(false, {}, TEXT("STALE_RESPONSE"), TEXT("Session or cache changed")); return; }
