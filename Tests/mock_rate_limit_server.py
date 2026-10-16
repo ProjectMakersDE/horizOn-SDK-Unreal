@@ -20,11 +20,18 @@ EXPECTED = [
     item(BASE+"global/negotiate", JSON, "application/octet-stream", response={"code": None}), item(BASE+"global/negotiate", JSON, "application/octet-stream", 200, bytes([4,5]), wait=True),
     item(BASE+"exhaust", JSON), item(BASE+"exhaust", JSON, wait=True), item(BASE+"exhaust", JSON, wait=True),
     item(GIFT, {"code": "legacy"}, status=503, response={"message": "unknown legacy outcome"}),
-    item(GIFT, {"code": "blank", "idempotencyId": "\u00a0"}, status=503, response={"message": "blank is legacy"}),
+    item(GIFT, {"code": "blank", "idempotencyId": "\u00a0"}, status=503, response={"message": "blank ID must not authorize retry"}),
     item(GIFT, {"code": "explicit", "idempotencyId": "original-id"}, status=503, response={"message": "uncertain explicit response"}),
     item(GIFT, {"code": "explicit", "idempotencyId": "original-id"}, status=200, response={"ok": True}),
     item("/api/v1/app/user-management/signup", {"type": "ANONYMOUS"}, "application/octet-stream", 503, {"message": "uncertain signup"}),
     item(BASE+"session-switch", JSON),
+    item(BASE+"session-aba", JSON),
+    item(BASE+"response-aba", JSON, status=200, response={"mustNotLeak": True}),
+    item(BASE+"project-aba", JSON),
+    item(BASE+"host-aba", JSON),
+    item(BASE+"session-independent", JSON),
+    item(BASE+"session-independent", JSON, status=200, response={"ok": True}, wait=True),
+    item(BASE+"session-independent-response", JSON, status=200, response={"ok": True}),
 ]
 
 class Handler(BaseHTTPRequestHandler):
@@ -58,7 +65,8 @@ class Handler(BaseHTTPRequestHandler):
             if interval < .99 or interval > 1.5:
                 self.reject(f"retry wait outside server minimum +20%/scheduler tolerance: {interval:.3f}s"); return
         type(self).last_request = now
-        if self.path != path or actual != body or self.headers.get("X-API-Key") != "fixture-key-996" or self.headers.get("Authorization") != "Bearer fixture-session-996":
+        expected_auth = None if path.startswith(BASE+"session-independent") else "Bearer fixture-session-996"
+        if self.path != path or actual != body or self.headers.get("X-API-Key") != "fixture-key-996" or self.headers.get("Authorization") != expected_auth:
             self.reject(f"request {index+1} lost original route, bytes/JSON or identity"); return
         if accept and self.headers.get("Accept") != accept: self.reject("binary negotiation lost across retry"); return
         if path == BASE+"global/json" and self.headers.get("If-Match") != "17": self.reject("conditional header lost across retry"); return
@@ -72,9 +80,12 @@ def main():
         with open(marker, "w") as handle: handle.write("ready\n")
     server.timeout = .2; deadline = time.monotonic()+420
     while Handler.count < len(EXPECTED) and not Handler.failed and time.monotonic() < deadline: server.handle_request()
-    server.timeout = 1.5; server.handle_request(); server.server_close()
+    observation_end = time.monotonic()+1.5
+    while not Handler.failed and time.monotonic() < observation_end:
+        server.timeout = max(0, min(.1, observation_end-time.monotonic())); server.handle_request()
+    server.server_close()
     if Handler.failed or Handler.count != len(EXPECTED):
         print(f"Rate proof failed: {Handler.failed}; requests={Handler.count}/{len(EXPECTED)}", flush=True); return 1
-    print(json.dumps({"requests": Handler.count, "globalRetryIntervalsSeconds": Handler.intervals, "singleAttemptLegacyAndSignup": True, "sessionSwitchRetrySuppressed": True}), flush=True)
+    print(json.dumps({"requests": Handler.count, "globalRetryIntervalsSeconds": Handler.intervals, "singleAttemptLegacyAndSignup": True, "sessionSwitchRetrySuppressed": True, "sessionABARetrySuppressed": True, "responseABARejected": True, "projectABARetrySuppressed": True, "hostABARetrySuppressed": True, "sessionIndependentRequestsSurviveSessionABA": True}), flush=True)
     return 0
 if __name__ == "__main__": raise SystemExit(main())

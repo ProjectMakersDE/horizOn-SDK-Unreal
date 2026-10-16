@@ -17,8 +17,6 @@
 #include "Dom/JsonValue.h"
 #include "Misc/App.h"
 #include "Containers/Ticker.h"
-#include "TimerManager.h"
-#include "Engine/World.h"
 
 // ============================================================
 // Initialization
@@ -33,6 +31,7 @@ void UHorizonHttpClient::Initialize()
 		return;
 	}
 
+	++TransportContextEpoch;
 	ApiKey                   = Config->ApiKey;
 	MaxRetryAttempts         = Config->MaxRetryAttempts;
 	RetryDelaySeconds        = Config->RetryDelaySeconds;
@@ -93,6 +92,7 @@ void UHorizonHttpClient::ConnectToServer(FOnRequestComplete OnComplete)
 					const FString Body = Resp->GetContentAsString();
 					if (Body.Contains(TEXT("UP")))
 					{
+						if (Self->ActiveHost != CapturedHost) ++Self->TransportContextEpoch;
 						Self->ActiveHost = CapturedHost;
 						Self->ConnectionStatus = EHorizonConnectionStatus::Connected;
 						UE_LOG(LogHorizonSDK, Log, TEXT("Connected to %s"), *CapturedHost);
@@ -145,6 +145,7 @@ void UHorizonHttpClient::ConnectToServer(FOnRequestComplete OnComplete)
 
 void UHorizonHttpClient::Disconnect()
 {
+	++TransportContextEpoch;
 	ActiveHost.Empty();
 	SessionToken.Empty();
 	ConnectionStatus = EHorizonConnectionStatus::Disconnected;
@@ -172,12 +173,13 @@ EHorizonConnectionStatus UHorizonHttpClient::GetConnectionStatus() const
 
 void UHorizonHttpClient::SetSessionToken(const FString& Token)
 {
+	if (SessionToken != Token) ++SessionContextEpoch;
 	SessionToken = Token;
 }
 
 void UHorizonHttpClient::ClearSessionToken()
 {
-	SessionToken.Empty();
+	SetSessionToken(TEXT(""));
 }
 
 FString UHorizonHttpClient::GetSessionToken() const
@@ -306,9 +308,11 @@ void UHorizonHttpClient::SendRequest(
 	TArray<uint8> CapturedPayload = Payload;
 	FOnHttpResponse CapturedOnComplete = OnComplete;
 	const FString RequestHost = ActiveHost, RequestKey = ApiKey, RequestSession = SessionToken;
+	const uint64 RequestGeneration = TransportContextEpoch;
+	const uint64 SessionGeneration = SessionContextEpoch;
 
 	Request->OnProcessRequestComplete().BindLambda(
-		[WeakSelf, CapturedVerb, CapturedUrl, CapturedContentType, CapturedAcceptContentType, CapturedExtraHeaders, CapturedPayload, bUseSessionToken, RetryCount, CapturedOnComplete, RequestHost, RequestKey, RequestSession, bAllowRetry]
+		[WeakSelf, CapturedVerb, CapturedUrl, CapturedContentType, CapturedAcceptContentType, CapturedExtraHeaders, CapturedPayload, bUseSessionToken, RetryCount, CapturedOnComplete, RequestHost, RequestKey, RequestSession, RequestGeneration, SessionGeneration, bAllowRetry]
 		(FHttpRequestPtr /*Req*/, FHttpResponsePtr Resp, bool bConnected)
 		{
 			UHorizonHttpClient* Self = WeakSelf.Get();
@@ -317,7 +321,7 @@ void UHorizonHttpClient::SendRequest(
 				return;
 			}
 
-			if (Self->ActiveHost != RequestHost || Self->ApiKey != RequestKey || (bUseSessionToken && Self->SessionToken != RequestSession))
+			if (Self->TransportContextEpoch != RequestGeneration || (bUseSessionToken && Self->SessionContextEpoch != SessionGeneration) || Self->ActiveHost != RequestHost || Self->ApiKey != RequestKey || (bUseSessionToken && Self->SessionToken != RequestSession))
 			{
 				FHorizonNetworkResponse Changed; Changed.ServerErrorCode = TEXT("SESSION_CHANGED"); Changed.ErrorMessage = TEXT("Request identity changed");
 				CapturedOnComplete.ExecuteIfBound(Changed); return;
@@ -544,71 +548,29 @@ void UHorizonHttpClient::ScheduleRetry(
 	FOnHttpResponse CapturedOnComplete = OnComplete;
 	int32 NextRetryCount = RetryCount + 1;
 	const FString RequestHost = ActiveHost, RequestKey = ApiKey, RequestSession = SessionToken;
+	const uint64 RequestGeneration = TransportContextEpoch;
+	const uint64 SessionGeneration = SessionContextEpoch;
 
-	// Try to use UWorld timer first (game thread safe with pause support)
-	UWorld* World = nullptr;
-	if (GetOuter())
-	{
-		World = GetOuter()->GetWorld();
-	}
-	if (!World)
-	{
-		World = GEngine ? GEngine->GetCurrentPlayWorld() : nullptr;
-	}
-
-	if (World)
-	{
-		FTimerHandle TimerHandle;
-		World->GetTimerManager().SetTimer(
-			TimerHandle,
-			[WeakSelf, CapturedVerb, CapturedUrl, CapturedContentType, CapturedAcceptContentType, CapturedExtraHeaders, CapturedPayload, bUseSessionToken, NextRetryCount, CapturedOnComplete, RequestHost, RequestKey, RequestSession]()
+	// Network backoff uses monotone wall time, independent of game time dilation/pause.
+	const double RetryAt = FPlatformTime::Seconds() + double(DelaySeconds);
+	FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda(
+		[WeakSelf, CapturedVerb, CapturedUrl, CapturedContentType, CapturedAcceptContentType,
+		 CapturedExtraHeaders, CapturedPayload, bUseSessionToken, NextRetryCount, CapturedOnComplete,
+		 RequestHost, RequestKey, RequestSession, RequestGeneration, SessionGeneration, RetryAt](float) -> bool
+		{
+			if (FPlatformTime::Seconds() < RetryAt) return true;
+			if (auto* Self = WeakSelf.Get())
 			{
-				UHorizonHttpClient* Self = WeakSelf.Get();
-				if (Self)
+				if (Self->TransportContextEpoch != RequestGeneration || (bUseSessionToken && Self->SessionContextEpoch != SessionGeneration) || Self->ActiveHost != RequestHost || Self->ApiKey != RequestKey || (bUseSessionToken && Self->SessionToken != RequestSession))
 				{
-					if (Self->ActiveHost != RequestHost || Self->ApiKey != RequestKey || (bUseSessionToken && Self->SessionToken != RequestSession))
-					{
-						FHorizonNetworkResponse Changed; Changed.ServerErrorCode = TEXT("SESSION_CHANGED"); Changed.ErrorMessage = TEXT("Request identity changed before retry");
-						CapturedOnComplete.ExecuteIfBound(Changed); return;
-					}
-					Self->SendRequest(CapturedVerb, CapturedUrl, CapturedContentType, CapturedPayload,
-						bUseSessionToken, NextRetryCount, CapturedOnComplete, CapturedAcceptContentType, CapturedExtraHeaders);
+					FHorizonNetworkResponse Changed; Changed.ServerErrorCode = TEXT("SESSION_CHANGED"); Changed.ErrorMessage = TEXT("Request identity changed before retry");
+					CapturedOnComplete.ExecuteIfBound(Changed); return false;
 				}
-			},
-			DelaySeconds,
-			false
-		);
-	}
-	else
-	{
-		// Fallback: FTSTicker (works even without a world, e.g. in editor utilities)
-		FTSTicker::GetCoreTicker().AddTicker(
-			FTickerDelegate::CreateLambda(
-				[WeakSelf, CapturedVerb, CapturedUrl, CapturedContentType, CapturedAcceptContentType, CapturedExtraHeaders, CapturedPayload, bUseSessionToken, NextRetryCount, CapturedOnComplete, DelaySeconds, RequestHost, RequestKey, RequestSession]
-				(float DeltaTime) mutable -> bool
-				{
-					DelaySeconds -= DeltaTime;
-					if (DelaySeconds > 0.0f)
-					{
-						return true; // Keep ticking
-					}
-
-					UHorizonHttpClient* Self = WeakSelf.Get();
-					if (Self)
-					{
-						if (Self->ActiveHost != RequestHost || Self->ApiKey != RequestKey || (bUseSessionToken && Self->SessionToken != RequestSession))
-					{
-						FHorizonNetworkResponse Changed; Changed.ServerErrorCode = TEXT("SESSION_CHANGED"); Changed.ErrorMessage = TEXT("Request identity changed before retry");
-						CapturedOnComplete.ExecuteIfBound(Changed); return false;
-					}
-					Self->SendRequest(CapturedVerb, CapturedUrl, CapturedContentType, CapturedPayload,
-							bUseSessionToken, NextRetryCount, CapturedOnComplete, CapturedAcceptContentType, CapturedExtraHeaders);
-					}
-					return false; // Remove ticker
-				}
-			)
-		);
-	}
+				Self->SendRequest(CapturedVerb, CapturedUrl, CapturedContentType, CapturedPayload,
+					bUseSessionToken, NextRetryCount, CapturedOnComplete, CapturedAcceptContentType, CapturedExtraHeaders);
+			}
+			return false;
+		}));
 }
 
 // ============================================================
@@ -711,6 +673,7 @@ void UHorizonHttpClient::SelectBestHost(const TMap<FString, TArray<float>>& AllR
 		return;
 	}
 
+	if (ActiveHost != BestHost) ++TransportContextEpoch;
 	ActiveHost = BestHost;
 	ConnectionStatus = EHorizonConnectionStatus::Connected;
 	UE_LOG(LogHorizonSDK, Log, TEXT("Connected to %s (avg latency %.1f ms)"), *BestHost, BestAverage);
