@@ -17,7 +17,7 @@ void UHorizonRealtimeManager::Initialize(UHorizonHttpClient* Client, UHorizonAut
 bool UHorizonRealtimeManager::Subscribe(const FString& Topic)
 {
     SyncIdentity();
-    FRegexMatcher Match(FRegexPattern(TEXT("^(inbox|matches|chat|achievements):[A-Za-z0-9._-]{1,96}$")), Topic);
+    FRegexMatcher Match(FRegexPattern(TEXT("^(inbox|matches|chat|achievements|friends):[A-Za-z0-9._-]{1,96}$")), Topic);
     if (!Match.FindNext() || (Topics.Num() >= 32 && !Topics.Contains(Topic))) return false;
     Topics.Add(Topic); return true;
 }
