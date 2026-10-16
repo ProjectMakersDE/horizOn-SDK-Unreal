@@ -7,7 +7,7 @@ def report_rejection(message):
  print(message, file=sys.stderr)
 def send_json(handler, status, body):
  encoded=json.dumps(body).encode(); handler.send_response(status); handler.send_header("Content-Type","application/json"); handler.send_header("Content-Length",str(len(encoded))); handler.end_headers(); handler.wfile.write(encoded)
-PORT=18906
+PORT=int(os.environ.get("HORIZON_PLAYER_VALUES_FIXTURE_PORT", "18906"))
 API_KEY="fixture-key-1004"
 AUTHORIZATION="Bearer fixture-session-1004"
 USER="00000000-0000-4000-8000-000000001004"
@@ -23,6 +23,8 @@ EXPECTED=[GET(state(10)),OFFER(1,11),
  ("POST",ROOT+"/purchase",None,{"userId":USER,"offerKey":"energy-pack","operationId":OP},409,{"code":"OPERATION_EXPIRED","message":"Expired","state":state(11,1,12)}),
  ("POST",ROOT+"/adjust",None,{"userId":USER,"key":"gold","amount":-9007199254740991,"reason":"debug","operationId":OP.replace("1004","1005")},200,state(12,1,13)),
  GET(state(13,1,14)),GET(state(11,1,15)),OFFER(2,16),GET(state(11,2,17)),GET(state(14,2,14)),GET(state(14,2,18)),("POST",ROOT+"/purchase",None,{"userId":USER,"offerKey":"energy-pack","operationId":OP},503,{"message":"Fixture transient"}),GET(state(15,2,19))]
+# Existing receipts omit the new items field, but still echo their original operation.
+EXPECTED[3][5]["operation"] = {"operationId": OP.replace("1004", "1005"), "replayed": False, "applied": []}
 DELAYS={4:.15,11:.15}
 class ContractHandler(BaseHTTPRequestHandler):
     requests_seen = 0

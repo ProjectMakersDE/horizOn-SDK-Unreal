@@ -11,7 +11,8 @@ void UHorizonPlayerValuesManager::Initialize(UHorizonHttpClient* Client, UHorizo
 void UHorizonPlayerValuesManager::SyncIdentity()
 {
     const FString Value = AuthManager && HttpClient ? AuthManager->GetCurrentUser().UserId + TEXT("|") + HttpClient->GetSessionToken() + TEXT("|") + HttpClient->GetApiKey() + TEXT("|") + HttpClient->GetActiveHost() : TEXT("");
-    if (Value != Identity) { ResetIdentity(); Identity = Value; }
+    const uint64 Context=HttpClient?HttpClient->GetRequestContextEpoch():0;
+    if (Value != Identity || Context!=ContextEpoch) { ResetIdentity(); Identity = Value; ContextEpoch=Context; }
 }
 void UHorizonPlayerValuesManager::ResetIdentity()
 { Identity.Empty(); ++Epoch; Revision = Definition = ServerMillis = -1; State = {}; Offers = {}; LastErrorCode.Empty(); }
@@ -79,14 +80,16 @@ void UHorizonPlayerValuesManager::Adjust(const FString& UserId, const FString& K
 void UHorizonPlayerValuesManager::StateCall(const FString& UserId, const FString& Route, const TSharedPtr<FJsonObject>& Body, FOnPlayerValuesComplete OnComplete)
 {
     if (!Begin(UserId)) { OnComplete.ExecuteIfBound(false, {}, LastErrorCode, LastErrorCode); return; }
+    FString SentOperation;if(Body)Body->TryGetStringField(TEXT("operationId"),SentOperation);
     const FString SentIdentity = Identity; const int64 SentEpoch = Epoch; TWeakObjectPtr<UHorizonPlayerValuesManager> Weak(this);
-    const auto Complete = FOnHttpResponse::CreateLambda([Weak, UserId, SentIdentity, SentEpoch, OnComplete](const FHorizonNetworkResponse& Response)
+    const auto Complete = FOnHttpResponse::CreateLambda([Weak, UserId, SentIdentity, SentEpoch, SentOperation, OnComplete](const FHorizonNetworkResponse& Response)
     {
         auto* Self = Weak.Get(); if (!Self) return;
         if (!Self->IsCurrent(SentIdentity, SentEpoch)) { OnComplete.ExecuteIfBound(false, {}, TEXT("STALE_RESPONSE"), TEXT("Session or cache changed")); return; }
         auto Json = Response.JsonData;
         if (!Response.bSuccess) { const TSharedPtr<FJsonObject>* ErrorState; Json = Json && Json->TryGetObjectField(TEXT("state"), ErrorState) ? *ErrorState : nullptr; }
         FHorizonPlayerValuesState Value; const bool bPresent = FHorizonPlayerValuesState::TryFromJson(Json, Value);
+        if(Response.bSuccess && !SentOperation.IsEmpty() && (!bPresent || !Value.Operation.bPresent || Value.Operation.OperationId!=SentOperation)){Self->LastErrorCode=TEXT("INVALID_RESPONSE");OnComplete.ExecuteIfBound(false,{},Self->LastErrorCode,TEXT("Receipt did not match original operation"));return;}
         if (bPresent && !Self->AcceptState(Value, UserId)) { Self->LastErrorCode = TEXT("STALE_RESPONSE"); OnComplete.ExecuteIfBound(false, {}, Self->LastErrorCode, TEXT("Older balance reply")); return; }
         if (Response.bSuccess && !bPresent) { Self->LastErrorCode = TEXT("INVALID_RESPONSE"); OnComplete.ExecuteIfBound(false, {}, Self->LastErrorCode, TEXT("Invalid state")); return; }
         Self->LastErrorCode = Response.bSuccess ? TEXT("") : Response.GetErrorCodeString();

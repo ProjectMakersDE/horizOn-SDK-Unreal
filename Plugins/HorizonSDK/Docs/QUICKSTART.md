@@ -159,3 +159,93 @@ python3 Tests/run_native_groups_test.py --engine /path/to/UE --host-project /pat
 The native fixture binds only `127.0.0.1:18810`, uses artificial identities, checks all
 20 routes and rejects extra retries/polls. This is SDK/loopback evidence; shared Develop
 and public Cloud behavior require their own acceptance run.
+
+## Items (TASK-1011)
+
+Use an existing player session and `UHorizonSubsystem::Items`. Include
+`Managers/HorizonItemsManager.h` and `Models/HorizonItems.h`.
+
+```cpp
+const FString UserId = Horizon->Auth->GetCurrentUser().UserId;
+Horizon->Items->GetInventory(UserId, FOnInventoryComplete::CreateLambda(
+    [](bool Ok, const FHorizonInventorySnapshot& Inventory,
+       const FString& Code, const FString& Message) {
+        if (!Ok) return;
+        // Render the complete authoritative snapshot. No local grant or delta addition.
+    }));
+// Only on an explicit player action, using the instance/revision the player reviewed:
+Horizon->Items->SetEquipped(UserId, OriginalInstanceId, OriginalRevision, true,
+    FOnInventoryComplete::CreateLambda([](bool Ok, const FHorizonInventorySnapshot& Inventory,
+                                         const FString& Code, const FString& Message) {}));
+```
+
+The five methods are `GetInventory(UserId, Callback)`,
+`GetCatalog(UserId, Callback, AfterKey="", Limit=50, CatalogRevision=-1)`,
+`AdjustProperties(UserId, InstanceId, ExpectedRevision, Changes, Callback)`,
+`SetEquipped(UserId, InstanceId, ExpectedRevision, Equipped, Callback)` and
+`DiscardItem(UserId, InstanceId, ExpectedRevision, Callback)`.
+`FOnInventoryComplete` and `FOnItemCatalogComplete` return
+`(bool, const TypedResult&, const FString& ErrorCode, const FString& ErrorMessage)`.
+Use native `BindUObject`/`CreateUObject`, not `BindDynamic`, for those callbacks.
+A cursor continuation always requires its original catalog revision. Each call
+loads one bounded page; there is no automatic page fetch, mutation, grant or poll.
+
+`FHorizonItemProperty` is a typed array entry (`Key`, `Type`, `IntegerValue`,
+`BooleanValue`, `StringValue`). Types are `EHorizonItemPropertyType::Integer`,
+`Boolean`, `String`. Integers stay in int64 within ±9,007,199,254,740,991; strings
+retain Unicode, embedded NUL and their suffix. JSON null, fractional/unsafe
+numbers, duplicate/non-ASCII property keys and nested values are rejected.
+A property object has at most 16 keys and 256 canonical UTF-8 bytes. Properties
+are parsed from original JSON before Unreal's shared-key DOM can alter them.
+Archived definitions and retained inventories above a downgraded limit remain
+readable. Instances and purchase references never imply that an archived or
+already discarded/transferred item should be recreated.
+
+All three inventory writes make one transport attempt. Persist the exact
+instance, revision and mutation payload before sending. On uncertainty, retain
+that tuple; never silently substitute a newer revision. `ClearCache` invalidates
+late replies while retaining revision/time floors. Session, project and host
+context changes also fence same-value ABA transitions. Blueprint manager
+request methods/events expose the same DTOs. Async nodes in
+`AsyncActions/HorizonAsync_Items.h` freeze caller arguments and request context,
+and activate once: `GetInventory`, `GetCatalog`, `AdjustProperties`,
+`SetEquipped`, `DiscardItem`.
+
+Player-value offers add `FHorizonPlayerValueOffer::ItemRewards`
+(`ItemKey`, `Quantity`); operation receipts add
+`FHorizonPlayerValuesState::Operation.Items` (`InstanceId`, `ItemKey`). Missing
+fields in old responses mean empty arrays. Existing purchase IDs and callbacks
+remain compatible. A successful receipt must match the submitted operation ID.
+Use the full returned balances and explicitly read inventory afterward. Never
+add item references to local inventory or rebuy because that read failed.
+
+`AHorizonItemsExample` is an executable actor for an already restored player:
+call `Refresh`, then bind `PurchaseItemOffer` or `StartItemAction` to explicit UI
+actions. Its one project/player-bound save records the original tuple before
+HTTP and blocks a different pending action. `RetrySavedAction` preserves that
+original across actor recreation and regional changes. Confirmed purchases are
+persisted before inventory refresh; their retry performs only GET. Unconfirmed
+purchases keep the original ID even after `OPERATION_EXPIRED`. Removed/disabled
+offers can still recover a retained original receipt after explicit review.
+Non-purchase CAS intents have an explicit `AcknowledgeItemActionAfterRefresh`;
+this acknowledges the exact original and does not cancel a server request.
+
+Before an unconfirmed purchase retry, the actor reads current offers. A changed
+or unavailable offer requires a second explicit confirmation; the original
+operation ID is unchanged. The player can inspect current offers via
+`PlayerValues->GetCurrentOffers()`. There is no atomic `expectedCatalogVersion`
+in the existing purchase contract: configuration may change between GET and
+POST, so the sample promises no price lock. An expired/evicted unknown operation
+requires external reconciliation; the sample never manufactures a replacement.
+
+REST is available in Cloud and simpleServer. Items adds no realtime topic;
+realtime remains Cloud-only. Local native automation uses the strict artificial
+fixture on loopback 18811:
+
+```bash
+python3 Tests/run_native_items_test.py --engine '/path/to/UE_5.8' \
+  --host-project /absolute/path/to/independently-built/HostProject.uproject \
+  --report /absolute/path/to/fresh-report
+```
+
+This native HTTP proof is separate from a deployment or real-account acceptance.
