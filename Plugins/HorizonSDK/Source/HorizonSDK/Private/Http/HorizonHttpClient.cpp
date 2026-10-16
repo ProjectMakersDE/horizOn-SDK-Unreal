@@ -5,8 +5,7 @@
 #include "HorizonConfig.h"
 #include "HorizonSDKModule.h"
 #include "Transport/HorizonLeaderboardTransportContract.h"
-#include "Transport/HorizonValidatedActionsTransportContract.h"
-#include "Transport/HorizonSignupRetryContract.h"
+#include "Transport/HorizonRetryContract.h"
 
 #include "HttpModule.h"
 #include "Interfaces/IHttpRequest.h"
@@ -210,7 +209,9 @@ void UHorizonHttpClient::PostJson(const TSharedRef<FJsonObject>& Body, const FSt
 	FTCHARToUTF8 Converter(*JsonString);
 	Payload.Append(reinterpret_cast<const uint8*>(Converter.Get()), Converter.Length());
 
-	const bool bAllowRetry = HorizonTransportContract::AllowSignupRetry(TCHAR_TO_UTF8(*Endpoint));
+	FString IdempotencyId;
+	const bool HasId = Body->TryGetStringField(TEXT("idempotencyId"), IdempotencyId) && IdempotencyId.Len() <= 128 && HorizonTransportContract::HasNonBlankIdempotencyId(TCHAR_TO_UTF8(*IdempotencyId));
+	const bool bAllowRetry = HorizonTransportContract::AllowJsonPostRetry(TCHAR_TO_UTF8(*Endpoint), HasId);
     SendRequest(TEXT("POST"), Url, TEXT("application/json"), Payload, bUseSessionToken, 0, OnComplete, TEXT(""), ExtraHeaders, bAllowRetry);
 }
 
@@ -224,8 +225,11 @@ void UHorizonHttpClient::PostJsonForBinary(const TSharedRef<FJsonObject>& Body, 
 	FTCHARToUTF8 Converter(*JsonString);
 	Payload.Append(reinterpret_cast<const uint8*>(Converter.Get()), Converter.Length());
 
+	FString IdempotencyId;
+	const bool HasId = Body->TryGetStringField(TEXT("idempotencyId"), IdempotencyId) && IdempotencyId.Len() <= 128 && HorizonTransportContract::HasNonBlankIdempotencyId(TCHAR_TO_UTF8(*IdempotencyId));
+	const bool bAllowRetry = HorizonTransportContract::AllowJsonPostRetry(TCHAR_TO_UTF8(*Endpoint), HasId);
 	SendRequest(TEXT("POST"), Url, TEXT("application/json"), Payload, bUseSessionToken, 0, OnComplete,
-		TEXT("application/octet-stream"));
+		TEXT("application/octet-stream"), TMap<FString,FString>(), bAllowRetry);
 }
 
 void UHorizonHttpClient::PutJson(const TSharedRef<FJsonObject>& Body, const FString& Endpoint, bool bUseSessionToken, FOnHttpResponse OnComplete)
@@ -332,23 +336,18 @@ void UHorizonHttpClient::SendRequest(
 			// Handle HTTP 429 (rate limited)
 			if (Response.StatusCode == 429)
 			{
-				float RetryAfter = 1.0f;
+				double ServerRetryAfter = 1.0;
 				if (Resp.IsValid())
 				{
 					const FString RetryAfterHeader = Resp->GetHeader(TEXT("Retry-After"));
 					if (!RetryAfterHeader.IsEmpty())
 					{
-						const float Parsed = FCString::Atof(*RetryAfterHeader);
-						if (Parsed > 0.0f)
-						{
-							RetryAfter = Parsed;
-						}
+						ServerRetryAfter = FCString::Atod(*RetryAfterHeader);
 					}
 				}
 
-				// Validated Actions run limits (RUN_RATE_LIMITED, RUN_CAPACITY_REACHED) can mean a wait
-				// of up to an hour: deliver them right away instead of retrying.
-				if (HorizonTransportContract::IsNonRetryableRateLimitCode(TCHAR_TO_UTF8(*Response.ServerErrorCode)))
+				// Feature-specific policies are surfaced immediately, including future unknown codes.
+				if (HorizonTransportContract::IsFeatureRateLimitCode(TCHAR_TO_UTF8(*Response.ServerErrorCode)))
 				{
 					UE_LOG(LogHorizonSDK, Warning, TEXT("Rate limited (429, %s) on %s %s. Not retried: %s"),
 						*Response.ServerErrorCode, *CapturedVerb, *CapturedUrl, *Response.ErrorMessage);
@@ -358,6 +357,7 @@ void UHorizonHttpClient::SendRequest(
 
 				if (RetryCount < Self->MaxRetryAttempts)
 				{
+					const float RetryAfter = HorizonTransportContract::GlobalRateRetryDelay(ServerRetryAfter, FMath::FRand());
 					UE_LOG(LogHorizonSDK, Warning, TEXT("Rate limited (429) on %s %s. Retrying after %.1fs (attempt %d/%d)."),
 						*CapturedVerb, *CapturedUrl, RetryAfter, RetryCount + 1, Self->MaxRetryAttempts);
 
@@ -488,9 +488,9 @@ FHorizonNetworkResponse UHorizonHttpClient::ParseResponse(FHttpResponsePtr HttpR
 		else if (Response.StatusCode == 429)
 		{
 			// The server answers 429 with an empty body and a Retry-After header (seconds).
-			const float RetryAfterSeconds = FCString::Atof(*HttpResponse->GetHeader(TEXT("Retry-After")));
-			Response.ErrorMessage = RetryAfterSeconds > 0.0f
-				? FString::Printf(TEXT("Rate limit exceeded (HTTP 429). Try again in %d seconds."), FMath::CeilToInt(RetryAfterSeconds))
+			const double RetryAfterSeconds = FCString::Atod(*HttpResponse->GetHeader(TEXT("Retry-After")));
+			Response.ErrorMessage = std::isfinite(RetryAfterSeconds) && RetryAfterSeconds > 0.0
+				? FString::Printf(TEXT("Rate limit exceeded (HTTP 429). Try again in %.0f seconds."), std::ceil(RetryAfterSeconds))
 				: FString(TEXT("Rate limit exceeded (HTTP 429). Try again later."));
 		}
 		else

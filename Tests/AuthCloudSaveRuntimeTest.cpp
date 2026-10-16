@@ -1,7 +1,7 @@
 // Runs actual manager methods, with only the UE and network/storage boundaries replaced.
 #include "Transport/HorizonLeaderboardTransportContract.h"
 #include "Transport/HorizonCloudSaveTransportContract.h"
-#include "Transport/HorizonSignupRetryContract.h"
+#include "Transport/HorizonRetryContract.h"
 
 #include <cstring>
 #include <cstdarg>
@@ -27,6 +27,7 @@ struct FString : std::string
     using std::string::string;
     FString(const std::string& Value) : std::string(Value) {}
     bool IsEmpty() const { return empty(); }
+    int Len() const { return size(); }
     void Empty() { clear(); }
     const char* operator*() const { return c_str(); }
     FString operator/(const FString& Other) const { return *this + "/" + Other; }

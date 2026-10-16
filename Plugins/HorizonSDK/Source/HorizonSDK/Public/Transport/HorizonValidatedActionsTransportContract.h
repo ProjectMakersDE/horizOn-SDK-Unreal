@@ -3,6 +3,7 @@
 #pragma once
 
 #include "Transport/HorizonLeaderboardTransportContract.h"
+#include "Transport/HorizonRetryContract.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -464,12 +465,11 @@ namespace HorizonTransportContract
 	}
 
 	/**
-	 * 429 codes whose wait can be up to an hour: the HTTP client must not retry them
-	 * automatically (a 429 without code keeps the normal Retry-After handling).
+     * Compatibility wrapper: all feature 429 codes are returned without automatic retry.
 	 */
 	inline bool IsNonRetryableRateLimitCode(const std::string& ServerErrorCode)
 	{
-		return ServerErrorCode == ValidatedCodeRunRateLimited || ServerErrorCode == ValidatedCodeRunCapacityReached;
+        return IsFeatureRateLimitCode(ServerErrorCode);
 	}
 
 	/**
