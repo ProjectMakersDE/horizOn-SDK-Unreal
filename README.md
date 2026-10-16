@@ -26,6 +26,7 @@ Official Unreal Engine SDK for **horizOn** Backend-as-a-Service by [ProjectMaker
 | 🎁 **Gift Codes** | `UHorizonGiftCodeManager` | Validate and redeem promotional codes, cosmetic unlocks via `grants` |
 | 🧑‍🎤 **Player Profile** | `UHorizonPlayerProfileManager` | Avatar, frame and badges per player, cosmetic unlocks, shown in leaderboards |
 | ✅ **Validated Actions** | `UHorizonValidatedActionsManager` | Server-checked runs: ticket with seed, validated submit with input log hash, rule codes, server-owned currency and loot, input log upload as evidence |
+| 📬 **Inbox** | `UHorizonInboxManager` | Explicit snapshots, read/remove actions and entry-bound reward claims with full balance snapshots |
 | 📊 **Statistics** | `UHorizonStatisticsManager` | Explicit atomic session batches with sum/max/min/last counters, optional UTC resets and safe retries |
 | 💬 **Feedback** | `UHorizonFeedbackManager` | Submit bug reports, feature requests, and general feedback |
 | 📊 **User Logs** | `UHorizonUserLogManager` | Server-side structured logging for analytics and debugging |
@@ -99,7 +100,7 @@ Horizon->Disconnect();
 
 ### Authentication
 
-Anonymous signup omits client tokens and stores the token issued by the server. It signs in with that token when signup returns no session. The deprecated token argument is ignored. Use `SignInAnonymous` for an existing account. `RestoreAnonymousSession` reuses the cached token if its session has expired.
+Anonymous signup omits client tokens and stores the token issued by the server. It signs in with that token when signup returns no session. The deprecated token argument is ignored. Signup makes exactly one transport attempt: a lost response or HTTP error must be reconciled before any new identity is created. Use `SignInAnonymous` for an existing account. `RestoreAnonymousSession` reuses the cached token if its session has expired.
 
 ```cpp
 // Anonymous sign-up
@@ -912,6 +913,40 @@ Native WebSockets reconnect with jitter and reauthorize topics; events contain I
 Blueprints use `RequestState`, `RequestOffers`, `PurchaseOffer`, `AdjustValue` and receive `OnValuesResult`/`OnOffersResult`. `CreateOperationId`, `GetCurrentState`, `GetCurrentOffers`, `HasServerClock`, `ClearCache` are reflected. State is bound to the matching signed-in session/project/host; stale responses cannot repopulate a cleared cache. Revision/server-clock watermarks survive catalogue invalidation.
 
 Load state/offers before creating an operation ID to learn server time. IDs then advance using monotonic elapsed time; local UTC is the visible fallback (`HasServerClock()==false`). Persist one operation ID and immutable payload per logical action and retain it after a timeout. Never create a replacement automatically after `OPERATION_EXPIRED`; refresh and reconcile first. Integers are bounded to +/-9,007,199,254,740,991. Realtime remains optional and does not replace HTTP state refresh after validated runs or another balance mutation. No automatic purchase/poll loop exists.
+
+## Inbox
+
+```cpp
+#include "HorizonSubsystem.h"
+#include "Managers/HorizonInboxManager.h"
+#include "Models/HorizonInbox.h"
+
+// Use an already restored player session. Loading never claims attachments.
+const FString UserId = Horizon->Auth->GetCurrentUser().UserId;
+Horizon->Inbox->GetInbox(UserId,
+    FOnInboxComplete::CreateLambda([](bool Ok, const FHorizonInboxSnapshot& Inbox,
+                                     const FString& Code, const FString& Message)
+    {
+        if (Ok) { /* Render Entries, Counts and Limits. Retain Cursor for a conditional refresh. */ }
+    }));
+// Only on an explicit player action, using the original persisted entry ID:
+Horizon->Inbox->Claim(UserId, OriginalEntryId,
+    FOnInboxClaimComplete::CreateLambda([](bool Ok, const FHorizonInboxClaim& Claim,
+                                          const FString& Code, const FString& Message)
+    {
+        if (Ok) { /* Replace UI with Claim.Inbox; PlayerValues already adopted Claim.PlayerValues. */ }
+        // An uncertain result retains OriginalEntryId for the next explicit retry.
+    }));
+```
+
+`MarkRead(UserId, EntryId, FOnInboxComplete)` and `Remove(...)` return full snapshots.
+`GetInbox(UserId, Callback, Since)` accepts an opaque cursor; an unchanged reply is materialized from the matching cache or triggers one full reload. Concurrent refresh bursts are coalesced into one active request and one queued request. Cache clears preserve revision and server-time watermarks; session, project, region and epoch changes fence late replies. Claims also capture the PlayerValues cache epoch. Balances are replaced from the full authorized server state, never credited locally.
+
+Blueprint entry points are `RequestInbox`, `MarkEntryRead`, `RemoveEntry` and `ClaimEntry`; their result events expose the same typed models. The explicit `AHorizonInboxExample` actor preserves a pending claim before HTTP, scoped to the project and player, and blocks a different entry until the original is reconciled. New claims require an unclaimed valuable entry in the current authorized snapshot. `GetPendingClaimEntryId` recovers the original entry after a restart; `GetCurrentInbox` always reads the manager cache, so logout never leaves a second actor snapshot. It performs no automatic signup, polling or claims.
+
+Realtime is optional and Cloud-only. Subscribe to `inbox:<userId>` and, when its ID is supplied by your project setup, `inbox:project.<apiKeyId>`; the API-key ID is distinct from the secret API-key value. Invalidation/resync events trigger a coalesced HTTP refresh. Respect `PollAfterSeconds` for a scheduled fallback; chat has no polling fallback. simpleServer returns `NOT_SUPPORTED` for Inbox and realtime.
+
+Native `Horizon.Inbox.NativeTransport` uses `Tests/mock_inbox_server.py` with `HORIZON_INBOX_FIXTURE_URL=http://127.0.0.1:18816`. It checks original-entry replay, full balance adoption, bounded refresh bursts, stale cache/session responses and exactly one signup request after HTTP 503 or a dropped connection. `Horizon.Inbox.StrictModels` checks safe integer tokens and malformed rewards/snapshots.
 
 ## Player statistics
 

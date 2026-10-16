@@ -18,6 +18,9 @@ class HORIZONSDK_API UHorizonPlayerValuesManager : public UObject
 public:
     void Initialize(UHorizonHttpClient* Client, UHorizonAuthManager* Auth);
     void GetState(const FString& UserId, FOnPlayerValuesComplete OnComplete);
+    /** Adopt only a complete authorized server snapshot, e.g. an atomic Inbox claim. */
+    bool AcceptServerState(const FString& UserId,const FHorizonPlayerValuesState& Value);
+    int64 GetCacheEpoch();
     void GetOffers(const FString& UserId, FOnPlayerValuesOffersComplete OnComplete);
     void Purchase(const FString& UserId, const FString& OfferKey, const FString& OperationId, FOnPlayerValuesComplete OnComplete);
     void Adjust(const FString& UserId, const FString& Key, int64 Amount, const FString& Reason, const FString& OperationId, FOnPlayerValuesComplete OnComplete);

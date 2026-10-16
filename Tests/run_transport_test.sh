@@ -46,3 +46,9 @@ c++ -std=c++17 \
   Tests/StatisticsTransportContractTest.cpp \
   -o "$build_dir/statistics-transport-test"
 "$build_dir/statistics-transport-test"
+
+c++ -std=c++17 \
+  -I Plugins/HorizonSDK/Source/HorizonSDK/Public \
+  Tests/SignupRetryContractTest.cpp \
+  -o "$build_dir/signup-retry-contract-test"
+"$build_dir/signup-retry-contract-test"

@@ -1,6 +1,7 @@
 // Runs actual manager methods, with only the UE and network/storage boundaries replaced.
 #include "Transport/HorizonLeaderboardTransportContract.h"
 #include "Transport/HorizonCloudSaveTransportContract.h"
+#include "Transport/HorizonSignupRetryContract.h"
 
 #include <cstring>
 #include <cstdarg>
@@ -199,7 +200,7 @@ struct UHorizonSessionSave
 };
 struct UHorizonHttpClient
 {
-    struct Request { FString Method, Endpoint; TSharedRef<FJsonObject> Body; bool UseSession; FString ContentType, Payload; };
+    struct Request { FString Method, Endpoint; TSharedRef<FJsonObject> Body; bool UseSession; FString ContentType, Payload; bool RetryAllowed = true; };
     std::vector<Request> Requests;
     std::function<FHorizonNetworkResponse(const Request&)> Server;
     FString SessionToken, ApiKey = "project-key-892", ActiveHost = "http://loopback.invalid";
@@ -217,13 +218,13 @@ struct UHorizonHttpClient
                       const TMap<FString, FString>& = TMap<FString, FString>()) const;
     void SendRequest(const FString& Verb, const FString& Url, const FString& ContentType,
                      const TArray<uint8>& Payload, bool Session, int, FOnHttpResponse Callback, const FString& Accept = "",
-                     const TMap<FString, FString>& ExtraHeaders = TMap<FString, FString>())
+                     const TMap<FString, FString>& ExtraHeaders = TMap<FString, FString>(), bool bAllowRetry = true)
     {
         auto Request = MakeShared<IHttpRequest>(); Request->Verb = Verb;
         ApplyHeaders(Request, ContentType, Session, Accept, ExtraHeaders); LastHeaders = Request->Headers;
         const bool Json = ContentType == "application/json";
         Send({Verb, Url.substr(ActiveHost.size() + 1), Json ? FJsonSerializer::SerializedBody : MakeShared<FJsonObject>(),
-              Session, ContentType, FString(std::string(Payload.begin(), Payload.end()))}, Callback);
+              Session, ContentType, FString(std::string(Payload.begin(), Payload.end())), bAllowRetry}, Callback);
     }
     void GetBinary(const FString& Endpoint, bool Session, FOnHttpResponse Callback)
     { Send({"GET", Endpoint, MakeShared<FJsonObject>(), Session}, Callback); }
@@ -300,6 +301,7 @@ int main()
             if (Request.Endpoint == "api/v1/app/user-management/signup")
             {
                 Require(!Request.Body->HasField("anonymousToken"), "anonymous signup sent a client token");
+                Require(!Request.RetryAllowed, "non-idempotent signup must have exactly one transport attempt");
                 if (!MissingIssuedToken) Response.JsonData->SetStringField("anonymousToken", Issued);
                 if (SignupHasSession) Response.JsonData->SetStringField("accessToken", "signup-session");
                 Response.JsonData->SetBoolField("isAnonymous", true);

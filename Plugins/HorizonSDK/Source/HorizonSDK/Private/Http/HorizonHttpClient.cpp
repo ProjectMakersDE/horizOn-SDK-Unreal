@@ -6,6 +6,7 @@
 #include "HorizonSDKModule.h"
 #include "Transport/HorizonLeaderboardTransportContract.h"
 #include "Transport/HorizonValidatedActionsTransportContract.h"
+#include "Transport/HorizonSignupRetryContract.h"
 
 #include "HttpModule.h"
 #include "Interfaces/IHttpRequest.h"
@@ -209,7 +210,8 @@ void UHorizonHttpClient::PostJson(const TSharedRef<FJsonObject>& Body, const FSt
 	FTCHARToUTF8 Converter(*JsonString);
 	Payload.Append(reinterpret_cast<const uint8*>(Converter.Get()), Converter.Length());
 
-	SendRequest(TEXT("POST"), Url, TEXT("application/json"), Payload, bUseSessionToken, 0, OnComplete, TEXT(""), ExtraHeaders);
+	const bool bAllowRetry = HorizonTransportContract::AllowSignupRetry(TCHAR_TO_UTF8(*Endpoint));
+    SendRequest(TEXT("POST"), Url, TEXT("application/json"), Payload, bUseSessionToken, 0, OnComplete, TEXT(""), ExtraHeaders, bAllowRetry);
 }
 
 void UHorizonHttpClient::PostJsonForBinary(const TSharedRef<FJsonObject>& Body, const FString& Endpoint, bool bUseSessionToken, FOnHttpResponse OnComplete)
@@ -276,7 +278,8 @@ void UHorizonHttpClient::SendRequest(
 	int32 RetryCount,
 	FOnHttpResponse OnComplete,
 	const FString& AcceptContentType,
-	const TMap<FString, FString>& ExtraHeaders)
+	const TMap<FString, FString>& ExtraHeaders,
+    bool bAllowRetry)
 {
 	TSharedRef<IHttpRequest, ESPMode::ThreadSafe> Request = FHttpModule::Get().CreateRequest();
 	Request->SetVerb(Verb);
@@ -301,7 +304,7 @@ void UHorizonHttpClient::SendRequest(
 	const FString RequestHost = ActiveHost, RequestKey = ApiKey, RequestSession = SessionToken;
 
 	Request->OnProcessRequestComplete().BindLambda(
-		[WeakSelf, CapturedVerb, CapturedUrl, CapturedContentType, CapturedAcceptContentType, CapturedExtraHeaders, CapturedPayload, bUseSessionToken, RetryCount, CapturedOnComplete, RequestHost, RequestKey, RequestSession]
+		[WeakSelf, CapturedVerb, CapturedUrl, CapturedContentType, CapturedAcceptContentType, CapturedExtraHeaders, CapturedPayload, bUseSessionToken, RetryCount, CapturedOnComplete, RequestHost, RequestKey, RequestSession, bAllowRetry]
 		(FHttpRequestPtr /*Req*/, FHttpResponsePtr Resp, bool bConnected)
 		{
 			UHorizonHttpClient* Self = WeakSelf.Get();
@@ -322,6 +325,9 @@ void UHorizonHttpClient::SendRequest(
 				CapturedOnComplete.ExecuteIfBound(Response);
 				return;
 			}
+
+            // A lost signup response must not create a second server identity.
+            if (!bAllowRetry) { CapturedOnComplete.ExecuteIfBound(Response); return; }
 
 			// Handle HTTP 429 (rate limited)
 			if (Response.StatusCode == 429)
