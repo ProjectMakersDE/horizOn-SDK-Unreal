@@ -52,3 +52,9 @@ c++ -std=c++17 \
   Tests/SignupRetryContractTest.cpp \
   -o "$build_dir/signup-retry-contract-test"
 "$build_dir/signup-retry-contract-test"
+
+c++ -std=c++17 \
+  -I Plugins/HorizonSDK/Source/HorizonSDK/Public \
+  Tests/RetryContractTest.cpp \
+  -o "$build_dir/retry-contract-test"
+"$build_dir/retry-contract-test"

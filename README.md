@@ -842,7 +842,15 @@ Horizon->Auth->SignInEmail(TEXT("user@example.com"), TEXT("password"),
 | 400 | Bad Request | Check parameters |
 | 401 | Unauthorized | Re-authenticate |
 | 403 | Forbidden | Check tier/permissions |
-| 429 | Rate Limited | Wait and retry (automatic) |
+| 429 | Rate Limited | Code-free global limits retry after the server wait plus 0–20% jitter; feature codes return immediately |
+
+### Retry policy
+
+All JSON, binary-upload and JSON-to-binary response paths share one dispatcher. A 429 with any nonempty string `code` is a feature decision and reaches the caller immediately, including unknown future codes. Missing, null or empty codes use the global policy: wait at least `Retry-After` seconds (minimum one second), then add random delay up to 20%, bounded by `MaxRetryAttempts`. Native timers reject NaN/infinite waits and avoid float overflow. Status, machine-readable code, response body and headers remain available after the final attempt.
+
+Requests capture their original JSON/bytes, extra headers and host/project/session context. A context change before a scheduled retry cancels that retry with `SESSION_CHANGED`. Signup always has one transport attempt. Gift redemption without a nonblank caller `idempotencyId` also has one attempt because each legacy server request otherwise creates a new intent. A valid explicit ID permits identical transport retries; keep that original ID after an uncertain result.
+
+`Horizon.Transport.RateLimit.NativeHTTP` uses the strict artificial `Tests/mock_rate_limit_server.py` on `127.0.0.1:18817`. `Tests/run_native_rate_limit_test.py --engine /path/to/UE_5.8 --host-project /path/to/HostProject.uproject --report /path/to/report` runs the native test after building the plugin. It verifies all three data paths, minimum waits, feature-code passthrough, retry exhaustion, immutable payloads/headers, single-attempt legacy/signup and a session change during backoff.
 
 ## Self-Hosted Option
 
@@ -944,7 +952,7 @@ Horizon->Inbox->Claim(UserId, OriginalEntryId,
 
 Blueprint entry points are `RequestInbox`, `MarkEntryRead`, `RemoveEntry` and `ClaimEntry`; their result events expose the same typed models. The explicit `AHorizonInboxExample` actor preserves a pending claim before HTTP, scoped to the project and player, and blocks a different entry until the original is reconciled. New claims require an unclaimed valuable entry in the current authorized snapshot. `GetPendingClaimEntryId` recovers the original entry after a restart; `GetCurrentInbox` always reads the manager cache, so logout never leaves a second actor snapshot. It performs no automatic signup, polling or claims.
 
-Realtime is optional and Cloud-only. Subscribe to `inbox:<userId>` and, when its ID is supplied by your project setup, `inbox:project.<apiKeyId>`; the API-key ID is distinct from the secret API-key value. Invalidation/resync events trigger a coalesced HTTP refresh. Respect `PollAfterSeconds` for a scheduled fallback; chat has no polling fallback. simpleServer returns `NOT_SUPPORTED` for Inbox and realtime.
+Realtime is optional and Cloud-only. Subscribe to `inbox:<userId>` and, when its ID is supplied by your project setup, `inbox:project.<apiKeyId>`; the API-key ID is distinct from the secret API-key value. Invalidation/resync events trigger a coalesced HTTP refresh. Respect `PollAfterSeconds` for a scheduled fallback; chat has no polling fallback. Inbox REST also works with simpleServer; its realtime channel returns `NOT_SUPPORTED`.
 
 Native `Horizon.Inbox.NativeTransport` uses `Tests/mock_inbox_server.py` with `HORIZON_INBOX_FIXTURE_URL=http://127.0.0.1:18816`. It checks original-entry replay, full balance adoption, bounded refresh bursts, stale cache/session responses and exactly one signup request after HTTP 503 or a dropped connection. `Horizon.Inbox.StrictModels` checks safe integer tokens and malformed rewards/snapshots.
 
