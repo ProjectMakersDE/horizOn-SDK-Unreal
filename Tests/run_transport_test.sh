@@ -70,3 +70,9 @@ c++ -std=c++17 \
   Tests/ItemsTransportContractTest.cpp \
   -o "$build_dir/items-transport-test"
 "$build_dir/items-transport-test"
+
+c++ -std=c++17 \
+  -I Plugins/HorizonSDK/Source/HorizonSDK/Public \
+  Tests/SharedObjectsTransportContractTest.cpp \
+  -o "$build_dir/shared-objects-transport-test"
+"$build_dir/shared-objects-transport-test"

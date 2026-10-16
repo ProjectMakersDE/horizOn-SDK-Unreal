@@ -199,6 +199,19 @@ void UHorizonHttpClient::Get(const FString& Endpoint, bool bUseSessionToken, FOn
 	SendRequest(TEXT("GET"), Url, TEXT("application/json"), EmptyPayload, bUseSessionToken, 0, OnComplete);
 }
 
+void UHorizonHttpClient::PostJsonRead(const TSharedRef<FJsonObject>& Body,const FString& Endpoint,FOnHttpResponse Complete)
+{
+    FString Json;if(!HorizonLosslessJson::Object(Body,Json)){FHorizonNetworkResponse R;R.ServerErrorCode=TEXT("INVALID_REQUEST");R.ErrorMessage=TEXT("Invalid read JSON");Complete.ExecuteIfBound(R);return;}
+    const FTCHARToUTF8 Bytes(*Json,Json.Len());TArray<uint8> Payload;Payload.Append(reinterpret_cast<const uint8*>(Bytes.Get()),Bytes.Length());
+    SendRequest(TEXT("POST"),ActiveHost/Endpoint,TEXT("application/json"),Payload,true,0,Complete);
+}
+void UHorizonHttpClient::RevisionJsonOnce(const TSharedPtr<FJsonObject>& Body,const FString& Endpoint,const FString& Verb,int64 Revision,FOnHttpResponse Complete)
+{
+    if((Verb!=TEXT("POST")&&Verb!=TEXT("PUT")&&Verb!=TEXT("DELETE"))||Revision<0||Revision>9007199254740991LL||(Verb==TEXT("DELETE")?Body.IsValid():!Body.IsValid())){FHorizonNetworkResponse R;R.ServerErrorCode=TEXT("INVALID_REQUEST");R.ErrorMessage=TEXT("Original revisioned write required");Complete.ExecuteIfBound(R);return;}
+    TArray<uint8> Payload;if(Body){FString Json;if(!HorizonLosslessJson::Object(Body.ToSharedRef(),Json)){FHorizonNetworkResponse R;R.ServerErrorCode=TEXT("INVALID_REQUEST");R.ErrorMessage=TEXT("Invalid write JSON");Complete.ExecuteIfBound(R);return;}const FTCHARToUTF8 Bytes(*Json,Json.Len());Payload.Append(reinterpret_cast<const uint8*>(Bytes.Get()),Bytes.Length());}
+    TMap<FString,FString> Headers;Headers.Add(TEXT("If-Match"),LexToString(Revision));SendRequest(Verb,ActiveHost/Endpoint,TEXT("application/json"),Payload,true,0,Complete,TEXT(""),Headers,false);
+}
+
 void UHorizonHttpClient::JsonOnce(const TSharedRef<FJsonObject>& Body,const FString& Endpoint,bool bPut,bool bUseSessionToken,FOnHttpResponse Complete)
 {
     FString Json;if(!HorizonLosslessJson::Object(Body,Json)){FHorizonNetworkResponse R;R.ServerErrorCode=TEXT("INVALID_REQUEST");R.ErrorMessage=TEXT("Invalid JSON write");Complete.ExecuteIfBound(R);return;}
