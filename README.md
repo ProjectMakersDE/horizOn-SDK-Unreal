@@ -1081,3 +1081,9 @@ The sample runs once per actor, gates auth re-entry, keeps original pending stat
 Groups: `Groups` manager, typed views, explicit revision/request IDs, one-attempt writes and
 lossless JSON metadata. See [the plugin quickstart](Plugins/HorizonSDK/Docs/QUICKSTART.md#groups-task-1010)
 and `AHorizonGroupsExample`; no automatic signup, polling or replacement intent is performed.
+
+Items: `Items` exposes five typed inventory/catalog methods and Blueprint async
+nodes. Property integers, Unicode/NUL strings, purchase item rewards and retained
+receipt references stay lossless. `AHorizonItemsExample` persists original actions
+and never replaces an uncertain purchase ID. See [the quickstart](Plugins/HorizonSDK/Docs/QUICKSTART.md#items-task-1011)
+for single-attempt CAS writes, explicit receipt recovery and the remaining GET-to-POST price window.

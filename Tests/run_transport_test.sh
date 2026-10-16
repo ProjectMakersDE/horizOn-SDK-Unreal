@@ -64,3 +64,9 @@ c++ -std=c++17 \
   Tests/GroupsTransportContractTest.cpp \
   -o "$build_dir/groups-transport-test"
 "$build_dir/groups-transport-test"
+
+c++ -std=c++17 \
+  -I Plugins/HorizonSDK/Source/HorizonSDK/Public \
+  Tests/ItemsTransportContractTest.cpp \
+  -o "$build_dir/items-transport-test"
+"$build_dir/items-transport-test"

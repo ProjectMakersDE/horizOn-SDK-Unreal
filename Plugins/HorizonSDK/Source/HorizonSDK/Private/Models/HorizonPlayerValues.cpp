@@ -55,7 +55,7 @@ bool FHorizonPlayerValuesState::TryFromJson(const TSharedPtr<FJsonObject>& Json,
     if (Json->TryGetObjectField(TEXT("operation"), Operation))
     {
         Value.Operation.bPresent = true;
-        if (!(*Operation)->TryGetStringField(TEXT("operationId"), Value.Operation.OperationId) || !(*Operation)->TryGetBoolField(TEXT("replayed"), Value.Operation.bReplayed) || !Amounts(*Operation, TEXT("applied"), Value.Operation.Applied)) return false;
+        if (!(*Operation)->TryGetStringField(TEXT("operationId"), Value.Operation.OperationId) || !(*Operation)->TryGetBoolField(TEXT("replayed"), Value.Operation.bReplayed) || !Amounts(*Operation, TEXT("applied"), Value.Operation.Applied) || !FHorizonItemReference::TryArrayFromJson(*Operation,TEXT("items"),Value.Operation.Items)) return false;
     }
     Value.bPresent = true; Out = MoveTemp(Value); return true;
 }
@@ -68,7 +68,7 @@ bool FHorizonPlayerValuesOffers::TryFromJson(const TSharedPtr<FJsonObject>& Json
     {
         if (!Entry || Entry->Type != EJson::Object) return false;
         const auto Object = Entry->AsObject(); FHorizonPlayerValueOffer Offer;
-        if (!Object->TryGetStringField(TEXT("key"), Offer.Key) || !Object->TryGetStringField(TEXT("name"), Offer.Name) || !Object->TryGetBoolField(TEXT("active"), Offer.bActive) || !Amounts(Object, TEXT("costs"), Offer.Costs) || !Amounts(Object, TEXT("rewards"), Offer.Rewards)) return false;
+        if (!Object->TryGetStringField(TEXT("key"), Offer.Key) || !Object->TryGetStringField(TEXT("name"), Offer.Name) || !Object->TryGetBoolField(TEXT("active"), Offer.bActive) || !Amounts(Object, TEXT("costs"), Offer.Costs) || !Amounts(Object, TEXT("rewards"), Offer.Rewards) || !FHorizonItemReward::TryArrayFromJson(Object,TEXT("itemRewards"),Offer.ItemRewards)) return false;
         const auto Limit = Object->TryGetField(TEXT("purchasesPerDay"));
         Offer.bHasPurchasesPerDay = Limit.IsValid() && !Limit->IsNull();
         if (Offer.bHasPurchasesPerDay && (!Number(Object, TEXT("purchasesPerDay"), Offer.PurchasesPerDay) || Offer.PurchasesPerDay < 0)) return false;

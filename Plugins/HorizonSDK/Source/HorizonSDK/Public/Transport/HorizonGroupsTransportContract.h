@@ -11,7 +11,7 @@ namespace HorizonGroupsContract
 class JsonObject
 {
     const std::string& S;size_t I=0;std::string Out;int MaxDepth=16;
-    std::vector<std::string>* Objects=nullptr;std::string Marker;bool Mask=false;
+    std::vector<std::string>* Objects=nullptr;std::string Marker;bool Mask=false;std::vector<std::string> Fields={"data"};size_t ObjectLimit=128;
     void Space(){while(I<S.size()&&(S[I]==' '||S[I]=='\n'||S[I]=='\r'||S[I]=='\t'))++I;}
     bool Hex(uint32_t& N){N=0;for(int K=0;K<4;++K){if(I>=S.size())return false;unsigned char C=S[I++];int D=C>='0'&&C<='9'?C-'0':C>='a'&&C<='f'?C-'a'+10:C>='A'&&C<='F'?C-'A'+10:-1;if(D<0)return false;N=N*16+D;}return true;}
     void Character(uint32_t U)
@@ -52,10 +52,10 @@ class JsonObject
             while(true)
             {
                 bool Data=false;
-                if(Object){Space();size_t Key=Out.size();if(I>=S.size()||S[I]!='"'||!String())return false;Data=Mask&&Out.substr(Key)=="\"data\"";Space();if(I>=S.size()||S[I++]!=':')return false;Out+=':';}
+                if(Object){Space();size_t Key=Out.size();if(I>=S.size()||S[I]!='"'||!String())return false;if(Mask)for(const auto& Field:Fields)if(Out.substr(Key)=="\""+Field+"\"")Data=true;Space();if(I>=S.size()||S[I++]!=':')return false;Out+=':';}
                 Space();const size_t Start=Out.size();const bool Capture=Data&&I<S.size()&&S[I]=='{';bool WasMask=Mask;if(Capture)Mask=false;
                 if(!Value(Depth+1))return false;Mask=WasMask;
-                if(Capture){if(Objects->size()>=128)return false;Objects->push_back(Out.substr(Start));Out.resize(Start);Out+='"';Out+=Marker+std::to_string(Objects->size()-1);Out+='"';}
+                if(Capture){if(Objects->size()>=ObjectLimit)return false;Objects->push_back(Out.substr(Start));Out.resize(Start);Out+='"';Out+=Marker+std::to_string(Objects->size()-1);Out+='"';}
                 Space();if(I>=S.size())return false;if(S[I]==End){Out+=S[I++];return true;}if(S[I++]!=',')return false;Out+=',';
             }
         }
@@ -68,7 +68,7 @@ class JsonObject
 public:
     explicit JsonObject(const std::string& Input):S(Input){}
     bool Parse(std::string& Compact){Space();if(I>=S.size()||S[I]!='{'||!Value(0))return false;Space();if(I!=S.size())return false;Compact=Out;return true;}
-    bool MaskObjects(const std::string& Prefix,std::vector<std::string>& Raw,std::string& Sanitized){MaxDepth=64;Objects=&Raw;Marker=Prefix;Mask=true;return Parse(Sanitized);}
+    bool MaskObjects(const std::string& Prefix,std::vector<std::string>& Raw,std::string& Sanitized,const std::vector<std::string>& Names={"data"},size_t Limit=128){MaxDepth=64;Objects=&Raw;Marker=Prefix;Fields=Names;ObjectLimit=Limit;Mask=true;return Parse(Sanitized);}
 };
 inline bool CompactObject(const std::string& Raw,std::string& Compact){return JsonObject(Raw).Parse(Compact);}
 }
