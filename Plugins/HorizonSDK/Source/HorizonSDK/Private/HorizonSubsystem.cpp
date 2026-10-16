@@ -80,6 +80,7 @@ void UHorizonSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 
 	// A gift code redeem that grants unlocks clears the cached player profile.
 	GiftCodes->SetPlayerProfileManager(PlayerProfile);
+	GiftCodes->SetPlayerValuesManager(PlayerValues);
 
 	ValidatedActions = NewObject<UHorizonValidatedActionsManager>(this);
 	ValidatedActions->Initialize(HttpClient, Auth);

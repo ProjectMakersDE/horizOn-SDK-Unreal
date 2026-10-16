@@ -23,7 +23,7 @@ Official Unreal Engine SDK for **horizOn** Backend-as-a-Service by [ProjectMaker
 | ⚙️ **Remote Config** | `UHorizonRemoteConfigManager` | Typed key-value retrieval (string, int, float, bool) with caching |
 | 🌐 **Localization** | `UHorizonLocalizationManager` | Translated strings in 15 languages with an active language and caching |
 | 📰 **News** | `UHorizonNewsManager` | In-game news feed with language filtering and TTL cache |
-| 🎁 **Gift Codes** | `UHorizonGiftCodeManager` | Validate and redeem promotional codes, cosmetic unlocks via `grants` |
+| 🎁 **Gift Codes** | `UHorizonGiftCodeManager` | Validate and redeem codes, cosmetic unlocks and replay-safe player values |
 | 🧑‍🎤 **Player Profile** | `UHorizonPlayerProfileManager` | Avatar, frame and badges per player, cosmetic unlocks, shown in leaderboards |
 | ✅ **Validated Actions** | `UHorizonValidatedActionsManager` | Server-checked runs: ticket with seed, validated submit with input log hash, rule codes, server-owned currency and loot, input log upload as evidence |
 | 📬 **Inbox** | `UHorizonInboxManager` | Explicit snapshots, read/remove actions and entry-bound reward claims with full balance snapshots |
@@ -297,7 +297,7 @@ Horizon->GiftCodes->Redeem(TEXT("ABCD-1234"),
     {
         if (bSuccess)
         {
-            // Parse GiftData for rewards.
+            // GiftData is the original custom payload. Never credit player values locally.
             // Cosmetics from the code's "grants" are unlocked on the server:
             const TArray<FString>& Unlocked = Horizon->GiftCodes->GetLastGrantedUnlocks();
             // The cached player profile was cleared; GetProfile now shows the unlocks.
@@ -309,6 +309,37 @@ A code whose `giftData` contains `grants` (for example `{"grants": ["badge.suppo
 unlocks those cosmetics for the player. `GetLastGrantedUnlocks()` returns them after a
 successful redeem (empty when the code had no grants); in Blueprints use
 **"Get Horizon Last Granted Unlocks"**.
+
+#### Values and replay-safe redemption (Develop, TASK-1007)
+
+The original `Redeem(Code, FOnGiftCodeRedeemComplete)` callback is unchanged. It makes one transport attempt because it has no reusable caller intent ID. Prefer the additive typed method for valuable codes:
+
+```cpp
+#include "Managers/HorizonGiftCodeManager.h"
+#include "Models/HorizonGiftCodes.h"
+
+// Persist Code + OriginalId for this project/player BEFORE the first send.
+// The same saved values are used after a timeout or restart; never create a new ID there.
+Horizon->GiftCodes->RedeemWithIdempotency(Code, OriginalId,
+    FOnGiftCodeRedeemResultComplete::CreateLambda([](bool Ok,
+        const FHorizonGiftCodeRedeemResult& Receipt, const FString& ErrorCode, const FString& Message)
+    {
+        if (!Ok) { return; } // Preserve the original pending intent for explicit recovery/retry.
+        // Receipt.GiftData stays an opaque string; GrantedUnlocks is additive.
+        // GrantedValues is the original grant, bReplayed marks replay.
+        // PlayerValues.bPresent is optional on older backends.
+        // The manager already adopted the COMPLETE authorized balance snapshot.
+        // Render that state; never add GrantedValues to a local balance.
+    }));
+```
+
+Explicit IDs must be nonblank and at most 128 characters; invalid IDs fail before HTTP. Original request bytes and ID survive transport retries. Feature 4xx codes, including `PV_MAX_BALANCE` and `IDEMPOTENCY_CONFLICT`, reach the callback without automatic rebinding. A lost response remains unknown until the same code/ID is explicitly replayed. Older responses without additive fields use empty grants, absent player values and `bReplayed=false`.
+
+`RedeemCodeWithIdempotency` and `OnRedeemResult` expose the same typed receipt to Blueprints. `GetLastRedeemResult()` returns the last successful receipt; `ClearCache`, sign-out and identity changes fence late replies. A concurrent player-value cache clear also prevents adoption. All amounts are checked against their original integer token before conversion to safe `int64`.
+
+`AHorizonGiftCodesExample` requires an already restored session and only redeems on explicit `RedeemGiftCode` / `RetryPendingRedemption` calls. Its project/player save retains the original code and ID across regions and restarts, blocks conflicting or unreadable pending records and sends nothing when persistence fails. It creates no identity and performs no automatic startup redemption. Definitive failures remain saved for deliberate game-specific recovery instead of silently replacing an uncertain intent. REST works without realtime.
+
+Native `Horizon.GiftValues` tests run with `Tests/run_native_gift_values_test.py` against the artificial loopback fixture on port 18818. They exercise lost-response replay, unchanged legacy callbacks, strict additive DTOs, authoritative cache replacement and session/project/cache fences. They do not claim live Develop acceptance or a released SDK version.
 
 ### Player Profile
 
