@@ -1087,3 +1087,11 @@ nodes. Property integers, Unicode/NUL strings, purchase item rewards and retaine
 receipt references stay lossless. `AHorizonItemsExample` persists original actions
 and never replaces an uncertain purchase ID. See [the quickstart](Plugins/HorizonSDK/Docs/QUICKSTART.md#items-task-1011)
 for single-attempt CAS writes, explicit receipt recovery and the remaining GET-to-POST price window.
+
+
+Shared Objects: `SharedObjects` exposes seven typed methods, opaque byte payloads,
+strict search scalars, explicit original If-Match and Blueprint async nodes.
+`AHorizonSharedObjectsExample` durably preserves original intents across regional
+switches and reconciles uncertain creates through owner reads. See
+[the quickstart](Plugins/HorizonSDK/Docs/QUICKSTART.md#shared-objects-task-1012)
+for world-map queries and the separate existing Validated Actions defense recipe.

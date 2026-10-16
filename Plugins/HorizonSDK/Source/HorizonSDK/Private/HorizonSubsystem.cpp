@@ -7,6 +7,7 @@
 #include "Managers/HorizonFriendsManager.h"
 #include "Managers/HorizonGroupsManager.h"
 #include "Managers/HorizonItemsManager.h"
+#include "Managers/HorizonSharedObjectsManager.h"
 #include "Managers/HorizonPlayerValuesManager.h"
 #include "HorizonSDKModule.h"
 #include "Http/HorizonHttpClient.h"
@@ -55,6 +56,7 @@ void UHorizonSubsystem::Initialize(FSubsystemCollectionBase& Collection)
     Groups->Initialize(HttpClient, Auth);
     Items = NewObject<UHorizonItemsManager>(this);
     Items->Initialize(HttpClient, Auth);
+    SharedObjects=NewObject<UHorizonSharedObjectsManager>(this);SharedObjects->Initialize(HttpClient,Auth);
 
 	// Create all managers
 	CloudSave = NewObject<UHorizonCloudSaveManager>(this);
