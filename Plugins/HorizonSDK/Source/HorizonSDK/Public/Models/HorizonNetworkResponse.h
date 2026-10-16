@@ -29,6 +29,9 @@ struct HORIZONSDK_API FHorizonNetworkResponse
     UPROPERTY(BlueprintReadOnly, Category = "horizOn|Network")
     FString ServerErrorCode;
 
+    /** Original JSON for opaque user-data features. C++ only; never logged or automatically persisted. */
+    FString RawJsonBody;
+
     /** JSON response data (C++ only) */
     TSharedPtr<FJsonObject> JsonData;
 

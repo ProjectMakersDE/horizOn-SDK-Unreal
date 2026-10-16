@@ -5,6 +5,7 @@
 #include "Managers/HorizonInboxManager.h"
 #include "Managers/HorizonAchievementsManager.h"
 #include "Managers/HorizonFriendsManager.h"
+#include "Managers/HorizonGroupsManager.h"
 #include "Managers/HorizonPlayerValuesManager.h"
 #include "HorizonSDKModule.h"
 #include "Http/HorizonHttpClient.h"
@@ -49,6 +50,8 @@ void UHorizonSubsystem::Initialize(FSubsystemCollectionBase& Collection)
     Achievements->Initialize(HttpClient, Auth);
     Friends = NewObject<UHorizonFriendsManager>(this);
     Friends->Initialize(HttpClient, Auth);
+    Groups = NewObject<UHorizonGroupsManager>(this);
+    Groups->Initialize(HttpClient, Auth);
 
 	// Create all managers
 	CloudSave = NewObject<UHorizonCloudSaveManager>(this);

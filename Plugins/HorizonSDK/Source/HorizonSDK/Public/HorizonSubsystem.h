@@ -11,6 +11,7 @@ class UHorizonRealtimeManager;
 class UHorizonInboxManager;
 class UHorizonAchievementsManager;
 class UHorizonFriendsManager;
+class UHorizonGroupsManager;
 class UHorizonPlayerValuesManager;
 class UHorizonHttpClient;
 class UHorizonAuthManager;
@@ -106,6 +107,8 @@ public:
     UHorizonAchievementsManager* Achievements = nullptr;
     UPROPERTY(BlueprintReadOnly, Category = "horizOn")
     UHorizonFriendsManager* Friends = nullptr;
+    UPROPERTY(BlueprintReadOnly, Category="horizOn|Managers")
+    UHorizonGroupsManager* Groups = nullptr;
 
 	// --- Connection ---
 
