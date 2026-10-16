@@ -11,6 +11,7 @@ class FJsonObject;
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnRealtimeEvent, const FString&, EventJson);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnRealtimeTopic, const FString&, Topic);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnRealtimePolling, const FString&, Topic, int32, PollAfterSeconds);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnRealtimeTopicError,const FString&,Topic,const FString&,Code);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnRealtimeError, const FString&, Code);
 
 /** Optional invalidation channel. Feature contents and all writes remain HTTP operations. */
@@ -20,6 +21,9 @@ class HORIZONSDK_API UHorizonRealtimeManager : public UObject, public FTickableG
     GENERATED_BODY()
 public:
     void Initialize(UHorizonHttpClient* Client, UHorizonAuthManager* Auth);
+    /** True only after this connection has received the matching authorized topic ACK. */
+    UFUNCTION(BlueprintPure,Category="horizOn|Realtime") bool IsSubscribed(const FString& Topic);
+    uint64 GetConnectionGeneration();
     UFUNCTION(BlueprintCallable, Category="horizOn|Realtime") bool Subscribe(const FString& Topic);
     UFUNCTION(BlueprintCallable, Category="horizOn|Realtime") void Unsubscribe(const FString& Topic);
     UFUNCTION(BlueprintCallable, Category="horizOn|Realtime") void Close();
@@ -30,6 +34,8 @@ public:
     UPROPERTY(BlueprintReadOnly, Category="horizOn|Realtime") int32 PollAfterSeconds = 120;
     UPROPERTY(BlueprintReadOnly, Category="horizOn|Realtime") FString LastErrorCode;
     UPROPERTY(BlueprintAssignable, Category="horizOn|Realtime") FOnRealtimeEvent OnEvent;
+    UPROPERTY(BlueprintAssignable, Category="horizOn|Realtime") FOnRealtimeTopic OnSubscribed;
+    UPROPERTY(BlueprintAssignable,Category="horizOn|Realtime") FOnRealtimeTopicError OnSubscriptionError;
     UPROPERTY(BlueprintAssignable, Category="horizOn|Realtime") FOnRealtimeTopic OnResyncRequired;
     UPROPERTY(BlueprintAssignable, Category="horizOn|Realtime") FOnRealtimePolling OnPollingRequired;
     UPROPERTY(BlueprintAssignable, Category="horizOn|Realtime") FOnRealtimeError OnConnectionError;
@@ -51,6 +57,7 @@ private:
     int32 Generation = 0, Attempt = 0, PendingSends = 0;
     int32 RequestId = 0, PendingRequestId = 0;
     bool bPendingCanceled = false;
+    uint64 HttpContext = 0;
     double RetryAt = 0, PollAt = 0, PingAt = 0, ConnectDeadline = 0, LastFrameAt = 0;
     bool bConnecting = false, bUnsupported = false;
     void Open();

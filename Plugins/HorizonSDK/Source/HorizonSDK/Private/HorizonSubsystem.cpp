@@ -9,6 +9,7 @@
 #include "Managers/HorizonItemsManager.h"
 #include "Managers/HorizonSharedObjectsManager.h"
 #include "Managers/HorizonMatchesManager.h"
+#include "Managers/HorizonChatManager.h"
 #include "Managers/HorizonPlayerValuesManager.h"
 #include "HorizonSDKModule.h"
 #include "Http/HorizonHttpClient.h"
@@ -45,6 +46,7 @@ void UHorizonSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 
 	Realtime = NewObject<UHorizonRealtimeManager>(this);
 	Realtime->Initialize(HttpClient, Auth);
+    Chat=NewObject<UHorizonChatManager>(this);Chat->Initialize(HttpClient,Auth,Realtime);
 	PlayerValues = NewObject<UHorizonPlayerValuesManager>(this);
 	PlayerValues->Initialize(HttpClient, Auth);
     Inbox = NewObject<UHorizonInboxManager>(this);
