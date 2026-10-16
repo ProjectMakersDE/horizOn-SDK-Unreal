@@ -21,6 +21,7 @@
 enum class ESPMode { ThreadSafe };
 using uint8 = unsigned char;
 using int64 = long long;
+using uint64 = unsigned long long;
 using TCHAR = char;
 struct FString : std::string
 {
@@ -191,6 +192,12 @@ struct FHorizonUserData
     EHorizonAuthType AuthType = EHorizonAuthType::Anonymous;
     void UpdateFromAuthResponse(const TSharedPtr<FJsonObject>& JsonObject);
 };
+struct FOnAnonymousIdentityIssued
+{
+    std::function<bool(const FString&,const FHorizonUserData&)> Function;
+    bool IsBound() const { return bool(Function); }
+    bool Execute(const FString& P,const FHorizonUserData& U) const { return Function(P,U); }
+};
 struct UHorizonSessionSave
 {
     FString CachedUserId, CachedAccessToken, CachedAnonymousToken, CachedDisplayName;
@@ -206,6 +213,8 @@ struct UHorizonHttpClient
     std::function<FHorizonNetworkResponse(const Request&)> Server;
     FString SessionToken, ApiKey = "project-key-892", ActiveHost = "http://loopback.invalid";
     std::map<FString, FString> LastHeaders;
+    FString GetApiKey() const { return ApiKey; }
+    uint64 GetRequestContextEpoch() const { return 0; }
     void SetSessionToken(const FString& Value) { SessionToken = Value; }
     void ClearSessionToken() { SessionToken.Empty(); }
     void Send(const Request& Request, FOnHttpResponse Callback)
@@ -238,7 +247,7 @@ struct UHorizonAuthManager
     bool ValidCachedSession = false;
     bool IsSignedIn() const { return !CurrentUser.UserId.IsEmpty() && !CurrentUser.AccessToken.IsEmpty(); }
     FHorizonUserData GetCurrentUser() const { return CurrentUser; }
-    void SignUpAnonymous(const FString&, FOnAuthComplete, const FString& = "");
+    void SignUpAnonymous(const FString&, FOnAuthComplete, const FString& = "", FOnAnonymousIdentityIssued = {});
     void SignInAnonymous(const FString&, FOnAuthComplete);
     void RestoreAnonymousSession(FOnAuthComplete);
     void HandleAuthResponse(const FHorizonNetworkResponse&, FOnAuthComplete);

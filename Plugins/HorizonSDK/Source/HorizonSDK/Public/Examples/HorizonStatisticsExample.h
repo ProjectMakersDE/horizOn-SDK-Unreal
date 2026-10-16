@@ -7,6 +7,8 @@
 #include "HorizonStatisticsExample.generated.h"
 
 /** A durable intent, scoped to the same project and player. No credentials stored here. */
+class UHorizonExampleIdentity;
+
 UCLASS()
 class HORIZONSDK_API UHorizonStatisticsPendingBatch : public USaveGame
 {
@@ -27,6 +29,11 @@ public:
 protected:
 	virtual void BeginPlay() override;
 private:
+    friend struct FHorizonIdentityNative;
+    UPROPERTY() UHorizonExampleIdentity* AuthOriginal=nullptr;
+    FString AuthProject;
+    bool bSignupSent=false,bRestoring=false,bAuthStarted=false;
+    void AuthResult(bool Success);
 	UFUNCTION() void Connected();
 	void Authenticated(bool Success);
 	void Loaded(bool Success, const FHorizonStatisticsSnapshot& Snapshot, const FString& Code, const FString& Message);
