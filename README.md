@@ -1159,3 +1159,13 @@ Blueprint context, cache/realtime invalidation and one-attempt failures. Its
 simulated turn timeline advances only the test Actor's refresh clock instead
 of waiting120 real seconds per move. Native Editor/Development/Shipping builds
 are separate evidence from live Develop, standalone games and Hello integration.
+
+
+Generic `ValidatedActions.StartRun` and Matches ranked starts share one exclusive
+in-flight start lease. A competing start returns local `RUN_IN_PROGRESS` before
+HTTP. Cache clearing, signout and region/session changes do not release another
+pending request's lease. Release follows the original completion callback;
+late context responses cannot adopt a run. An active unrelated run blocks a
+match start, while the same original match/final-state run can be recovered.
+An already adopted active match run is protected from a generic replacement
+until submit or the player's explicit `DiscardRun` action.

@@ -1,4 +1,5 @@
 #include "Managers/HorizonMatchesManager.h"
+#include "Managers/HorizonRunStartLease.h"
 #include "Models/HorizonMatchesWire.h"
 #include "Http/HorizonLosslessJson.h"
 #include "Transport/HorizonValidatedActionsTransportContract.h"
@@ -104,13 +105,19 @@ bool ReadRun(const TSharedPtr<FJsonObject>& J,FHorizonValidatedRun& R)
 }
 void UHorizonMatchesManager::StartRankedRun(const FString& U,const FString& Id,int64 Final,FOnValidatedRunStarted Done)
 {
-    if(!HorizonMatchesRequest::Uuid(Id)||!HorizonMatchesRequest::Revision(Final)||Final==0){HorizonMatchesRequest::Invalid(Done);return;}auto B=HorizonMatchesRequest::Body(U);B->SetField(TEXT("finalStateRevision"),MakeShared<FJsonValueNumberString>(LexToString(Final)));
-    Call(U,HorizonMatchesRequest::Match(Id)+TEXT("/ranked-run"),TEXT("POST"),B,-1,FOnHttpResponse::CreateWeakLambda(this,[this,U,Id,Final,Done](const FHorizonNetworkResponse& R)
+    if(!HorizonMatchesRequest::Uuid(Id)||!HorizonMatchesRequest::Revision(Final)||Final==0){HorizonMatchesRequest::Invalid(Done);return;}Sync();FString ExpectedRun=AdoptedMatchId.Equals(Id,ESearchCase::IgnoreCase)&&AdoptedFinalRevision==Final?AdoptedRunId:FString();
+    if(ExpectedRun.IsEmpty()&&CurrentMatch.bPresent&&CurrentMatch.Match.Id.Equals(Id,ESearchCase::IgnoreCase)&&CurrentMatch.Match.bHasFinalStateRevision&&CurrentMatch.Match.FinalStateRevision==Final&&CurrentMatch.Match.bHasOwnRankedRunId)ExpectedRun=CurrentMatch.Match.OwnRankedRunId;
+    if(ValidatedActions&&ValidatedActions->HasActiveRun()&&(ExpectedRun.IsEmpty()||ValidatedActions->GetCurrentRun().RunId!=ExpectedRun)){Done.ExecuteIfBound(false,{},TEXT("RUN_IN_PROGRESS"),TEXT("An unrelated original run is active"));return;}
+    const auto Lease=FHorizonRunStartLease::Acquire(ValidatedActions);if(!Lease){Done.ExecuteIfBound(false,{},TEXT("RUN_IN_PROGRESS"),TEXT("Another run start is in flight"));return;}
+    const uint64 RequestContext=Context;
+    auto B=HorizonMatchesRequest::Body(U);B->SetField(TEXT("finalStateRevision"),MakeShared<FJsonValueNumberString>(LexToString(Final)));
+    Call(U,HorizonMatchesRequest::Match(Id)+TEXT("/ranked-run"),TEXT("POST"),B,-1,FOnHttpResponse::CreateWeakLambda(this,[this,U,Id,Final,Done,Lease,RequestContext,ExpectedRun](const FHorizonNetworkResponse& R)
     {
+        struct FRelease { TSharedPtr<FHorizonRunStartLease> Lease; ~FRelease(){Lease->Release();} } Release{Lease};
         if(!R.bSuccess){const FString Code=R.GetErrorCodeString();if((Code==TEXT("RUN_ALREADY_USED")||Code==TEXT("RUN_EXPIRED"))&&AdoptedMatchId.Equals(Id,ESearchCase::IgnoreCase)&&AdoptedFinalRevision==Final&&ValidatedActions&&ValidatedActions->GetCurrentRun().RunId==AdoptedRunId)ValidatedActions->DiscardRun();Done.ExecuteIfBound(false,{},Code,R.ErrorMessage);return;}
         FHorizonValidatedRun Run;if(!HorizonMatchesRequest::ReadRun(R.JsonData,Run)){HorizonMatchesRequest::Bad(Done);return;}
         if(AdoptedMatchId.Equals(Id,ESearchCase::IgnoreCase)&&AdoptedFinalRevision==Final&&AdoptedOriginalRun.IsValid()&&(Run.RunId!=AdoptedOriginalRun.RunId||Run.Seed!=AdoptedOriginalRun.Seed||Run.IssuedAt!=AdoptedOriginalRun.IssuedAt||Run.ExpiresAt!=AdoptedOriginalRun.ExpiresAt||!HorizonMatchesRequest::Exact(Run.LeaderboardKey,AdoptedOriginalRun.LeaderboardKey))){HorizonMatchesRequest::Bad(Done);return;}
-        if(!ValidatedActions||!ValidatedActions->AdoptMatchRun(U,Run,Context)){Done.ExecuteIfBound(false,{},TEXT("STALE_RESPONSE"),TEXT("Original run context changed"));return;}
+        if((!ExpectedRun.IsEmpty()&&Run.RunId!=ExpectedRun)||!ValidatedActions||HttpClient->GetRequestContextEpoch()!=RequestContext||!ValidatedActions->AdoptMatchRun(U,Run,RequestContext,Lease->Id)){Done.ExecuteIfBound(false,{},TEXT("STALE_RESPONSE"),TEXT("Original run context changed"));return;}
         AdoptedOriginalRun=Run;AdoptedRunId=Run.RunId;AdoptedMatchId=Id;AdoptedFinalRevision=Final;Done.ExecuteIfBound(true,Run,TEXT(""),TEXT(""));
     }));
 }
