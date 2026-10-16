@@ -14,6 +14,8 @@ void UHorizonRealtimeManager::Initialize(UHorizonHttpClient* Client, UHorizonAut
     HttpClient = Client; AuthManager = Auth;
     ClientId = FGuid::NewGuid().ToString(EGuidFormats::DigitsWithHyphens).ToLower();
 }
+uint64 UHorizonRealtimeManager::GetConnectionGeneration(){SyncIdentity();return uint64(Generation);}
+bool UHorizonRealtimeManager::IsSubscribed(const FString& Topic){SyncIdentity();return bIsReady&&Sent.Contains(Topic);}
 bool UHorizonRealtimeManager::Subscribe(const FString& Topic)
 {
     SyncIdentity();
@@ -71,7 +73,7 @@ void UHorizonRealtimeManager::Open()
         FOnHttpResponse::CreateLambda([Weak, CapturedGeneration](const FHorizonNetworkResponse& Result)
     {
         auto* Self = Weak.Get();
-        if (!Self || Self->Generation != CapturedGeneration) return;
+        if (!Self || Self->SyncIdentity() || Self->Generation != CapturedGeneration) return;
         if (!Result.bSuccess)
         {
             FString Code;
@@ -101,7 +103,7 @@ void UHorizonRealtimeManager::Open()
 void UHorizonRealtimeManager::Connected()
 {
     auto Frame = MakeShared<FJsonObject>(); Frame->SetStringField(TEXT("type"), TEXT("authenticate"));
-    Frame->SetNumberField(TEXT("version"), 1); Frame->SetStringField(TEXT("apiKey"), UHorizonConfig::Get()->ApiKey);
+    Frame->SetNumberField(TEXT("version"), 1); Frame->SetStringField(TEXT("apiKey"), HttpClient->GetApiKey());
     Frame->SetStringField(TEXT("sessionToken"), Token); Frame->SetStringField(TEXT("clientId"), ClientId);
     Send(Frame);
 }
@@ -126,7 +128,7 @@ void UHorizonRealtimeManager::Message(const FString& Text)
     }
     else if (Type == TEXT("unsubscribed") && CorrelationId == PendingRequestId && Topic == Pending) { Sent.Remove(Topic); Pending.Empty(); }
     else if (Type == TEXT("subscribed") && CorrelationId == PendingRequestId && Topic == Pending)
-    { if (!bPendingCanceled && Topics.Contains(Topic)) Sent.Add(Topic); Pending.Empty(); }
+    { const bool Accepted=!bPendingCanceled&&Topics.Contains(Topic); if(Accepted)Sent.Add(Topic); Pending.Empty(); if(Accepted)OnSubscribed.Broadcast(Topic); }
     else if (Type == TEXT("event"))
     {
         if (Topics.Contains(Topic)) OnEvent.Broadcast(Text);
@@ -147,6 +149,7 @@ void UHorizonRealtimeManager::Message(const FString& Text)
     }
     else if (Type == TEXT("error")) { Frame->TryGetStringField(TEXT("code"), LastErrorCode);
         if (LastErrorCode == TEXT("SUBSCRIPTION_FORBIDDEN") && CorrelationId == PendingRequestId) { Topics.Remove(Topic); Sent.Remove(Topic); Pending.Empty(); }
+        if(!Topic.IsEmpty())OnSubscriptionError.Broadcast(Topic,LastErrorCode);
         OnConnectionError.Broadcast(LastErrorCode); }
 }
 void UHorizonRealtimeManager::Closed(int32 Status, const FString& Reason, bool bClean) { Failed(TEXT("CONNECTION_CLOSED")); }
@@ -186,6 +189,8 @@ bool UHorizonRealtimeManager::SyncIdentity()
 {
     if (!HttpClient || !AuthManager) return false;
     bool bChanged = false;
+    const uint64 CurrentContext=HttpClient->GetRequestContextEpoch();
+    if(CurrentContext!=HttpContext){DisconnectTransport();HttpContext=CurrentContext;bUnsupported=false;Attempt=0;RetryAt=0;bChanged=true;}
     const FString CurrentUser = AuthManager->IsSignedIn() ? AuthManager->GetCurrentUser().UserId : TEXT("");
     if (CurrentUser != UserId) { if (!UserId.IsEmpty()) Close(); UserId = CurrentUser; bChanged = true; }
     if (Token != HttpClient->GetSessionToken())

@@ -81,3 +81,8 @@ c++ -std=c++17 \
 c++ -std=c++17 -I Plugins/HorizonSDK/Source/HorizonSDK/Public \
     Tests/MatchesTransportContractTest.cpp -o "$build_dir/matches-transport-test"
 "$build_dir/matches-transport-test"
+
+# Strict scalar-counted chat text and immutable input bounds.
+c++ -std=c++17 -I Plugins/HorizonSDK/Source/HorizonSDK/Public \
+    Tests/ChatTransportContractTest.cpp -o "$build_dir/chat-transport-test"
+"$build_dir/chat-transport-test"

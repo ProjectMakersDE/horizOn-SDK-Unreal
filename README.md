@@ -1169,3 +1169,64 @@ late context responses cannot adopt a run. An active unrelated run blocks a
 match start, while the same original match/final-state run can be recovered.
 An already adopted active match run is protected from a generic replacement
 until submit or the player's explicit `DiscardRun` action.
+
+
+### Hosted Chat (TASK-1014)
+
+`UHorizonSubsystem::Chat` exposes typed `GetLimits`, `OpenChannel`, `SyncChannel`,
+`SendMessage`, `GetOperation`, and `ReportMessage`. Include
+`Managers/HorizonChatManager.h` and `Models/HorizonChat.h`. Native callbacks have
+four arguments `(bool, const FHorizonChat…&, const FString& code, const FString& message)`;
+use `BindUObject`/`CreateLambda`. Blueprint actions and result delegates expose the
+same six envelopes. Optional dates use explicit `bHas…` flags; integers are parsed
+from their original lexemes. Text is plain Unicode (500 scalars/2000 UTF-8 bytes),
+with LF/TAB allowed and other ISO controls rejected. No markup interpretation.
+
+All six methods reach REST, including an explicit `SyncChannel` without realtime.
+An unwatched/disconnected explicit read requests a full snapshot and does not expose
+a managed feed. simpleServer `501 NOT_SUPPORTED` and structured server errors are
+returned unchanged. `GetLastResponseMetadata()` exposes status, structured code and
+original headers inside the completion callback, without retaining message payloads.
+Open, send and report each have one transport attempt; sync is
+a bounded read-only POST with frozen JSON. A rate response never schedules a send.
+
+For an active feed call `WatchChannel(userId, channelId)`. The existing realtime
+manager obtains an authorized subscription ACK before requesting content. Listen
+to `OnFeedChanged(channelId)` and render `GetFeed(channelId).Messages` only when
+`bPresent` is true. `IsChannelSubscribed` exposes subscription state. The cache
+atomically composes the full visible ID order using immutable cached/returned text;
+missing, changed, duplicate or cross-channel payloads cannot produce partial success.
+One request per channel plus a dirty bit coalesces event bursts. There is no HTTP
+polling or disconnected fallback. Disconnect, permission loss, local expiry and
+host/session/project ABA hide content; a fresh authorized subscription and sync are
+required. `UnwatchChannel` releases the selected feed. At most32 watches are retained.
+
+Drop `AHorizonChatExample` into a map with an existing player session and call
+`ShowUI()`. Its minimal UMG interface offers direct-friend/group/project selection,
+subscription status, a plain `UTextBlock` feed, explicit send/reconcile/retry, and
+report reason. The Actor never signs up a player or embeds admin credentials.
+
+The sample journals an exact original operation ID, millisecond UTC issued-at,
+channel and UTF-8 text **before** its first send. Namespace is project+player+chat;
+regional host/session are response fences only. A per-scope OS-exclusive lock protects
+read-modify-write, and two verified generations atomically retain pending and
+acknowledged originals across actor/process restarts. A bounded version/Base64/SHA256
+outer envelope is verified before Unreal deserializes any SaveGame bytes. Desktop uses Unreal's native
+system-wide lock; iOS/Android use POSIX file locking because their Unreal system-wide
+mutex stub is fatal. A damaged journal fails closed. Missing operation receipts do
+not prove a missing write: recovery first reads `GetOperation`, then an explicit
+retry may send only the identical saved original. An expired operation remains an
+explicit unresolved journal and blocks fresh IDs. Reports retain their original
+channel/message/reason; `removed` is a successful original replay. Acknowledged
+receipts remain in the bounded journal until a new explicitly prepared original
+replaces them. Save files contain no session token. Persisting a journal is local
+crash recovery, not a new server price/value guarantee.
+
+Verification: `bash Tests/run_transport_test.sh`; after building a dedicated local
+HostProject, run `python3 Tests/run_native_chat_test.py --engine <existing-UE-root>
+--host-project <HostProject.uproject> --report <isolated-report-directory>`. The latter
+starts only artificial loopback HTTP18822/18823 and WebSocket18824, requires readiness,
+and checks native automation plus the fixture's invariants. Do not run concurrently
+with another instance on these ports. Native fixture evidence is separate from real
+Develop/production or official game/Hello acceptance; mobile lock source support is
+separate from a mobile package build.
