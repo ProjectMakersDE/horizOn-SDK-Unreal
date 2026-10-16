@@ -341,6 +341,31 @@ Explicit IDs must be nonblank and at most 128 characters; invalid IDs fail befor
 
 Native `Horizon.GiftValues` tests run with `Tests/run_native_gift_values_test.py` against the artificial loopback fixture on port 18818. They exercise lost-response replay, unchanged legacy callbacks, strict additive DTOs, authoritative cache replacement and session/project/cache fences. They do not claim live Develop acceptance or a released SDK version.
 
+### Achievements (Develop, TASK-1008)
+
+```cpp
+#include "Managers/HorizonAchievementsManager.h"
+#include "Models/HorizonAchievements.h"
+Horizon->Achievements->GetAchievements(UserId,
+    FOnAchievementsComplete::CreateLambda([](bool Ok, const FHorizonAchievementsSnapshot& Snapshot,
+        const FString& Code, const FString& Message) { /* render Definitions + Progress */ }));
+Horizon->Achievements->Unlock(UserId, TEXT("first_win"),
+    FOnAchievementUnlockComplete::CreateLambda([](bool Ok, const FHorizonAchievementUnlockResponse& Result,
+        const FString& Code, const FString& Message) { /* Result.Achievements/NewlyUnlocked/bReplayed/DeliveryResults */ }));
+// Explicit player action; retain/retry these SAME pending keys after an uncertain response.
+Horizon->Achievements->DeliverRewards(UserId, PendingKeys,
+    FOnAchievementDeliveryComplete::CreateLambda([](bool Ok, const FHorizonAchievementDeliveryResponse& Result,
+        const FString& Code, const FString& Message) { /* inspect each Result.Results key/state/code */ }));
+```
+
+Callbacks use native delegates (`CreateLambda` / `CreateUObject`, not `BindDynamic`). GetAchievements's optional third argument is the opaque `DefinitionVersion`; it otherwise uses the current player's cache version. Wire `definitions:null` retains only matching materialized metadata; `[]` replaces it. A missing materialization causes at most one explicit full GET, never a POST retry or periodic poll. ClearCache retains revision/server-time watermarks. Session, host/project generations and cache epochs fence late replies; only one operation is active per context, with `REQUEST_IN_PROGRESS` for overlapping callers.
+
+`Progress[].PendingReward.{IssuedAt,Values}` contains the original accepted rewards even if `Definitions[].Rewards.Values` changes. Per-key delivery states are `none`, `pending` and `delivered`; `INBOX_FULL` remains pending. No achievement operation credits player values locally. Delivered `InboxEntryId` links to Inbox; its explicit protected claim adopts the complete balance. Manual unlock retries keep the same key; delivery retries keep one to eight unique original keys. The server owns source identity, with no new client UUID or client reward amounts.
+
+Blueprints expose RequestAchievements, UnlockAchievement and DeliverAchievementRewards with typed result events. `GetCurrentAchievements()` returns the scoped materialized snapshot. Optional hosted realtime accepts `achievements:<userId>`; HTTP supplies content after invalidation/reconnect. REST also works on simpleServer, where realtime is NOT_SUPPORTED.
+
+`AHorizonAchievementsExample` requires an existing restored session. Its Load/Unlock/Deliver methods are explicit UI actions; RefreshAfterStatistics performs one refresh only for a matching successful, non-replayed statistics snapshot with NewlyUnlocked. The sample persists project/player original delivery keys before sending, retains partial/uncertain outcomes across regions/restarts and never replaces unreadable/conflicting pending records. Display original PendingReward values, then load Inbox and bind AHorizonInboxExample's explicit protected Claim to player action. No signup, startup unlock, polling or automatic claim is introduced.
+
 ### Player Profile
 
 Each player has a small profile that leaderboards show next to name and score: an

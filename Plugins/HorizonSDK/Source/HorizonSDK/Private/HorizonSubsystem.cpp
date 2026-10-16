@@ -3,6 +3,7 @@
 #include "HorizonSubsystem.h"
 #include "Managers/HorizonRealtimeManager.h"
 #include "Managers/HorizonInboxManager.h"
+#include "Managers/HorizonAchievementsManager.h"
 #include "Managers/HorizonPlayerValuesManager.h"
 #include "HorizonSDKModule.h"
 #include "Http/HorizonHttpClient.h"
@@ -43,6 +44,8 @@ void UHorizonSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 	PlayerValues->Initialize(HttpClient, Auth);
     Inbox = NewObject<UHorizonInboxManager>(this);
     Inbox->Initialize(HttpClient, Auth, PlayerValues);
+    Achievements = NewObject<UHorizonAchievementsManager>(this);
+    Achievements->Initialize(HttpClient, Auth);
 
 	// Create all managers
 	CloudSave = NewObject<UHorizonCloudSaveManager>(this);
