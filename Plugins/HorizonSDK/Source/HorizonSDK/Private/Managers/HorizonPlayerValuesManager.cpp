@@ -55,6 +55,14 @@ bool UHorizonPlayerValuesManager::AcceptState(const FHorizonPlayerValuesState& V
     if (Value.DefinitionVersion > Definition) Offers = {};
     Revision = Value.Revision; Definition = Value.DefinitionVersion; State = Value; return true;
 }
+int64 UHorizonPlayerValuesManager::GetCacheEpoch() { SyncIdentity(); return Epoch; }
+bool UHorizonPlayerValuesManager::AcceptServerState(const FString& UserId,const FHorizonPlayerValuesState& Value)
+{
+    if (!Begin(UserId)) return false;
+    if (!Value.bPresent) { LastErrorCode=TEXT("INVALID_RESPONSE"); return false; }
+    if (!AcceptState(Value,UserId)) { LastErrorCode=TEXT("STALE_RESPONSE"); return false; }
+    LastErrorCode.Empty(); return true;
+}
 void UHorizonPlayerValuesManager::GetState(const FString& UserId, FOnPlayerValuesComplete OnComplete) { StateCall(UserId, TEXT(""), nullptr, OnComplete); }
 void UHorizonPlayerValuesManager::Purchase(const FString& UserId, const FString& OfferKey, const FString& OperationId, FOnPlayerValuesComplete OnComplete)
 {

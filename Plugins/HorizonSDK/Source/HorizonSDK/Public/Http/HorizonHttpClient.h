@@ -76,7 +76,8 @@ private:
 		int32 RetryCount,
 		FOnHttpResponse OnComplete,
 		const FString& AcceptContentType = TEXT(""),
-		const TMap<FString, FString>& ExtraHeaders = TMap<FString, FString>()
+		const TMap<FString, FString>& ExtraHeaders = TMap<FString, FString>(),
+        bool bAllowRetry = true
 	);
 
 	/** Build and apply standard headers to a request. */
