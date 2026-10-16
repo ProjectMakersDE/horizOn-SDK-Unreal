@@ -112,6 +112,15 @@ for n in range(6,9):get('',ledger(n),delay=.2,port=18821)
 get('',ledger(9),port=18821)
 get('',ledger(10),delay=.5,port=18821,race=True)
 get('/limits',dict(limits=LIMITS,config=dict(revision=1,rankedLeaderboardKey=None),capabilities=dict(matches=True,matchesRanked=True,realtime=True),pollAfterSeconds=120,serverTime=TIME),delay=3,port=18821)
+def generic(delay=.3):
+ reply=dict(run(),runId='40000000-0000-4000-8000-000000001013',ticket='generic-ticket-1013',leaderboardKey='')
+ EXPECTED.append(dict(method='POST',path='/api/v1/app/validated-actions/runs',reply=reply,user=A,body=dict(userId=A),params={},status=200,rev=None,delay=delay,port=18821))
+generic()
+action('ranked-run',None,run(),body=dict(finalStateRevision=6),delay=.3,port=18821)
+action('ranked-run',None,run(),body=dict(finalStateRevision=6),delay=.3,port=18821)
+generic()
+action('ranked-run',None,run(),body=dict(finalStateRevision=6),delay=.5,port=18821)
+action('ranked-run',None,run(),body=dict(finalStateRevision=6),port=18820)
 get('/limits',dict(limits=LIMITS,config=dict(revision=1,rankedLeaderboardKey=None),capabilities=dict(matches=True,matchesRanked=True,realtime=True),pollAfterSeconds=120,serverTime=TIME),port=18821)
 class Handler(BaseHTTPRequestHandler):
  count=0;failure=None;lock=threading.Lock();original=None
