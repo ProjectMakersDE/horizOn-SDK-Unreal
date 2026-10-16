@@ -27,6 +27,7 @@ Official Unreal Engine SDK for **horizOn** Backend-as-a-Service by [ProjectMaker
 | 🧑‍🎤 **Player Profile** | `UHorizonPlayerProfileManager` | Avatar, frame and badges per player, cosmetic unlocks, shown in leaderboards |
 | ✅ **Validated Actions** | `UHorizonValidatedActionsManager` | Server-checked runs: ticket with seed, validated submit with input log hash, rule codes, server-owned currency and loot, input log upload as evidence |
 | 📬 **Inbox** | `UHorizonInboxManager` | Explicit snapshots, read/remove actions and entry-bound reward claims with full balance snapshots |
+| 👥 **Friends** | `UHorizonFriendsManager` | Explicit revision-bound social snapshots, exact public lookup and original request IDs |
 | 📊 **Statistics** | `UHorizonStatisticsManager` | Explicit atomic session batches with sum/max/min/last counters, optional UTC resets and safe retries |
 | 💬 **Feedback** | `UHorizonFeedbackManager` | Submit bug reports, feature requests, and general feedback |
 | 📊 **User Logs** | `UHorizonUserLogManager` | Server-side structured logging for analytics and debugging |
@@ -340,6 +341,33 @@ Explicit IDs must be nonblank and at most 128 characters; invalid IDs fail befor
 `AHorizonGiftCodesExample` requires an already restored session and only redeems on explicit `RedeemGiftCode` / `RetryPendingRedemption` calls. Its project/player save retains the original code and ID across regions and restarts, blocks conflicting or unreadable pending records and sends nothing when persistence fails. It creates no identity and performs no automatic startup redemption. Definitive failures remain saved for deliberate game-specific recovery instead of silently replacing an uncertain intent. REST works without realtime.
 
 Native `Horizon.GiftValues` tests run with `Tests/run_native_gift_values_test.py` against the artificial loopback fixture on port 18818. They exercise lost-response replay, unchanged legacy callbacks, strict additive DTOs, authoritative cache replacement and session/project/cache fences. They do not claim live Develop acceptance or a released SDK version.
+
+### Friends (Develop, TASK-1009)
+
+```cpp
+#include "Managers/HorizonFriendsManager.h"
+#include "Models/HorizonFriends.h"
+Horizon->Friends->GetFriends(UserId,
+    FOnFriendsComplete::CreateLambda([](bool Ok, const FHorizonFriendsSnapshot& Snapshot,
+        const FString& Code, const FString& Message) { /* Replace the social UI from Snapshot. */ }));
+Horizon->Friends->FindPlayer(UserId, ExactUuidOrHCode,
+    FOnFriendLookupComplete::CreateLambda([](bool Ok, const FHorizonFriendLookup& Player,
+        const FString& Code, const FString& Message) { /* Exact public identity only. */ }));
+// Explicit player action after reviewing the current incoming row. Persist this tuple first.
+Horizon->Friends->AcceptRequest(UserId, TargetUserId, ReviewedRevision, OriginalRequestId,
+    FOnFriendsComplete::CreateLambda([](bool Ok, const FHorizonFriendsSnapshot& Snapshot,
+        const FString& Code, const FString& Message) { /* Conflict: explicitly refresh and reconcile. */ }));
+```
+
+`SendRequest`, `RemoveFriend`, `BlockPlayer` and `UnblockPlayer` take `(UserId, TargetUserId, ExpectedRevision, FOnFriendsComplete)`. `AcceptRequest`, `DeclineRequest` and `CancelRequest` additionally require the original RequestId immediately before the callback. Revisions are explicit safe integers, never defaults. Native delegates use CreateLambda/CreateUObject, not BindDynamic. Blueprint entry points are RequestFriends, FindFriendPlayer, SendFriendRequest, AcceptFriendRequest, DeclineFriendRequest, CancelFriendRequest, RemoveFriendPlayer, BlockFriendPlayer and UnblockFriendPlayer, with typed OnFriendsResult/OnLookupResult events.
+
+`FHorizonFriendsSnapshot` contains UserId, Revision, FriendCode, Friends, Incoming, Outgoing, Blocked, Limits and ServerTime. Requests expose UserId, RequestId, CreatedAt and Display. Public Display contains Name and Profile.AvatarId/FrameId/Badges; unavailable cosmetics/name become empty placeholders. Friends expose Since, LastActiveAt and bHasLastActiveAt. A null last login remains unknown; it is never online presence. Blocked rows expose no profile/activity. Exact lookup accepts a full UUID or canonical H-code, never name/email searches. Above-tier retained friendships stay visible and removable after downgrade.
+
+`GetCurrentFriends()` returns only the current host/project/player/session context. Cache clears retain accepted revision and server-time floors. HTTP generations and cache epochs fence late responses, including host/project/session A→B→A changes. One operation is active per context; overlapping callers get REQUEST_IN_PROGRESS. Feature errors preserve their codes; authorization loss clears private state. Optional hosted realtime accepts friends:<userId>; HTTP reloads the content. simpleServer supports the REST contract and reports NOT_SUPPORTED for realtime.
+
+`AHorizonFriendsExample` requires an existing restored session and performs no startup mutation, signup, polling or automatic relationship repair. Explicit StartAction persists the project/player/action/target/revision/request-ID tuple before HTTP, validates a new action against the current authorized row or exact lookup, and blocks conflicting pending work. RetrySavedAction sends that same tuple without replacing its revision or request ID. A lost response or conflict requires an explicit LoadFriends and player reconciliation. AcknowledgePendingAfterRefresh only records that user decision; it cannot cancel an older in-flight server action or guarantee its outcome. A later action still needs its own reviewed current revision and request ID. Unblock never restores a friendship/request. Acknowledgement is bound to the exact local intent ID and persisted send serial that were present when refresh began; another actor or later retry invalidates it. Success callbacks also match that fence before deleting a save. The sample never manufactures a fresh revision or accepts a replacement request automatically.
+
+`Tests/run_native_friends_test.py` runs Horizon.Friends.NativeTransport and StrictModels against the strict artificial fixture on 127.0.0.1:18815 after a native plugin build. The fixture checks unchanged original tuples after a lost response and a new incoming request, all seven actions, public lookup privacy, null login, downgrade retention, safe integer tokens and cache/session/project races and two real sample Actor instances sharing one durable intent. It is SDK wiring evidence; live Develop, standalone game recipes and release acceptance are separate gates.
 
 ### Achievements (Develop, TASK-1008)
 
