@@ -1,6 +1,7 @@
 // Copyright (c) 2025-2026 horizOn. All rights reserved.
 
 #include "Http/HorizonHttpClient.h"
+#include "Http/HorizonLosslessJson.h"
 #include "Engine/Engine.h"
 #include "HorizonConfig.h"
 #include "HorizonSDKModule.h"
@@ -196,6 +197,13 @@ void UHorizonHttpClient::Get(const FString& Endpoint, bool bUseSessionToken, FOn
 	const FString Url = ActiveHost / Endpoint;
 	TArray<uint8> EmptyPayload;
 	SendRequest(TEXT("GET"), Url, TEXT("application/json"), EmptyPayload, bUseSessionToken, 0, OnComplete);
+}
+
+void UHorizonHttpClient::JsonOnce(const TSharedRef<FJsonObject>& Body,const FString& Endpoint,bool bPut,bool bUseSessionToken,FOnHttpResponse Complete)
+{
+    FString Json;if(!HorizonLosslessJson::Object(Body,Json)){FHorizonNetworkResponse R;R.ServerErrorCode=TEXT("INVALID_REQUEST");R.ErrorMessage=TEXT("Invalid JSON write");Complete.ExecuteIfBound(R);return;}
+    const FTCHARToUTF8 Bytes(*Json);TArray<uint8> Payload;Payload.Append(reinterpret_cast<const uint8*>(Bytes.Get()),Bytes.Length());
+    SendRequest(bPut?TEXT("PUT"):TEXT("POST"),ActiveHost/Endpoint,TEXT("application/json"),Payload,bUseSessionToken,0,Complete,TEXT(""),TMap<FString,FString>(),false);
 }
 
 void UHorizonHttpClient::PostJson(const TSharedRef<FJsonObject>& Body, const FString& Endpoint, bool bUseSessionToken, FOnHttpResponse OnComplete,
@@ -456,6 +464,7 @@ FHorizonNetworkResponse UHorizonHttpClient::ParseResponse(FHttpResponsePtr HttpR
 	if (ContentTypeHeader.Contains(TEXT("application/json")))
 	{
 		const FString BodyString = HttpResponse->GetContentAsString();
+        Response.RawJsonBody = BodyString;
 		if (!BodyString.IsEmpty())
 		{
 			TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(BodyString);

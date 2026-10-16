@@ -47,6 +47,8 @@ public:
 	FString GetSessionToken() const;
 
 	// -- HTTP convenience methods --
+    /** Explicit one-attempt JSON write, preserving length-aware keys and numeric lexemes. No implicit retries. */
+    void JsonOnce(const TSharedRef<FJsonObject>& Body,const FString& Endpoint,bool bPut,bool bUseSessionToken,FOnHttpResponse OnComplete);
 	void Get(const FString& Endpoint, bool bUseSessionToken, FOnHttpResponse OnComplete);
 	/** ExtraHeaders are sent on every attempt, for example If-Match for a conditional cloud save. */
 	void PostJson(const TSharedRef<FJsonObject>& Body, const FString& Endpoint, bool bUseSessionToken, FOnHttpResponse OnComplete,

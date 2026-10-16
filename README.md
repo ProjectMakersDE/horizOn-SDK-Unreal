@@ -1077,3 +1077,7 @@ C++ delegates and Blueprint failure pins expose server error codes. Other stable
 Games reusing this helper pass the optional fourth `SignUpAnonymous` argument `FOnAnonymousIdentityIssued`. It receives the immutable issuing API key and actual server-issued `FHorizonUserData` before follow-up sign-in; return false if durable preservation fails. Existing calls and the deprecated third argument remain compatible. The SDK retains its issued credential cache even when this observer rejects continuation. A changed shared disk cache is never evidence that a signup issued those credentials. `ClearSession` clears in-memory authentication and retains the disk cache.
 
 The sample runs once per actor, gates auth re-entry, keeps original pending statistics on failure, validates a saved batch before replay, and removes only the saved batch matching its successful response. `Tests/run_native_identity_test.py` runs `Horizon.Identity.NativeRecovery` against its strict artificial loopback fixture on port 18812. This is a local engine/HTTP proof, without real accounts or Cloud deployment.
+
+Groups: `Groups` manager, typed views, explicit revision/request IDs, one-attempt writes and
+lossless JSON metadata. See [the plugin quickstart](Plugins/HorizonSDK/Docs/QUICKSTART.md#groups-task-1010)
+and `AHorizonGroupsExample`; no automatic signup, polling or replacement intent is performed.
