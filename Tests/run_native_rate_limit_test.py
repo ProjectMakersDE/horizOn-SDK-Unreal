@@ -52,7 +52,7 @@ def main():
             actual = {item.get("fullTestPath") for item in tests}
             if actual != expected or any(item.get("state") != "Success" or item.get("errors", 0) for item in tests):
                 raise RuntimeError("Native report did not contain the successful rate limit test with zero errors")
-            print("Native rate limit: 1 test passed; strict fixture passed, 18 exact requests")
+            print("Native rate limit: 1 test passed; strict fixture passed, 25 exact requests including scoped ABA and session-independent requests")
         finally:
             for process in (engine, fixture):
                 if process is not None and process.poll() is None:
