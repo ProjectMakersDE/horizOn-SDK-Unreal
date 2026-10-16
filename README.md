@@ -1095,3 +1095,67 @@ strict search scalars, explicit original If-Match and Blueprint async nodes.
 switches and reconciles uncertain creates through owner reads. See
 [the quickstart](Plugins/HorizonSDK/Docs/QUICKSTART.md#shared-objects-task-1012)
 for world-map queries and the separate existing Validated Actions defense recipe.
+
+
+### Asynchronous Matches
+
+`UHorizonSubsystem::Matches` exposes all14 app routes through the typed
+`UHorizonMatchesManager`. Include `Managers/HorizonMatchesManager.h` and
+`Models/HorizonMatches.h`; native callbacks use four parameters
+`(bool, const ResultType&, const FString& ErrorCode, const FString& ErrorMessage)`
+and `CreateUObject`/`BindUObject`. Blueprint async nodes in
+`AsyncActions/HorizonAsync_Matches.h` freeze the current world/session context.
+
+Read with `GetMatches`, `GetLimits`, `FindOpenMatches` (one opaque cursor page),
+and `GetMatch`. `CreateMatch` takes the original player-ledger revision;
+`JoinMatch`, `DeclineInvite`, `StartMatch`, `SubmitTurn`, `AdvanceTimeout`,
+`LeaveMatch` and `CancelMatch` take the original match revision. `ReportResult`
+and `StartRankedRun` take the frozen final-state revision. Every Matches mutation
+makes exactly one transport attempt. An uncertain response requires an explicit
+read/reconciliation; the SDK never substitutes a newer revision or move.
+
+State and result payloads are `TArray<uint8>`, with strict canonical Base64 on
+the wire. `bHasData` distinguishes invite-only metadata (`null`) from accepted
+empty state. Safe integer revisions and strength, false, nullable deadlines,
+Unicode and embedded NUL names are preserved. Snapshots retained after a
+subscription downgrade remain readable up to the server's maximum shape.
+Realtime `matches:<UUID>` events only invalidate caches. There is no background
+polling, automatic cursor traversal, turn advancement or inferred game winner.
+
+`AHorizonMatchesExample` is an executable Actor for each of two existing signed-in
+clients. It has no automatic auth or Tick work. Call `Refresh()` for the ledger,
+`Refresh(id)` for the selected match, and explicit `StartAction` calls for lobby,
+turn, timeout, result and ranked actions. Poll intervals apply to refresh;
+`FindOpen` permits explicit cursor continuation. The game determines its own
+combat and must explicitly confirm the same final bytes/winner IDs.
+
+The Actor persists one immutable original under project+player identity. Hosts
+and sessions only fence requests, so switching region cannot create another
+pending slot. Two validated SaveGame generations preserve the last complete
+original if an interrupted write damages the other generation. Create names
+carry a unique sample recovery nonce; the supplied opaque state is unchanged.
+After a lost create, `RetryOriginal` reads the ledger, then the player explicitly
+reads and calls `ConfirmRecoveredCreate(id)`. A definitely rejected first create
+can be deliberately acknowledged after a fresh ledger. A lost departure or
+known match purged after retention can be acknowledged after a fresh ledger no
+longer references it and the original point read authoritatively returns
+`MATCH_NOT_FOUND`. A genuinely unknown
+create with no discoverable match remains blocked and requires reconciliation;
+absence in a response cannot prove that an older request will never commit.
+
+The separate ranked recipe adopts the original confirmed-match run into
+`ValidatedActions`; it does not prove honest gameplay or automatically grant a
+match reward. The sample freezes score/input before `SubmitRankedResult`, keeps
+uncertain submissions across restarts, and validates the accepted run/board
+receipt before clearing them. Expired/consumed runs never mint replacement runs.
+`simpleServer` ordinary Matches REST remains usable; ranked is explicitly
+`FEATURE_NOT_SUPPORTED` and no cloud validation is simulated.
+
+`Tests/run_native_matches_test.py` runs `Horizon.Matches.StrictModels` and
+`Horizon.Matches.NativeTransport` against artificial loopback origins18820/18821.
+The strict fixture checks exact requests for two independent players, all14
+routes, original revisions/bytes, lost responses, region change, ranked recovery,
+Blueprint context, cache/realtime invalidation and one-attempt failures. Its
+simulated turn timeline advances only the test Actor's refresh clock instead
+of waiting120 real seconds per move. Native Editor/Development/Shipping builds
+are separate evidence from live Develop, standalone games and Hello integration.

@@ -76,3 +76,8 @@ c++ -std=c++17 \
   Tests/SharedObjectsTransportContractTest.cpp \
   -o "$build_dir/shared-objects-transport-test"
 "$build_dir/shared-objects-transport-test"
+
+# Async Matches metadata/cursor contract, independent of an engine installation.
+c++ -std=c++17 -I Plugins/HorizonSDK/Source/HorizonSDK/Public \
+    Tests/MatchesTransportContractTest.cpp -o "$build_dir/matches-transport-test"
+"$build_dir/matches-transport-test"

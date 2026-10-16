@@ -107,6 +107,7 @@ UCLASS(BlueprintType)
 class HORIZONSDK_API UHorizonValidatedActionsManager : public UObject
 {
 	GENERATED_BODY()
+    friend class UHorizonMatchesManager;
 
 public:
 	/** Initialize with HTTP client and auth manager references. */
@@ -262,6 +263,8 @@ public:
 	bool bAutoUploadEvidence = true;
 
 private:
+    /** Internal match adapter only; binds an original server-issued run to the exact request context. */
+    bool AdoptMatchRun(const FString& UserId,const FHorizonValidatedRun& Run,uint64 RequestContext);
 	UPROPERTY()
 	UHorizonHttpClient* HttpClient = nullptr;
 

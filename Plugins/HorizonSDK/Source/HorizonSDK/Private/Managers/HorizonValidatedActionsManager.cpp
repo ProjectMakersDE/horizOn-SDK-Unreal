@@ -610,3 +610,10 @@ FString UHorizonValidatedActionsManager::MapErrorCode(const FHorizonNetworkRespo
 		TCHAR_TO_UTF8(*Response.GetErrorCodeString()));
 	return UTF8_TO_TCHAR(Code.c_str());
 }
+
+
+bool UHorizonValidatedActionsManager::AdoptMatchRun(const FString& UserId,const FHorizonValidatedRun& Run,uint64 RequestContext)
+{
+    if(!HttpClient||!AuthManager||!AuthManager->IsSignedIn()||AuthManager->GetCurrentUser().UserId!=UserId||HttpClient->GetRequestContextEpoch()!=RequestContext||!Run.IsValid())return false;
+    CurrentRun=Run;CurrentRunUserId=UserId;LastErrorCode.Reset();return true;
+}

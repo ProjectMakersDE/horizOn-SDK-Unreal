@@ -8,6 +8,7 @@
 #include "Managers/HorizonGroupsManager.h"
 #include "Managers/HorizonItemsManager.h"
 #include "Managers/HorizonSharedObjectsManager.h"
+#include "Managers/HorizonMatchesManager.h"
 #include "Managers/HorizonPlayerValuesManager.h"
 #include "HorizonSDKModule.h"
 #include "Http/HorizonHttpClient.h"
@@ -98,6 +99,7 @@ void UHorizonSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 
 	ValidatedActions = NewObject<UHorizonValidatedActionsManager>(this);
 	ValidatedActions->Initialize(HttpClient, Auth);
+    Matches=NewObject<UHorizonMatchesManager>(this);Matches->Initialize(HttpClient,Auth,ValidatedActions);Matches->SetRealtime(Realtime);
 
 	Statistics = NewObject<UHorizonStatisticsManager>(this);
 	Statistics->Initialize(HttpClient, Auth);
