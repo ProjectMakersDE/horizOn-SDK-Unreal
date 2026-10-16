@@ -8,6 +8,10 @@
 #include "Http/HorizonHttpClient.h"
 #include "HorizonAuthManager.generated.h"
 
+/** Called with immutable credentials from this signup response, before follow-up sign-in.
+ * Return false if the caller cannot durably preserve them. Existing signup calls need no observer. */
+DECLARE_DELEGATE_RetVal_TwoParams(bool, FOnAnonymousIdentityIssued, const FString&, const FHorizonUserData&);
+
 /**
  * Manages all authentication flows for the horizOn SDK.
  *
@@ -32,7 +36,7 @@ public:
 	 * @param OnComplete   Called with true on success.
 	 * @param AnonymousToken  Deprecated and ignored. Use SignInAnonymous for an existing account.
 	 */
-	void SignUpAnonymous(const FString& DisplayName, FOnAuthComplete OnComplete, const FString& AnonymousToken = TEXT(""));
+	void SignUpAnonymous(const FString& DisplayName, FOnAuthComplete OnComplete, const FString& AnonymousToken = TEXT(""), FOnAnonymousIdentityIssued OnIssued = FOnAnonymousIdentityIssued());
 
 	/** Register with email and password. */
 	void SignUpEmail(const FString& Email, const FString& Password, const FString& Username, FOnAuthComplete OnComplete);

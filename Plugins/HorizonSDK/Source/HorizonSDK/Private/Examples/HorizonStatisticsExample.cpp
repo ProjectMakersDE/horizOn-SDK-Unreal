@@ -6,6 +6,8 @@
 #include "Kismet/GameplayStatics.h"
 #include "Misc/SecureHash.h"
 #include "HorizonSessionSave.h"
+#include "Examples/HorizonExampleIdentity.h"
+#include "Transport/HorizonStatisticsTransportContract.h"
 
 AHorizonStatisticsExample::AHorizonStatisticsExample() { PrimaryActorTick.bCanEverTick = false; }
 void AHorizonStatisticsExample::BeginPlay()
@@ -15,25 +17,33 @@ void AHorizonStatisticsExample::BeginPlay()
 }
 void AHorizonStatisticsExample::Connected()
 {
-	auto* Horizon = GetGameInstance()->GetSubsystem<UHorizonSubsystem>();
-	if (Horizon->Auth->IsSignedIn()) { Authenticated(true); return; }
-	if (!UHorizonSessionSave::HasSavedSession())
-	{
-		Horizon->Auth->SignUpAnonymous(TEXT("StatisticsExample"), FOnAuthComplete::CreateUObject(this, &AHorizonStatisticsExample::Authenticated)); return;
-	}
-	TWeakObjectPtr<AHorizonStatisticsExample> Weak(this);
-	Horizon->Auth->RestoreAnonymousSession(FOnAuthComplete::CreateLambda([Weak](bool Success)
-	{
-		if (auto* Self = Weak.Get())
-		{
-			// A failed restore can be transient. Preserve its credential and pending intent.
-			Self->Authenticated(Success);
-		}
-	}));
+    if (bAuthStarted) return; bAuthStarted=true;
+    auto* Horizon=GetGameInstance()->GetSubsystem<UHorizonSubsystem>();
+    if (Horizon->Auth->IsSignedIn()) { Authenticated(true); return; }
+    AuthProject=UHorizonExampleIdentity::ProjectKey(Horizon); bSignupSent=false;
+    if (!UHorizonExampleIdentity::CaptureBeforeAuth(Horizon,AuthOriginal)) { Authenticated(false); return; }
+    bRestoring=UHorizonExampleIdentity::ShouldRestoreSession(Horizon);
+    if (bRestoring)
+    {
+        if (!UHorizonExampleIdentity::BeforeRestore(Horizon,AuthProject,true,AuthOriginal)) { Authenticated(false); return; }
+        Horizon->Auth->RestoreAnonymousSession(FOnAuthComplete::CreateUObject(this,&AHorizonStatisticsExample::AuthResult));
+    }
+    else
+    {
+        if (!UHorizonExampleIdentity::BeforeSignup(Horizon,AuthProject)) { Authenticated(false); return; }
+        bSignupSent=true;
+        Horizon->Auth->SignUpAnonymous(TEXT("StatisticsExample"),FOnAuthComplete::CreateUObject(this,&AHorizonStatisticsExample::AuthResult),TEXT(""),FOnAnonymousIdentityIssued::CreateLambda([](const FString& Key,const FHorizonUserData& Issued) { return UHorizonExampleIdentity::RecordIssuedSignup(Key,Issued); }));
+    }
+}
+void AHorizonStatisticsExample::AuthResult(bool Success)
+{
+    auto* SDK=GetGameInstance()->GetSubsystem<UHorizonSubsystem>();
+    const bool Accepted=UHorizonExampleIdentity::AfterAuth(SDK,AuthProject,AuthOriginal,bSignupSent,bRestoring,Success);
+    AuthOriginal=nullptr; Authenticated(Accepted);
 }
 void AHorizonStatisticsExample::Authenticated(bool Success)
 {
-	if (!Success) { UE_LOG(LogTemp, Error, TEXT("[StatisticsExample] Sign-in failed")); return; }
+	if (!Success) { UE_LOG(LogTemp, Warning, TEXT("[StatisticsExample] Sign-in/recovery failed; original identity retained")); return; }
 	GetGameInstance()->GetSubsystem<UHorizonSubsystem>()->Statistics->GetStatistics(FOnStatisticsLoaded::CreateUObject(this, &AHorizonStatisticsExample::Loaded));
 }
 void AHorizonStatisticsExample::Loaded(bool Success, const FHorizonStatisticsSnapshot& Snapshot, const FString& Code, const FString&)
@@ -43,7 +53,7 @@ void AHorizonStatisticsExample::Loaded(bool Success, const FHorizonStatisticsSna
 	Slot = TEXT("horizon-statistics-") + FMD5::HashAnsiString(*(Horizon->GetHttpClient()->GetApiKey() + TEXT(":") + Snapshot.UserId));
 	const bool bExisting = UGameplayStatics::DoesSaveGameExist(Slot, 0);
 	Pending = Cast<UHorizonStatisticsPendingBatch>(UGameplayStatics::LoadGameFromSlot(Slot, 0));
-	if (bExisting && (!Pending || Pending->UserId != Snapshot.UserId)) { UE_LOG(LogTemp, Error, TEXT("[StatisticsExample] Pending intent needs recovery; preserving it")); return; }
+	if (bExisting && (!Pending || Pending->UserId != Snapshot.UserId || !HorizonTransportContract::IsStatisticsOperationId(TCHAR_TO_UTF8(*Pending->OperationId)) || Pending->Updates.Num()!=2 || Pending->Updates[0].Key!=TEXT("kills") || Pending->Updates[0].Value!=3 || Pending->Updates[1].Key!=TEXT("best_score") || Pending->Updates[1].Value!=1200)) { UE_LOG(LogTemp, Error, TEXT("[StatisticsExample] Pending intent needs recovery; preserving it")); return; }
 	if (!Pending)
 	{
 		Pending = Cast<UHorizonStatisticsPendingBatch>(UGameplayStatics::CreateSaveGameObject(UHorizonStatisticsPendingBatch::StaticClass()));
@@ -58,6 +68,9 @@ void AHorizonStatisticsExample::Loaded(bool Success, const FHorizonStatisticsSna
 void AHorizonStatisticsExample::Applied(bool Success, const FHorizonStatisticsSnapshot& Snapshot, const FString& Code, const FString&)
 {
 	if (!Success) { UE_LOG(LogTemp, Warning, TEXT("[StatisticsExample] Pending original batch retained: %s"), *Code); return; }
-	if (!UGameplayStatics::DeleteGameInSlot(Slot, 0)) UE_LOG(LogTemp, Warning, TEXT("[StatisticsExample] Receipt accepted; saved intent retained for safe replay"));
+    auto* Stored=Cast<UHorizonStatisticsPendingBatch>(UGameplayStatics::LoadGameFromSlot(Slot,0));
+    bool Matches=Pending && Stored && Pending->UserId==Stored->UserId && Pending->OperationId==Stored->OperationId && Pending->Updates.Num()==Stored->Updates.Num();
+    if (Matches) for (int32 I=0;I<Pending->Updates.Num();++I) Matches=Matches && Pending->Updates[I].Key==Stored->Updates[I].Key && Pending->Updates[I].Value==Stored->Updates[I].Value;
+	if (!Matches || !UGameplayStatics::DeleteGameInSlot(Slot, 0)) UE_LOG(LogTemp, Warning, TEXT("[StatisticsExample] Receipt accepted; saved intent retained for safe replay"));
 	UE_LOG(LogTemp, Log, TEXT("[StatisticsExample] Revision %lld, replayed %s"), Snapshot.Revision, Snapshot.bReplayed ? TEXT("true") : TEXT("false"));
 }

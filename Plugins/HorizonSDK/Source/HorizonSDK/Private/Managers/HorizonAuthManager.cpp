@@ -25,7 +25,7 @@ void UHorizonAuthManager::Initialize(UHorizonHttpClient* InHttpClient)
 // Sign Up
 // ============================================================
 
-void UHorizonAuthManager::SignUpAnonymous(const FString& DisplayName, FOnAuthComplete OnComplete, const FString& AnonymousToken)
+void UHorizonAuthManager::SignUpAnonymous(const FString& DisplayName, FOnAuthComplete OnComplete, const FString& AnonymousToken, FOnAnonymousIdentityIssued OnIssued)
 {
 	if (!AnonymousToken.IsEmpty())
 	{
@@ -40,9 +40,10 @@ void UHorizonAuthManager::SignUpAnonymous(const FString& DisplayName, FOnAuthCom
 	}
 
 	TWeakObjectPtr<UHorizonAuthManager> WeakSelf(this);
+	const FString IssuingProject = HttpClient->GetApiKey();
 	HttpClient->PostJson(Body, TEXT("api/v1/app/user-management/signup"), false,
 		FOnHttpResponse::CreateLambda(
-			[WeakSelf, OnComplete](const FHorizonNetworkResponse& Response)
+			[WeakSelf, OnComplete, OnIssued, IssuingProject](const FHorizonNetworkResponse& Response)
 			{
 				UHorizonAuthManager* Self = WeakSelf.Get();
 				if (!Self)
@@ -58,14 +59,23 @@ void UHorizonAuthManager::SignUpAnonymous(const FString& DisplayName, FOnAuthCom
 					return;
 				}
 
-				// Persist the server-issued credential before sign-in. If sign-in fails,
-				// RestoreAnonymousSession can still recover the newly created account.
+				// Cache the server-issued identity before sign-in, and offer its immutable
+				// response scope to callers that also keep a project-bound recovery record.
 				Self->ClearSession();
-				Self->CurrentUser.UserId = Response.JsonData->GetStringField(TEXT("userId"));
+				Response.JsonData->TryGetStringField(TEXT("userId"), Self->CurrentUser.UserId);
 				Response.JsonData->TryGetStringField(TEXT("username"), Self->CurrentUser.DisplayName);
 				Self->CurrentUser.AnonymousToken = IssuedToken;
 				Self->CurrentUser.bIsAnonymous = true;
 				Self->CacheSession();
+				const FHorizonUserData Issued = Self->CurrentUser;
+				const uint64 BeforeObserver = Self->HttpClient->GetRequestContextEpoch();
+				if (OnIssued.IsBound() && !OnIssued.Execute(IssuingProject, Issued))
+				{
+					OnComplete.ExecuteIfBound(false); return;
+				}
+
+				if (Self->HttpClient->GetRequestContextEpoch() != BeforeObserver || Self->HttpClient->GetApiKey() != IssuingProject)
+				{ OnComplete.ExecuteIfBound(false); return; }
 
 				FString AccessToken;
 				if (Response.JsonData->TryGetStringField(TEXT("accessToken"), AccessToken) && !AccessToken.IsEmpty())
