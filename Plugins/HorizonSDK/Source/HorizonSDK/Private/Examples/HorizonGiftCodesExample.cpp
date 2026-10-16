@@ -1,99 +1,67 @@
 // Copyright (c) 2025-2026 horizOn. All rights reserved.
-
 #include "Examples/HorizonGiftCodesExample.h"
 #include "HorizonSubsystem.h"
-#include "Managers/HorizonAuthManager.h"
 #include "Managers/HorizonGiftCodeManager.h"
 #include "Engine/GameInstance.h"
-
-AHorizonGiftCodesExample::AHorizonGiftCodesExample()
+#include "Kismet/GameplayStatics.h"
+#include "Misc/SecureHash.h"
+#include "Transport/HorizonRetryContract.h"
+namespace HorizonGiftCodesExampleStorage
 {
-	PrimaryActorTick.bCanEverTick = false;
+FString Project(UHorizonSubsystem* SDK) { return FMD5::HashAnsiString(*SDK->GetHttpClient()->GetApiKey()); }
+FString Slot(const FString& Project,const FString& User) { return TEXT("horizon-gift-redeem-")+FMD5::HashAnsiString(*(Project+TEXT("|")+User)); }
+bool Valid(const UHorizonGiftCodePendingRedeem* Pending,const FString& Project,const FString& User)
+{
+    return Pending && Pending->ProjectScope==Project && Pending->UserId==User && !Pending->Code.TrimStartAndEnd().IsEmpty() && Pending->Code.Len()<=50 &&
+        Pending->IdempotencyId.Len()<=128 && HorizonTransportContract::HasNonBlankIdempotencyId(TCHAR_TO_UTF8(*Pending->IdempotencyId));
 }
-
-void AHorizonGiftCodesExample::BeginPlay()
-{
-	Super::BeginPlay();
-
-	UGameInstance* GameInstance = GetGameInstance();
-	UHorizonSubsystem* Horizon = GameInstance ? GameInstance->GetSubsystem<UHorizonSubsystem>() : nullptr;
-	if (!Horizon)
-	{
-		UE_LOG(LogTemp, Error, TEXT("[GiftCodesExample] horizOn subsystem not available."));
-		return;
-	}
-
-	Horizon->OnConnected.AddUniqueDynamic(this, &AHorizonGiftCodesExample::HandleConnected);
-	Horizon->OnConnectionFailed.AddUniqueDynamic(this, &AHorizonGiftCodesExample::HandleConnectionFailed);
-
-	UE_LOG(LogTemp, Log, TEXT("[GiftCodesExample] Connecting..."));
-	Horizon->ConnectToServer();
 }
-
-void AHorizonGiftCodesExample::HandleConnectionFailed(const FString& ErrorMessage)
+AHorizonGiftCodesExample::AHorizonGiftCodesExample() { PrimaryActorTick.bCanEverTick=false; }
+UHorizonSubsystem* AHorizonGiftCodesExample::Session() const
 {
-	UE_LOG(LogTemp, Error, TEXT("[GiftCodesExample] Connection failed: %s"), *ErrorMessage);
+    auto* Instance=GetGameInstance(); auto* SDK=Instance?Instance->GetSubsystem<UHorizonSubsystem>():nullptr;
+    return SDK && SDK->Auth && SDK->Auth->IsSignedIn()?SDK:nullptr;
 }
-
-void AHorizonGiftCodesExample::HandleConnected()
+void AHorizonGiftCodesExample::RedeemGiftCode() { Send(false); }
+void AHorizonGiftCodesExample::RetryPendingRedemption() { Send(true); }
+FString AHorizonGiftCodesExample::GetPendingIdempotencyId() const
 {
-	UGameInstance* GameInstance = GetGameInstance();
-	UHorizonSubsystem* Horizon = GameInstance ? GameInstance->GetSubsystem<UHorizonSubsystem>() : nullptr;
-	if (!Horizon || !Horizon->Auth || !Horizon->GiftCodes)
-	{
-		UE_LOG(LogTemp, Error, TEXT("[GiftCodesExample] Auth or GiftCodes manager not available."));
-		return;
-	}
-
-	if (GiftCode == TEXT("REPLACE_WITH_GIFT_CODE"))
-	{
-		UE_LOG(LogTemp, Warning, TEXT("[GiftCodesExample] Set GiftCode on the actor before running."));
-		return;
-	}
-
-	UHorizonGiftCodeManager* GiftCodes = Horizon->GiftCodes;
-	const FString Code = GiftCode;
-
-	// Redeeming requires a signed-in user.
-	Horizon->Auth->SignUpAnonymous(TEXT("ExamplePlayer"), FOnAuthComplete::CreateLambda(
-		[GiftCodes, Code](bool bAuthSuccess)
-		{
-			if (!bAuthSuccess)
-			{
-				UE_LOG(LogTemp, Error, TEXT("[GiftCodesExample] FAILED: sign-up did not complete."));
-				return;
-			}
-
-			UE_LOG(LogTemp, Log, TEXT("[GiftCodesExample] Validating code..."));
-
-			GiftCodes->Validate(Code, FOnGiftCodeValidateComplete::CreateLambda(
-				[GiftCodes, Code](bool bRequestSuccess, bool bValid)
-				{
-					if (!bRequestSuccess)
-					{
-						UE_LOG(LogTemp, Error, TEXT("[GiftCodesExample] FAILED to validate code."));
-						return;
-					}
-					if (!bValid)
-					{
-						UE_LOG(LogTemp, Warning, TEXT("[GiftCodesExample] Code is not valid; skipping redeem."));
-						return;
-					}
-
-					UE_LOG(LogTemp, Log, TEXT("[GiftCodesExample] Code is valid. Redeeming..."));
-
-					GiftCodes->Redeem(Code, FOnGiftCodeRedeemComplete::CreateLambda(
-						[](bool bSuccess, const FString& GiftData, const FString& Message)
-						{
-							if (!bSuccess)
-							{
-								UE_LOG(LogTemp, Error, TEXT("[GiftCodesExample] FAILED to redeem: %s"), *Message);
-								return;
-							}
-
-							UE_LOG(LogTemp, Log, TEXT("[GiftCodesExample] SUCCESS: %s data %s"),
-								*Message, *GiftData);
-						}));
-				}));
-		}));
+    auto* SDK=Session(); if (!SDK) return {};
+    const FString Project=HorizonGiftCodesExampleStorage::Project(SDK),User=SDK->Auth->GetCurrentUser().UserId;
+    auto* Pending=Cast<UHorizonGiftCodePendingRedeem>(UGameplayStatics::LoadGameFromSlot(HorizonGiftCodesExampleStorage::Slot(Project,User),0));
+    return HorizonGiftCodesExampleStorage::Valid(Pending,Project,User)?Pending->IdempotencyId:FString();
+}
+void AHorizonGiftCodesExample::Send(bool Retry)
+{
+    auto* SDK=Session(); if (!SDK || bSending || !SDK->GiftCodes) return;
+    const FString Project=HorizonGiftCodesExampleStorage::Project(SDK),User=SDK->Auth->GetCurrentUser().UserId;
+    const FString Slot=HorizonGiftCodesExampleStorage::Slot(Project,User);
+    const bool Existing=UGameplayStatics::DoesSaveGameExist(Slot,0);
+    auto* Pending=Cast<UHorizonGiftCodePendingRedeem>(UGameplayStatics::LoadGameFromSlot(Slot,0));
+    if (Existing && !HorizonGiftCodesExampleStorage::Valid(Pending,Project,User))
+    { UE_LOG(LogTemp,Warning,TEXT("[GiftCodesExample] Stored original intent needs recovery; nothing sent or replaced")); return; }
+    if (Retry && !Existing) return;
+    if (!Retry && Existing && Pending->Code!=GiftCode)
+    { UE_LOG(LogTemp,Warning,TEXT("[GiftCodesExample] Finish the original pending code before starting another")); return; }
+    if (!Pending)
+    {
+        if (GiftCode.TrimStartAndEnd().IsEmpty() || GiftCode.Len()>50) return;
+        Pending=Cast<UHorizonGiftCodePendingRedeem>(UGameplayStatics::CreateSaveGameObject(UHorizonGiftCodePendingRedeem::StaticClass()));
+        Pending->ProjectScope=Project; Pending->UserId=User; Pending->Code=GiftCode; Pending->IdempotencyId=FGuid::NewGuid().ToString(EGuidFormats::DigitsWithHyphens);
+        if (!UGameplayStatics::SaveGameToSlot(Pending,Slot,0))
+        { UE_LOG(LogTemp,Warning,TEXT("[GiftCodesExample] Could not persist original intent; nothing sent")); return; }
+    }
+    const FString OriginalCode=Pending->Code,OriginalId=Pending->IdempotencyId;
+    bSending=true;
+    SDK->GiftCodes->RedeemWithIdempotency(OriginalCode,OriginalId,FOnGiftCodeRedeemResultComplete::CreateWeakLambda(this,
+        [this,Slot,Project,User,OriginalCode,OriginalId](bool Success,const FHorizonGiftCodeRedeemResult& Result,const FString& Code,const FString&)
+        {
+            bSending=false;
+            if (!Success) { UE_LOG(LogTemp,Warning,TEXT("[GiftCodesExample] Keep original intent for explicit recovery/retry: %s"),*Code); return; }
+            auto* Stored=Cast<UHorizonGiftCodePendingRedeem>(UGameplayStatics::LoadGameFromSlot(Slot,0));
+            if (HorizonGiftCodesExampleStorage::Valid(Stored,Project,User) && Stored->Code==OriginalCode && Stored->IdempotencyId==OriginalId)
+                if (!UGameplayStatics::DeleteGameInSlot(Slot,0)) UE_LOG(LogTemp,Warning,TEXT("[GiftCodesExample] Receipt accepted; retain original ID for safe replay"));
+            // Render Result.PlayerValues or the manager's complete state. Never add GrantedValues locally.
+            UE_LOG(LogTemp,Log,TEXT("[GiftCodesExample] Receipt accepted (replayed=%s, %d value grants)"),Result.bReplayed?TEXT("true"):TEXT("false"),Result.GrantedValues.Num());
+        }));
 }
