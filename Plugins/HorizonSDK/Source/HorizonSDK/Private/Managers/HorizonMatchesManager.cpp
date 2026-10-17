@@ -26,7 +26,7 @@ template<typename D> void Stale(const D& Done){Done.ExecuteIfBound(false,{},TEXT
 }
 void UHorizonMatchesManager::Initialize(UHorizonHttpClient* H,UHorizonAuthManager* A,UHorizonValidatedActionsManager* V){HttpClient=H;AuthManager=A;ValidatedActions=V;ClearCache();}
 void UHorizonMatchesManager::ClearSnapshots(){CurrentMatches={};CurrentLimits={};CurrentOpen={};CurrentMatch={};CurrentCreated={};CurrentReported={};}
-void UHorizonMatchesManager::Sync(){const FString I=HttpClient&&AuthManager?AuthManager->GetCurrentUser().UserId+TEXT("|")+HttpClient->GetSessionToken():FString();const uint64 C=HttpClient?HttpClient->GetRequestContextEpoch():0;if(I!=Identity||C!=Context){if(!AdoptedRunId.IsEmpty()&&ValidatedActions&&ValidatedActions->GetCurrentRun().RunId==AdoptedRunId)ValidatedActions->DiscardRun();AdoptedRunId.Reset();AdoptedMatchId.Reset();AdoptedFinalRevision=-1;AdoptedOriginalRun={};SourceRuns.Empty();SourceOrder.Empty();Identity=I;Context=C;++Epoch;++Ticket;Busy=false;Scope.Reset();RevisionFloor=ServerMillis=-1;ClearSnapshots();}}
+void UHorizonMatchesManager::Sync(){const FString I=HttpClient&&AuthManager?AuthManager->GetCurrentUser().UserId+TEXT("|")+HttpClient->GetSessionToken():FString();const uint64 C=HttpClient?HttpClient->GetRequestContextEpoch():0;if(I!=Identity||C!=Context){if(!AdoptedRunId.IsEmpty()&&ValidatedActions&&ValidatedActions->GetCurrentRun().RunId==AdoptedRunId)ValidatedActions->DiscardRun();AdoptedRunId.Reset();AdoptedMatchId.Reset();AdoptedFinalRevision=-1;AdoptedOriginalRun={};SourceRuns.Empty();Identity=I;Context=C;++Epoch;++Ticket;Busy=false;Scope.Reset();RevisionFloor=ServerMillis=-1;ClearSnapshots();}}
 void UHorizonMatchesManager::ClearCache(){Sync();++Epoch;++Ticket;Busy=false;ClearSnapshots();}
 uint64 UHorizonMatchesManager::GetCacheGeneration(){Sync();return Epoch;}
 FHorizonNetworkResponse UHorizonMatchesManager::Error(const FString& C){FHorizonNetworkResponse R;R.ServerErrorCode=C;R.ErrorMessage=C;return R;}
@@ -55,7 +55,7 @@ bool UHorizonMatchesManager::SourceMatches(const FString& Id,int64 Final,const F
 }
 void UHorizonMatchesManager::RememberSource(const FString& Id,int64 Final,const FString& Run)
 {
-    const FString Key=Id.ToLower()+TEXT("|")+LexToString(Final);if(SourceRuns.Contains(Key))return;SourceRuns.Add(Key,Run);SourceOrder.Add(Key);if(SourceOrder.Num()>128){SourceRuns.Remove(SourceOrder[0]);SourceOrder.RemoveAt(0);}
+    const FString Key=Id.ToLower()+TEXT("|")+LexToString(Final);if(SourceRuns.Contains(Key))return;SourceRuns.Add(Key,Run);
 }
 void UHorizonMatchesManager::GetMatches(const FString& U,FOnMatchesComplete Done)
 {

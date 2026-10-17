@@ -1327,3 +1327,9 @@ uncertain create/restart,201minimal sources/original ranked retries, and Chat
 operator quotas0/high/Int32. Existing portable and per-feature native gates remain.
 Chat's configurable channel/send/report counters are0..Int32; its20/15 message
 retention,500characters/2000UTF8bytes and30second private protocol stay unchanged.
+
+Known minimal Match/final-revision→run-ID pairs remain for the authenticated
+context, including201 distinct pending sources. They cannot be evicted by an
+unrelated source read. Auth-context changes clear this local map. Like Group
+revision floors, repeated reads may grow it beyond one transport frame; it stores
+no result, item, reward or full state history and changes no server storage.
