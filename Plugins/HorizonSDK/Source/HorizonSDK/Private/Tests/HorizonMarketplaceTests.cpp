@@ -57,7 +57,7 @@ struct FHorizonMarketplaceNative : TSharedFromThis<FHorizonMarketplaceNative>
         Steps.Add([this]{S->Items->GetInventory(Seller,Inventory());});
         Steps.Add([this]{S->Marketplace->GetRules(Seller,Market());});
         Steps.Add([this]{Test->TestTrue(TEXT("Original instance and reviewed config/fee"),Sample->ReviewCreate(Item,101,300));Test->TestEqual(TEXT("Reviewed seller net"),Sample->ReviewedSellerNet,int64(98));Sample->ConfirmReviewedTrade();const double Start=FPlatformTime::Seconds();Wait=[this,Start]{const double Elapsed=FPlatformTime::Seconds()-Start;if(Sample&&Elapsed>.04){HorizonMarketplaceJournal::FLease Competing(Project,Seller);Test->TestFalse(TEXT("Second actor cannot enter live HTTP owner"),Competing.Locked);Sample->RemoveFromRoot();Sample->MarkAsGarbage();Sample=nullptr;}return Elapsed>.5;};});
-        Steps.Add([this]{CheckSaved(Seller,false,&Original);Actor();Sample->RecoverOriginalOperation();Wait=[this]{return !Sample->Busy;};});
+        Steps.Add([this]{CheckSaved(Seller,false,&Original);Test->TestTrue(TEXT("New operation UUID is canonical lowercase"),Original.Operation().Equals(Original.Operation().ToLower(),ESearchCase::CaseSensitive));Actor();Sample->RecoverOriginalOperation();Wait=[this]{return !Sample->Busy;};});
         Steps.Add([this]{CheckSaved(Seller,true);Actor();Sample->RetryPending();Wait=[this]{return !Sample->Busy;};});
         Steps.Add([this]{Test->TestFalse(TEXT("Confirmed recovery GETs cleared only one original"),IFileManager::Get().FileExists(*File(Seller)));Test->TestTrue(TEXT("Current actual inventory remains empty after later sale/discard"),S->Items->GetCurrentInventory().Instances.IsEmpty());S->Marketplace->SubmitPrepared(Original,Market(TEXT(""),[this](const auto& V){Test->TestTrue(TEXT("Replay current later listing, without historical item"),V.Replayed&&V.Receipt.ListingRevision==1&&V.Listing.Revision==2&&!V.Listing.HasItem);}));});
         Steps.Add([this]{auto Changed=Original;Changed.Json=Changed.Json.Replace(TEXT("\"price\":101"),TEXT("\"price\":102"));S->Marketplace->SubmitPrepared(Changed,Market(TEXT("OPERATION_CONFLICT")));});
@@ -107,6 +107,11 @@ bool FHorizonMarketplaceModelsTest::RunTest(const FString&)
 {
     const auto I=UHorizonMarketplaceManager::PrepareCreate(TEXT("20000000-0000-4000-8000-000000001015"),TEXT("60000000-0000-4000-8000-000000001015"),TEXT("2026-10-17T12:00:00.000Z"),TEXT("40000000-0000-4000-8000-000000001015"),9,7,101,300);TestTrue(TEXT("Valid exact original"),I.IsValid());
     for(const TCHAR* N:{TEXT("1e0"),TEXT("1.0"),TEXT("-0"),TEXT("9007199254740992")}){auto Bad=I;Bad.Json=I.Json.Replace(TEXT("\"price\":101"),*(FString(TEXT("\"price\":"))+N));TestFalse(TEXT("Unsafe original tokens rejected"),Bad.IsValid());}
+    const FString Alpha=TEXT("abcdefab-cdef-4abc-8def-abcdefabcdef"),AlphaOperation=TEXT("102030ab-cdef-4abc-8def-abcd01234567");
+    const auto Lower=UHorizonMarketplaceManager::PrepareCreate(Alpha,AlphaOperation,TEXT("2026-10-17T12:00:00.000Z"),Alpha,9,7,101,300);
+    TestTrue(TEXT("Alphabetic lowercase user/operation/instance UUIDs accepted"),Lower.IsValid());
+    auto Upper=Lower;Upper.Json=Lower.Json.Replace(*AlphaOperation,*AlphaOperation.ToUpper());TestFalse(TEXT("Uppercase operation UUID rejected before HTTP"),Upper.IsValid());
+    TestFalse(TEXT("Uppercase user UUID rejected before preparing intent"),UHorizonMarketplaceManager::PrepareCreate(Alpha.ToUpper(),AlphaOperation,TEXT("2026-10-17T12:00:00.000Z"),Alpha,9,7,101,300).IsValid());
     auto Date=I;Date.Json=I.Json.Replace(TEXT("2026-10-17"),TEXT("2026-02-30"));TestFalse(TEXT("Impossible dates not normalized"),Date.IsValid());
     return true;
 }

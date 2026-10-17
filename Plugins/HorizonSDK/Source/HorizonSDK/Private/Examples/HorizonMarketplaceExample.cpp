@@ -58,7 +58,7 @@ bool UHorizonMarketplaceExample::ReviewCancel(const FString& I){return ReviewLis
 void UHorizonMarketplaceExample::ConfirmReviewedTrade()
 {
     auto* S=Session();if(!S||Busy||ReviewKind.IsEmpty()||ReviewUser!=S->Auth->GetCurrentUser().UserId||ReviewContext!=S->GetHttpClient()->GetRequestContextEpoch())return;const int64 Now=S->Marketplace->GetServerNow();if(Now<0)return;
-    const FString O=FGuid::NewGuid().ToString(EGuidFormats::DigitsWithHyphens),T=(FDateTime::FromUnixTimestamp(Now/1000)+FTimespan::FromMilliseconds(Now%1000)).ToIso8601();
+    const FString O=FGuid::NewGuid().ToString(EGuidFormats::DigitsWithHyphens).ToLower(),T=(FDateTime::FromUnixTimestamp(Now/1000)+FTimespan::FromMilliseconds(Now%1000)).ToIso8601();
     const auto I=ReviewKind==TEXT("create")?UHorizonMarketplaceManager::PrepareCreate(ReviewUser,O,T,ReviewInstance,ReviewInventory,ReviewConfig,ReviewPrice,ReviewDuration):ReviewKind==TEXT("buy")?UHorizonMarketplaceManager::PrepareBuy(ReviewUser,ReviewListingId,O,T,ReviewRevision,ReviewPrice,ReviewCurrency):UHorizonMarketplaceManager::PrepareCancel(ReviewUser,ReviewListingId,O,T,ReviewRevision);
     auto F=MakeShared<FHorizonMarketplaceFlow>();F->Lease=MakeShared<HorizonMarketplaceJournal::FLease>(Project,ReviewUser);if(!F->Lease->Begin(I)){LastErrorCode=TEXT("PENDING_STORAGE_ERROR");return;}Apply(F,false);
 }
