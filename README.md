@@ -1036,9 +1036,16 @@ and `AHorizonGroupsExample`; no automatic signup, polling or replacement intent 
 
 Items: `Items` exposes five typed inventory/catalog methods and Blueprint async
 nodes. Property integers, Unicode/NUL strings, purchase item rewards and retained
-receipt references stay lossless. `AHorizonItemsExample` persists original actions
+instance data stay lossless. `AHorizonItemsExample` persists original actions
 and never replaces an uncertain purchase ID. See [the quickstart](Plugins/HorizonSDK/Docs/QUICKSTART.md#items-task-1011)
 for single-attempt CAS writes, explicit receipt recovery and the remaining GET-to-POST price window.
+
+Item limits are current positive Int32 operator configuration, with no old 5000/150/50 tariff
+clamps. A lower current limit does not hide retained inventory or catalog totals. Catalog total
+has the storage-format ceiling of 65,536 permanent UInt16 template slots; individual pages remain
+at most 50 definitions. Compact storage preserves the public instance properties, CAS revisions
+and original property deltas. Replayed purchases return current state with empty applied/item
+references; the sample refreshes inventory without synthesizing a new instance or operation ID.
 
 
 Shared Objects: `SharedObjects` exposes seven typed methods, opaque byte payloads,
