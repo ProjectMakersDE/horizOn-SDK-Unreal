@@ -193,6 +193,10 @@ bool FHorizonInboxModelTest::RunTest(const FString& Parameters)
         TestFalse(TEXT("Malformed source ID refused"),Parse(Json.Replace(*(TEXT("\"reference\":\"")+User+TEXT("\"")),TEXT("\"reference\":\"bad\"")),Snapshot));
     }
     const FString Return=TEXT("{\"values\":[],\"itemReturn\":{\"listingId\":\"")+User+TEXT("\",\"instanceId\":\"")+User+TEXT("\",\"itemKey\":\"sword\"}}");
+    FHorizonInboxSnapshot Legacy; FHorizonInboxSource LegacySource;
+    const FString Acceptance=One(TEXT("group_accept-request"),TEXT("horizon.groups.accept-request"),TEXT("{\"groupId\":\"")+User+TEXT("\"}"),TEXT("null"))
+        .Replace(*(TEXT("\"reference\":\"")+User+TEXT("\"")),TEXT("\"reference\":\"00000000-0000-4000-8000-000000001007\""));
+    TestTrue(TEXT("Legacy acceptance retains request reference and group navigation"),Parse(Acceptance,Legacy) && Legacy.Entries[0].TryGetSource(LegacySource) && LegacySource.GroupId==User && LegacySource.SourceId!=User);
     const FString Market=One(TEXT("marketplace"),TEXT("marketplace.item_return"),TEXT("{}"),Return);
     FHorizonInboxSnapshot ItemOnly;
     TestTrue(TEXT("Item-only return counts as claimable"),Parse(Market,ItemOnly) && ItemOnly.Entries[0].CanClaim() && ItemOnly.Entries[0].Attachment.Values.IsEmpty());

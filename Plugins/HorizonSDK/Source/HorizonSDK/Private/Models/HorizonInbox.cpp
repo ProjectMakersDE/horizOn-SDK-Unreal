@@ -110,7 +110,6 @@ bool FHorizonInboxEntry::TryGetSource(FHorizonInboxSource& Out) const
     else if (Value.Kind==EHorizonInboxSourceKind::GroupInvitation || Value.Kind==EHorizonInboxSourceKind::GroupRequest || Value.Kind==EHorizonInboxSourceKind::GroupInvitationAccepted || Value.Kind==EHorizonInboxSourceKind::GroupRequestAccepted)
     {
         if (!ParameterId(TEXT("groupId"),Value.GroupId)) return false;
-        if ((Value.Kind==EHorizonInboxSourceKind::GroupInvitationAccepted || Value.Kind==EHorizonInboxSourceKind::GroupRequestAccepted) && Value.GroupId!=Value.SourceId) return false;
     }
     else if (Value.Kind==EHorizonInboxSourceKind::MatchTurn)
     {
