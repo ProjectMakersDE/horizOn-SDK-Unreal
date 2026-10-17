@@ -1247,6 +1247,27 @@ EXPECTED = [{'method': 'GET',
             'serverTime': '2026-10-16T00:00:30Z'},
   'delay': 0,
   'raw': False}]
+# A replay proves the original purchase, without retained historic deltas/item lists.
+for request in EXPECTED:
+ if request['body'] and request['body'].get('operationId')=='__SAVED_OPERATION__' and request['status']==200:
+  request['reply']['operation'].update(replayed=True,alreadyApplied=True,applied=[],items=[])
+configured_user=EXPECTED[0]['reply']['userId']
+def configured_inventory(revision, lowered=False, equipped=False):
+ reply=copy.deepcopy(EXPECTED[0]['reply']);reply['revision']=revision
+ reply['limits']={'catalog':20,'inventory':10,'receipts':10} if lowered else {'catalog':6000,'inventory':250,'receipts':80}
+ original=copy.deepcopy(reply['instances'][0]);reply['instances'][0]['equipped']=equipped
+ for i in range(200):
+  item=copy.deepcopy(original);item['instanceId']='30000000-0000-4000-8000-%012d'%i;reply['instances'].append(item)
+ return reply
+def configured_request(method,path,reply,query=None,body=None):
+ EXPECTED.append(dict(method=method,path='/api/v1/app/items'+path,query=query or {},body=body,status=200,reply=reply,delay=0,raw=False))
+configured_request('GET','',configured_inventory(8),{'userId':[configured_user]})
+configured_request('GET','',configured_inventory(9,True),{'userId':[configured_user]})
+page=copy.deepcopy(EXPECTED[1]['reply']);page.update(revision=2,total=6000,nextAfterKey='sword',limits={'catalog':6000,'inventory':250,'receipts':80})
+configured_request('GET','/catalog',page,{'userId':[configured_user],'limit':['1']})
+page=copy.deepcopy(page);page['definitions'][0]['key']='wand';page.update(nextAfterKey='wand',limits={'catalog':20,'inventory':10,'receipts':10})
+configured_request('GET','/catalog',page,{'userId':[configured_user],'limit':['1'],'afterKey':['sword'],'catalogRevision':['2']})
+configured_request('POST','/equip',configured_inventory(10,True,True),body={'userId':configured_user,'instanceId':EXPECTED[0]['reply']['instances'][0]['instanceId'],'expectedRevision':9,'equipped':True})
 class Handler(BaseHTTPRequestHandler):
  count=0;failure=None;operation=None;saved_operation=None;lock=threading.Lock()
  def respond(self,status,value):

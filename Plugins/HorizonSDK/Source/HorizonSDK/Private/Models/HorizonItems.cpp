@@ -16,7 +16,8 @@ bool ReadRevision(const TSharedPtr<FJsonObject>& J,const TCHAR* K,int64& N){retu
 bool Small(const TSharedPtr<FJsonObject>& J,const TCHAR* K,int32& N,int32 Max,bool Zero=false){int64 V;if(!ReadRevision(J,K,V)||V>Max||(!Zero&&V==0))return false;N=int32(V);return true;}
 bool Bool(const TSharedPtr<FJsonObject>& J,const TCHAR* K,bool& B){auto V=J?J->TryGetField(K):nullptr;return V&&V->Type==EJson::Boolean&&V->TryGetBool(B);}
 bool Time(const TSharedPtr<FJsonObject>& J,const TCHAR* K,FString& S){FDateTime T;return Text(J,K,S,40)&&FDateTime::ParseIso8601(*S,T);}
-bool ReadLimits(const TSharedPtr<FJsonObject>& J,FHorizonItemLimits& L){const TSharedPtr<FJsonObject>* O;return J&&J->TryGetObjectField(TEXT("limits"),O)&&Small(*O,TEXT("catalog"),L.Catalog,5000)&&Small(*O,TEXT("inventory"),L.Inventory,150)&&Small(*O,TEXT("receipts"),L.Receipts,50);}
+// Operator quotas are positive Int32 values, independent of retained inventory size.
+bool ReadLimits(const TSharedPtr<FJsonObject>& J,FHorizonItemLimits& L){const TSharedPtr<FJsonObject>* O;return J&&J->TryGetObjectField(TEXT("limits"),O)&&Small(*O,TEXT("catalog"),L.Catalog,MAX_int32)&&Small(*O,TEXT("inventory"),L.Inventory,MAX_int32)&&Small(*O,TEXT("receipts"),L.Receipts,MAX_int32);}
 bool Properties(const TSharedPtr<FJsonValue>& V,TArray<FHorizonItemProperty>& Out)
 {
     if(!V||V->Type!=EJson::Object)return false;FString Raw;
@@ -49,7 +50,7 @@ bool Definition(const TSharedPtr<FJsonObject>& J,FHorizonItemDefinition& D)
 bool FHorizonInventorySnapshot::TryFromJson(const TSharedPtr<FJsonObject>& J,FHorizonInventorySnapshot& Out)
 {
     using namespace HorizonItemsJson;FHorizonInventorySnapshot S;const TArray<TSharedPtr<FJsonValue>>* Rows;
-    if(!Id(J,TEXT("userId"),S.UserId)||!ReadRevision(J,TEXT("revision"),S.Revision)||!Time(J,TEXT("serverTime"),S.ServerTime)||!ReadLimits(J,S.Limits)||!J->TryGetArrayField(TEXT("instances"),Rows)||Rows->Num()>150)return false;
+    if(!Id(J,TEXT("userId"),S.UserId)||!ReadRevision(J,TEXT("revision"),S.Revision)||!Time(J,TEXT("serverTime"),S.ServerTime)||!ReadLimits(J,S.Limits)||!J->TryGetArrayField(TEXT("instances"),Rows))return false;
     TSet<FString> Seen;for(auto V:*Rows)
     {
         if(!V||V->Type!=EJson::Object)return false;auto O=V->AsObject();FHorizonItemInstance I;
@@ -60,7 +61,8 @@ bool FHorizonInventorySnapshot::TryFromJson(const TSharedPtr<FJsonObject>& J,FHo
 bool FHorizonItemCatalogPage::TryFromJson(const TSharedPtr<FJsonObject>& J,FHorizonItemCatalogPage& Out)
 {
     using namespace HorizonItemsJson;FHorizonItemCatalogPage P;const TArray<TSharedPtr<FJsonValue>>* Rows;
-    if(!ReadRevision(J,TEXT("revision"),P.Revision)||!Time(J,TEXT("serverTime"),P.ServerTime)||!ReadLimits(J,P.Limits)||!Small(J,TEXT("total"),P.Total,5000,true)||!J->TryGetArrayField(TEXT("definitions"),Rows)||Rows->Num()>50||Rows->Num()>P.Total)return false;
+    // 65536 permanent UInt16 template slots is a storage-format bound; pages remain at most 50 rows.
+    if(!ReadRevision(J,TEXT("revision"),P.Revision)||!Time(J,TEXT("serverTime"),P.ServerTime)||!ReadLimits(J,P.Limits)||!Small(J,TEXT("total"),P.Total,65536,true)||!J->TryGetArrayField(TEXT("definitions"),Rows)||Rows->Num()>50||Rows->Num()>P.Total)return false;
     FString Last;for(auto V:*Rows){FHorizonItemDefinition D;if(!V||V->Type!=EJson::Object||!Definition(V->AsObject(),D)||(!Last.IsEmpty()&&D.Key.Compare(Last,ESearchCase::CaseSensitive)<=0))return false;Last=D.Key;P.Definitions.Add(D);}
     auto Next=J->TryGetField(TEXT("nextAfterKey"));P.bHasNextAfterKey=Next&&!Next->IsNull();if(P.bHasNextAfterKey&&(!ReadKey(J,TEXT("nextAfterKey"),P.NextAfterKey)||P.Definitions.IsEmpty()||P.NextAfterKey!=Last))return false;
     P.bPresent=true;Out=MoveTemp(P);return true;
