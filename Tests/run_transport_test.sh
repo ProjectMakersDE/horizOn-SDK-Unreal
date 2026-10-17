@@ -86,3 +86,8 @@ c++ -std=c++17 -I Plugins/HorizonSDK/Source/HorizonSDK/Public \
 c++ -std=c++17 -I Plugins/HorizonSDK/Source/HorizonSDK/Public \
     Tests/ChatTransportContractTest.cpp -o "$build_dir/chat-transport-test"
 "$build_dir/chat-transport-test"
+
+# Marketplace lists are bounded by the transport frame, independently of operator quotas.
+c++ -std=c++17 -I Plugins/HorizonSDK/Source/HorizonSDK/Public \
+    Tests/MarketplaceTransportContractTest.cpp -o "$build_dir/marketplace-transport-test"
+"$build_dir/marketplace-transport-test"

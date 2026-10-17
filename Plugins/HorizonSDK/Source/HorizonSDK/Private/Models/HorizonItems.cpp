@@ -47,6 +47,12 @@ bool Definition(const TSharedPtr<FJsonObject>& J,FHorizonItemDefinition& D)
     FString Json;return HorizonLosslessJson::Object(J.ToSharedRef(),Json)&&FTCHARToUTF8(*Json,Json.Len()).Length()<=2048;
 }
 }
+bool FHorizonItemInstance::TryFromJson(const TSharedPtr<FJsonObject>& J,FHorizonItemInstance& Out)
+{
+    using namespace HorizonItemsJson;FHorizonItemInstance I;
+    if(!Id(J,TEXT("instanceId"),I.InstanceId)||!ReadKey(J,TEXT("itemKey"),I.ItemKey)||!HorizonItemsJson::Properties(J->TryGetField(TEXT("properties")),I.Properties)||!Bool(J,TEXT("equipped"),I.bEquipped)||!Time(J,TEXT("createdAt"),I.CreatedAt))return false;
+    Out=MoveTemp(I);return true;
+}
 bool FHorizonInventorySnapshot::TryFromJson(const TSharedPtr<FJsonObject>& J,FHorizonInventorySnapshot& Out)
 {
     using namespace HorizonItemsJson;FHorizonInventorySnapshot S;const TArray<TSharedPtr<FJsonValue>>* Rows;
@@ -54,7 +60,7 @@ bool FHorizonInventorySnapshot::TryFromJson(const TSharedPtr<FJsonObject>& J,FHo
     TSet<FString> Seen;for(auto V:*Rows)
     {
         if(!V||V->Type!=EJson::Object)return false;auto O=V->AsObject();FHorizonItemInstance I;
-        if(!Id(O,TEXT("instanceId"),I.InstanceId)||Seen.Contains(I.InstanceId.ToLower())||!ReadKey(O,TEXT("itemKey"),I.ItemKey)||!Properties(O->TryGetField(TEXT("properties")),I.Properties)||!Bool(O,TEXT("equipped"),I.bEquipped)||!Time(O,TEXT("createdAt"),I.CreatedAt))return false;
+        if(!FHorizonItemInstance::TryFromJson(O,I)||Seen.Contains(I.InstanceId.ToLower()))return false;
         Seen.Add(I.InstanceId.ToLower());S.Instances.Add(I);
     }S.bPresent=true;Out=MoveTemp(S);return true;
 }

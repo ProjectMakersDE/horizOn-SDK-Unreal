@@ -1233,3 +1233,61 @@ late replies. `ClearCache()` clears the live feed and pending reads; an already 
 send in the same authenticated context still completes and archives its original text.
 Clearing local history invalidates prior page cursors. A new device has no old archive,
 and the SDK neither uploads it nor uses Cloud Save. There is no implicit local cap.
+
+
+## Marketplace: typed current state and durable original escrow actions
+
+`UHorizonSubsystem::Marketplace` implements all ten authenticated App routes:
+`GetLimits`, `GetRules`, `GetMarketplace`, `QueryListings`, `GetListing`, prepared
+create/buy/cancel via `SubmitPrepared`, `GetOperation` and `RetryReturn`.
+`PrepareCreate`, `PrepareBuy`, `PrepareCancel` and `ValidOriginal` expose the
+validated `FHorizonMarketplaceIntent`. C++ receives `FOnMarketplaceComplete`;
+Blueprint `Read*`, `SubmitOriginal`, `LookupOriginal` and `RetryReturnDelivery`
+report typed `FHorizonMarketplaceResponse` through `OnResult`. The response's
+`Kind` selects its typed fields, with explicit `HasListing` / `HasItem` / `HasFeeBps`
+flags for nullable wire values. No feature method creates a player or polls.
+
+Rules and query pages are explicit (1–50 rows), preserving original catalog
+revision or opaque cursor. Five operator quotas are exact positive Int32 values,
+independent of old tariff defaults and of retained state after quota lowering.
+The Marketplace decoder has an 8 MiB UTF-8 / 64-level transport frame, without
+the Items parser's 256-property-object cap. These technical limits do not imply
+MongoDB storage sizes or new product quotas. Original item properties retain
+safe integers, Unicode/NUL, equipped state and creation time. Canonical lowercase
+UUIDs, exact UTC millisecond timestamps and decoded duplicate keys are checked
+before engine DOM normalization.
+
+Create `UHorizonMarketplaceExample` for the game's screen and explicitly
+`Bind(Session, StableProjectId)` to the existing authenticated subsystem. Read
+config/rules/inventory before `ReviewCreate`, or one point listing before
+`ReviewBuy` / `ReviewCancel`. Show `ReviewedPrice`, `ReviewedFee` and
+`ReviewedSellerNet`; only the player's explicit `ConfirmReviewedTrade` prepares
+an operation UUID/server-clock time and sends it. `UHorizonMarketplaceQuickstart`
+contains compiled Blueprint/C++ entry points for one listing read and a confirmed
+buy through this actual sample; it does not implement another journal.
+
+The sample flushes and verifies a single original project/player intent before
+HTTP. A system-wide exclusive lease spans the entire asynchronous operation and
+outlives the screen UObject. The complete original UTF-8 JSON is resent without
+normalization or an automatic write retry, including after 429/503. Known success
+stores only the listing identity before current Inventory, Player Values and
+Marketplace GETs; after all three succeed the one original is removed. Confirmed
+restarts perform only GETs. No copied financial/item results or completed-purchase
+history are retained locally or synthesized into inventory.
+
+Choose `RetryPending` or read-only `RecoverOriginalOperation` after uncertainty.
+404/expiry does not prove nonexecution. A replay may return today's later terminal
+listing (`HasItem == false`) or no retained listing. Neither triggers a replacement
+trade or re-creation of historical items. Partial/conflicting journal files remain
+blocked for recovery. Native desktop leases are OS-owned; mobile uses nonblocking
+POSIX locks. These native tests do not prove an exported browser/mobile game.
+
+`RetryReturnDelivery` retries the original listing source; `ClaimReturn` delegates
+the same stable entry to Inbox. Inbox/inventory capacity errors are recoverable.
+An already claimed reference after discard/resale does not mint inventory.
+`Tests/run_native_marketplace_test.py` runs actual engine models, manager and the
+Quickstart/sample against an artificial loopback fixture: ten routes, 2,051
+retained open offers plus 151 history references after lowering, original retries,
+UI destruction, GET-only known recovery and original Inbox escrow claim/replay.
+Run the normal transport source suite as well. Local fixtures are not hosted
+backend or deployment evidence.

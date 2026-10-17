@@ -213,6 +213,12 @@ void UHorizonHttpClient::RevisionJsonOnce(const TSharedPtr<FJsonObject>& Body,co
     TMap<FString,FString> Headers;Headers.Add(TEXT("If-Match"),LexToString(Revision));SendRequest(Verb,ActiveHost/Endpoint,TEXT("application/json"),Payload,true,0,Complete,TEXT(""),Headers,false);
 }
 
+void UHorizonHttpClient::PostOriginalJsonOnce(const FString& Json,const FString& Endpoint,FOnHttpResponse Complete)
+{
+    const FTCHARToUTF8 Bytes(*Json,Json.Len());TArray<uint8> Payload;Payload.Append(reinterpret_cast<const uint8*>(Bytes.Get()),Bytes.Length());
+    SendRequest(TEXT("POST"),ActiveHost/Endpoint,TEXT("application/json"),Payload,true,0,Complete,TEXT(""),TMap<FString,FString>(),false);
+}
+
 void UHorizonHttpClient::JsonOnce(const TSharedRef<FJsonObject>& Body,const FString& Endpoint,bool bPut,bool bUseSessionToken,FOnHttpResponse Complete)
 {
     FString Json;if(!HorizonLosslessJson::Object(Body,Json)){FHorizonNetworkResponse R;R.ServerErrorCode=TEXT("INVALID_REQUEST");R.ErrorMessage=TEXT("Invalid JSON write");Complete.ExecuteIfBound(R);return;}

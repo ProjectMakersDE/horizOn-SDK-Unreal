@@ -55,6 +55,7 @@ struct HORIZONSDK_API FHorizonItemInstance
     UPROPERTY(BlueprintReadOnly,Category="horizOn|Items") TArray<FHorizonItemProperty> Properties;
     UPROPERTY(BlueprintReadOnly,Category="horizOn|Items") bool bEquipped=false;
     UPROPERTY(BlueprintReadOnly,Category="horizOn|Items") FString CreatedAt;
+    static bool TryFromJson(const TSharedPtr<FJsonObject>& Json,FHorizonItemInstance& Out);
 };
 USTRUCT(BlueprintType)
 struct HORIZONSDK_API FHorizonItemDefinition
