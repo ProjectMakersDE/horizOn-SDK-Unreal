@@ -41,6 +41,7 @@ struct HORIZONSDK_API FHorizonPlayerValuesOperation
     UPROPERTY(BlueprintReadOnly, Category="horizOn|PlayerValues") bool bPresent = false;
     UPROPERTY(BlueprintReadOnly, Category="horizOn|PlayerValues") FString OperationId;
     UPROPERTY(BlueprintReadOnly, Category="horizOn|PlayerValues") bool bReplayed = false;
+    // Immediate fresh-operation deltas/references; compact replays return empty arrays.
     UPROPERTY(BlueprintReadOnly, Category="horizOn|PlayerValues") TArray<FHorizonPlayerValueAmount> Applied;
     UPROPERTY(BlueprintReadOnly, Category="horizOn|PlayerValues") TArray<FHorizonItemReference> Items;
 };
