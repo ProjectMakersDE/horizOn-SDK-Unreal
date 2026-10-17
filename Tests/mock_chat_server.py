@@ -6,8 +6,8 @@ from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
 from urllib.parse import urlparse,parse_qs
 A='00000000-0000-4000-8000-000000001014';B='00000000-0000-4000-8000-000000002014';ID='10000000-0000-4000-8000-000000001014';GROUP='10000000-0000-4000-8000-000000002014';ROOT='/api/v1/app/chat'
 def stamp(s=0):return (datetime.datetime.now(datetime.timezone.utc)+datetime.timedelta(seconds=s)).isoformat(timespec='milliseconds').replace('+00:00','Z')
-NOW=stamp();LATER=stamp(604800);MOD=dict(muteUntil=None,banUntil=None)
-LIMITS=dict(retainedMessagesPerPlayer=100,retainedMessagesPerChannel=100,retentionSeconds=604800,messageCharacters=500,messageUtf8Bytes=2000,channelsPerAccount=2000,sendsPerAccountMinute=120,playerSendIntervalMillis=3000,channelSendIntervalMillis=2000,reportsPerProject=200,receiptCount=100,reportReceiptCount=32,wordFilterTerms=100)
+NOW=stamp();LATER=(datetime.datetime.fromisoformat(NOW.replace("Z","+00:00"))+datetime.timedelta(seconds=604800)).isoformat(timespec="milliseconds").replace("+00:00","Z");MOD=dict(muteUntil=None,banUntil=None)
+LIMITS=dict(retainedMessagesPerPlayer=0,retainedMessagesPerChannel=20,retentionSeconds=604800,privateRetainedMessagesPerChannel=15,privateRetentionSeconds=30,operationWindowSeconds=30,operationFutureToleranceSeconds=60,messageCharacters=500,messageUtf8Bytes=2000,channelsPerAccount=2000,sendsPerAccountMinute=120,playerSendIntervalMillis=3000,channelSendIntervalMillis=2000,reportsPerProject=200,receiptCount=0,reportReceiptCount=0,wordFilterTerms=100)
 class State:
  lock=threading.RLock();sockets=[];failure='';requests=[];syncs=0;active=0;peak=0;rows=[];rev=1;epoch='20000000-0000-4000-8000-000000001014';permission=True;mode='normal';receipts={};originals={};counts={};reports=[];done=False;lockfile=None;retry=None;unsupported=False
  @classmethod
@@ -84,7 +84,7 @@ class HTTP(BaseHTTPRequestHandler):
   if p.startswith('/fixture/'):
    n=p[9:]
    with State.lock:
-    if n=='populate':State.rows=[dict(id=str(uuid.UUID(int=i+101400)),channelId=ID,authorId=A,text='snow 雪 😀\n\t '+str(i),createdAt=NOW,expiresAt=LATER) for i in range(100)];State.rev+=1;State.push()
+    if n=='populate':State.rows=[dict(id=str(uuid.UUID(int=i+101400)),channelId=ID,authorId=A,text='snow 雪 😀\n\t '+str(i),createdAt=NOW,expiresAt=LATER) for i in range(20)];State.rev+=1;State.push()
     elif n=='delete':State.rows=State.rows[1:];State.rev+=1;State.push()
     elif n=='burst':
      State.mode='burst'
@@ -114,7 +114,7 @@ class HTTP(BaseHTTPRequestHandler):
   assert p.startswith(ROOT);assert ((b or {}).get('userId') if verb=='POST' else q.get('userId',[None])[0])==A
   with State.lock:State.requests.append((verb,p,self.server.server_port));print('feature '+str(len(State.requests))+': '+verb+' '+p,flush=True)
   if State.unsupported:self.reply(501,dict(code='NOT_SUPPORTED'));return
-  if p==ROOT+'/limits':self.reply(200,dict(limits=LIMITS,capabilities=dict(chat=True,realtime=True,incrementalSync=True),moderation=MOD,serverTime=stamp()));return
+  if p==ROOT+'/limits':self.reply(200,dict(limits=LIMITS,capabilities=dict(chat=True,realtime=True,incrementalSync=True,localHistory=True),moderation=MOD,serverTime=stamp()));return
   if p==ROOT+'/channels/open':
    assert set(b) in ({'userId','kind'},{'userId','kind','peerId'},{'userId','kind','groupId'});c=State.channel()
    if b['kind']=='direct':assert b['peerId']==B;c.update(kind='direct',peerIds=[A,B])
@@ -122,7 +122,7 @@ class HTTP(BaseHTTPRequestHandler):
    else:assert b['kind']=='project'
    self.reply(200,dict(channel=c,serverTime=stamp()));return
   if p==ROOT+'/channels/'+ID+'/sync':
-   assert set(b)=={'userId','epoch','knownMessageIds'} and len(b['knownMessageIds'])<=100 and len(set(b['knownMessageIds']))==len(b['knownMessageIds'])
+   assert set(b)=={'userId','epoch','knownMessageIds'} and len(b['knownMessageIds'])<=20 and len(set(b['knownMessageIds']))==len(b['knownMessageIds'])
    with State.lock:
     State.syncs+=1;State.active+=1;State.peak=max(State.peak,State.active);assert State.active==1;mode=State.mode;State.mode='normal';c=State.channel();rows=copy.deepcopy(State.rows);reply=dict(channel=c,visibleMessageIds=[m['id'] for m in rows],messages=[m for m in rows if b['epoch']!=c['epoch'] or m['id'] not in b['knownMessageIds']],moderation=MOD,serverTime=stamp())
    if mode=='burst':time.sleep(.3)

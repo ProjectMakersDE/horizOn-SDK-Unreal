@@ -19,6 +19,10 @@ struct HORIZONSDK_API FHorizonChatLimits
     UPROPERTY(BlueprintReadOnly,Category="horizOn|Chat") int32 RetainedMessagesPerPlayer=0;
     UPROPERTY(BlueprintReadOnly,Category="horizOn|Chat") int32 RetainedMessagesPerChannel=0;
     UPROPERTY(BlueprintReadOnly,Category="horizOn|Chat") int32 RetentionSeconds=0;
+    UPROPERTY(BlueprintReadOnly,Category="horizOn|Chat") int32 PrivateRetainedMessagesPerChannel=0;
+    UPROPERTY(BlueprintReadOnly,Category="horizOn|Chat") int32 PrivateRetentionSeconds=0;
+    UPROPERTY(BlueprintReadOnly,Category="horizOn|Chat") int32 OperationWindowSeconds=0;
+    UPROPERTY(BlueprintReadOnly,Category="horizOn|Chat") int32 OperationFutureToleranceSeconds=0;
     UPROPERTY(BlueprintReadOnly,Category="horizOn|Chat") int32 MessageCharacters=0;
     UPROPERTY(BlueprintReadOnly,Category="horizOn|Chat") int32 MessageUtf8Bytes=0;
     UPROPERTY(BlueprintReadOnly,Category="horizOn|Chat") int32 ChannelsPerAccount=0;
@@ -37,6 +41,7 @@ struct HORIZONSDK_API FHorizonChatCapabilities
     UPROPERTY(BlueprintReadOnly,Category="horizOn|Chat") bool bChat=false;
     UPROPERTY(BlueprintReadOnly,Category="horizOn|Chat") bool bRealtime=false;
     UPROPERTY(BlueprintReadOnly,Category="horizOn|Chat") bool bIncrementalSync=false;
+    UPROPERTY(BlueprintReadOnly,Category="horizOn|Chat") bool bLocalHistory=false;
 };
 USTRUCT(BlueprintType)
 struct HORIZONSDK_API FHorizonChatModeration
@@ -81,6 +86,15 @@ struct HORIZONSDK_API FHorizonChatReceipt
     UPROPERTY(BlueprintReadOnly,Category="horizOn|Chat") FString MessageId;
     UPROPERTY(BlueprintReadOnly,Category="horizOn|Chat") FString CreatedAt;
     UPROPERTY(BlueprintReadOnly,Category="horizOn|Chat") FString ExpiresAt;
+};
+USTRUCT(BlueprintType)
+struct HORIZONSDK_API FHorizonChatHistoryPage
+{
+    GENERATED_BODY()
+    UPROPERTY(BlueprintReadOnly,Category="horizOn|Chat") bool bSuccess=false;
+    UPROPERTY(BlueprintReadOnly,Category="horizOn|Chat") TArray<FHorizonChatMessage> Messages;
+    UPROPERTY(BlueprintReadOnly,Category="horizOn|Chat") FString NextCursor;
+    UPROPERTY(BlueprintReadOnly,Category="horizOn|Chat") FString ErrorCode;
 };
 USTRUCT(BlueprintType)
 struct HORIZONSDK_API FHorizonChatLimitsView

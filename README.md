@@ -1217,7 +1217,7 @@ mutex stub is fatal. A damaged journal fails closed. Missing operation receipts 
 not prove a missing write: recovery first reads `GetOperation`, then an explicit
 retry may send only the identical saved original. An expired operation remains an
 explicit unresolved journal and blocks fresh IDs. Reports retain their original
-channel/message/reason; `removed` is a successful original replay. Acknowledged
+channel/message/reason. Server reports deduplicate only while the shared report exists. Acknowledged
 receipts remain in the bounded journal until a new explicitly prepared original
 replaces them. Save files contain no session token. Persisting a journal is local
 crash recovery, not a new server price/value guarantee.
@@ -1230,3 +1230,39 @@ and checks native automation plus the fixture's invariants. Do not run concurren
 with another instance on these ports. Native fixture evidence is separate from real
 Develop/production or official game/Hello acceptance; mobile lock source support is
 separate from a mobile package build.
+
+
+### Device Chat history
+
+Hosted Chat is available in every tier, including Free. The server holds at most
+20 project/global messages for seven days, or 15 direct/group transport messages
+for 30 seconds. Private buffers do not promise offline delivery. `knownMessageIds`
+contains at most 20 IDs from the live window, never IDs from the device archive.
+A new operation must be later than the player's accepted issued-at floor and
+server time minus 30 seconds, with at most 60 seconds future tolerance. Operation
+lookup/replay uses the original message while it remains buffered. There is no
+personal server receipt history. Missing operations remain uncertain. No send is
+retried automatically, including after a local storage failure.
+
+`Chat->ReadLocalHistory(channelId, cursor, limit)` returns
+`FHorizonChatHistoryPage` with `bSuccess`, `Messages`, `NextCursor`, and `ErrorCode`.
+`ClearLocalHistory(channelId)` and `ClearAllLocalHistory()` erase only the current
+identity's device copies. Blueprint exposes the same methods, `OnLocalHistoryChanged`
+and `OnLocalHistoryFailed`. The UMG sample has separate live/device views and explicit
+read/older/clear controls, including a channel UUID input for offline reads.
+
+The archive stores received immutable text and confirmed original send input. Its
+scope hashes the API key and player, with one append-only UTF-8 JSONL log and one
+append-only ID/hash/offset index per channel. No key or session token is stored in
+plaintext. Only the small ID index is loaded on first use, then its appended tail.
+Text reads are bounded per record (16 KiB) and page (at most 100 messages). Byte
+cursors follow local delivery order, newest delivery first within every page.
+An interrupted complete log append can repair its missing final index entry.
+Damaged/locked/unwritable storage reports a local error and never resends a message.
+
+Server eviction, expiry, moderation, epoch changes and revoked membership retain
+already delivered device copies. The active feed still hides immediately. Same-identity
+authenticated offline reads are allowed. Logout and project/player changes remove
+access in memory. Captured request identity and persistent clear generations fence
+late replies. Clear invalidates prior page cursors. A new device has no old archive,
+and the SDK neither uploads it nor uses Cloud Save. There is no implicit local cap.
