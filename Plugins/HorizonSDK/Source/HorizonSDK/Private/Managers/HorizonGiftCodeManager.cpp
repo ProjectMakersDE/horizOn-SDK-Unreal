@@ -92,18 +92,11 @@ void UHorizonGiftCodeManager::RedeemPrepared(const FHorizonGiftCodeIntent& Origi
 
 void UHorizonGiftCodeManager::Validate(const FString& Code, FOnGiftCodeValidateComplete OnComplete)
 {
-	if (!AuthManager || !AuthManager->IsSignedIn())
-	{
-		UE_LOG(LogHorizonSDK, Warning, TEXT("GiftCode::Validate -- User is not signed in."));
-		OnComplete.ExecuteIfBound(false, false);
-		return;
-	}
-
-	const FString UserId = AuthManager->GetCurrentUser().UserId;
+    if (!HttpClient || Code.TrimStartAndEnd().IsEmpty() || Code.Len()>50)
+    { OnComplete.ExecuteIfBound(false,false); return; }
 
 	TSharedRef<FJsonObject> Body = MakeShared<FJsonObject>();
 	Body->SetStringField(TEXT("code"), Code);
-	Body->SetStringField(TEXT("userId"), UserId);
 
 	TWeakObjectPtr<UHorizonGiftCodeManager> WeakSelf(this);
 	FOnGiftCodeValidateComplete CapturedOnComplete = OnComplete;

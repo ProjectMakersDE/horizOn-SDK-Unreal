@@ -5,7 +5,7 @@ USER='00000000-0000-4000-8000-000000001007'
 CAMPAIGN='00000000-0000-4000-8000-000000101007'
 OTHER='00000000-0000-4000-8000-000000201007'
 COUNT='9007199254740993';REV='9223372036854775807'
-EXPECTED=[('prepare','VALUES'),('prepare','VALUES'),('lost','VALUES'),('replay','VALUES'),('replay','VALUES'),('newcampaign','VALUES'),('replay','VALUES')]
+EXPECTED=[('public','PUBLIC'),('prepare','VALUES'),('prepare','VALUES'),('lost','VALUES'),('replay','VALUES'),('replay','VALUES'),('newcampaign','VALUES'),('replay','VALUES')]
 EXPECTED += [('error',code) for code in ['COUNT_AHEAD','CAMPAIGN_CHANGED','UPGRADE_REQUIRED','MIGRATION_REQUIRED','COUNTER_EXHAUSTED']]
 EXPECTED += [('bad',code) for code in ['NUMERIC','OVERFLOW','HISTORY']]
 EXPECTED += [('fence',code) for code in ['CACHE','SESSION','PROJECT','SIGNOUT']]
@@ -35,6 +35,9 @@ class Handler(BaseHTTPRequestHandler):
   index=type(self).count;type(self).count+=1
   if index>=len(EXPECTED):self.reject('Extra request or automatic prepare');return
   action,code=EXPECTED[index]
+  if action=='public':
+   if body!={'code':'PUBLIC'} or self.path!='/api/v1/app/gift-codes/validate' or self.headers.get('X-API-Key')!='fixture-key-1007' or self.headers.get('Authorization') is not None:self.reject('Public read must be sessionless');return
+   self.reply(200,{'valid':True});return
   if self.headers.get('X-API-Key')!='fixture-key-1007' or self.headers.get('Authorization')!='Bearer fixture-session-1007':self.reject('Wrong project or Bearer');return
   prepare=action in ['prepare','newcampaign','badprepare']
   expected={'code':code,'userId':USER,**({'includeIntent':True} if prepare else {'protocolVersion':2,'campaignId':CAMPAIGN,'expectedCount':COUNT,'configRevision':REV})}
