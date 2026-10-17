@@ -41,12 +41,13 @@ void UHorizonChatManager::Call(const FString& U,const FString& Route,const TShar
 {
     const FString Failure=Validate(U);
     if(!Failure.IsEmpty()){Done.ExecuteIfBound(Error(Failure));return;}
-    const uint64 G=Generation,C=Context;
+    const uint64 G=Generation,C=Context;const FString BoundIdentity=Identity;
     TWeakObjectPtr<UHorizonChatManager> Weak(this);
-    auto Callback=FOnHttpResponse::CreateLambda([Weak,G,C,Route,Done](const FHorizonNetworkResponse& Response)
+    auto Callback=FOnHttpResponse::CreateLambda([Weak,G,C,BoundIdentity,Read,Route,Done](const FHorizonNetworkResponse& Response)
     {
         auto* S=Weak.Get();if(!S)return;S->SyncIdentity();
-        if(S->Generation!=G||S->Context!=C){Done.ExecuteIfBound(Error(TEXT("STALE_RESPONSE")));return;}
+        // Clearing the feed fences reads, while an accepted write still belongs to its captured identity.
+        if(S->Context!=C||S->Identity!=BoundIdentity||(Read&&S->Generation!=G)){Done.ExecuteIfBound(Error(TEXT("STALE_RESPONSE")));return;}
         FHorizonChatResponseMetadata Metadata;
         Metadata.StatusCode=Response.StatusCode;Metadata.ErrorCode=Response.GetErrorCodeString();
         Metadata.ErrorMessage=Response.ErrorMessage;Metadata.Headers=Response.Headers;
@@ -169,7 +170,7 @@ void UHorizonChatManager::SendMessage(const FString& U,const FString& C,const FS
 {
     if(!HorizonChatWire::Id(C)||!HorizonChatWire::Id(Id)||!HorizonChatWire::Time(At)||!HorizonChatWire::Text(Text)){HorizonChatRequest::Bad(D);return;}auto B=HorizonChatRequest::Body(U);B->SetStringField(TEXT("operationId"),Id);B->SetStringField(TEXT("issuedAt"),At);B->SetStringField(TEXT("text"),Text);
     SyncIdentity();const FString Captured=History?History->Capture(C):FString();
-    Call(U,HorizonChatRequest::Root+TEXT("/channels/")+C+TEXT("/messages"),B,false,FOnHttpResponse::CreateWeakLambda(this,[this,U,C,Id,At,Text,Captured,D](const FHorizonNetworkResponse& R){if(HorizonChatRequest::Failed(R,D))return;FHorizonChatSent V;if(!FHorizonChatSent::TryFromJson(R.JsonData,V)||V.Receipt.OperationId!=Id||V.Receipt.ChannelId!=C||V.Receipt.IssuedAt!=At){HorizonChatRequest::Bad(D,TEXT("INVALID_RESPONSE"));return;}FHorizonChatMessage M;M.Id=V.Receipt.MessageId;M.ChannelId=C;M.AuthorId=U;M.Text=Text;M.CreatedAt=V.Receipt.CreatedAt;M.ExpiresAt=V.Receipt.ExpiresAt;const uint64 BeforeHistory=Generation;Archive(C,{M},Captured);SyncIdentity();if(Generation!=BeforeHistory){HorizonChatRequest::Bad(D,TEXT("STALE_RESPONSE"));return;}D.ExecuteIfBound(true,V,TEXT(""),TEXT(""));}));
+    Call(U,HorizonChatRequest::Root+TEXT("/channels/")+C+TEXT("/messages"),B,false,FOnHttpResponse::CreateWeakLambda(this,[this,U,C,Id,At,Text,Captured,D](const FHorizonNetworkResponse& R){if(HorizonChatRequest::Failed(R,D))return;FHorizonChatSent V;if(!FHorizonChatSent::TryFromJson(R.JsonData,V)||V.Receipt.OperationId!=Id||V.Receipt.ChannelId!=C||V.Receipt.IssuedAt!=At){HorizonChatRequest::Bad(D,TEXT("INVALID_RESPONSE"));return;}FHorizonChatMessage M;M.Id=V.Receipt.MessageId;M.ChannelId=C;M.AuthorId=U;M.Text=Text;M.CreatedAt=V.Receipt.CreatedAt;M.ExpiresAt=V.Receipt.ExpiresAt;const uint64 WriteContext=Context;const FString WriteIdentity=Identity;Archive(C,{M},Captured);SyncIdentity();if(Context!=WriteContext||Identity!=WriteIdentity){HorizonChatRequest::Bad(D,TEXT("STALE_RESPONSE"));return;}D.ExecuteIfBound(true,V,TEXT(""),TEXT(""));}));
 }
 void UHorizonChatManager::GetOperation(const FString& U,const FString& Id,FOnChatOperationComplete D)
 {

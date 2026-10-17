@@ -1264,5 +1264,7 @@ Server eviction, expiry, moderation, epoch changes and revoked membership retain
 already delivered device copies. The active feed still hides immediately. Same-identity
 authenticated offline reads are allowed. Logout and project/player changes remove
 access in memory. Captured request identity and persistent clear generations fence
-late replies. Clear invalidates prior page cursors. A new device has no old archive,
+late replies. `ClearCache()` clears the live feed and pending reads; an already accepted
+send in the same authenticated context still completes and archives its original text.
+Clearing local history invalidates prior page cursors. A new device has no old archive,
 and the SDK neither uploads it nor uses Cloud Save. There is no implicit local cap.

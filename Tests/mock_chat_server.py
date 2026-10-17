@@ -106,7 +106,7 @@ class HTTP(BaseHTTPRequestHandler):
     elif n=='unlock':
      if State.lockfile:fcntl.flock(State.lockfile,fcntl.LOCK_UN);State.lockfile.close();State.lockfile=None
     elif n=='unsupported':State.unsupported=True
-    elif n=='done':assert State.peak<=1 and len(State.receipts)>=2 and len(State.reports)>=2 and all(n<=2 for n in State.counts.values());State.done=True
+    elif n=='done':assert State.peak<=1 and len(State.receipts)>=2 and len(State.reports)>=2 and all(n<=2 for n in State.counts.values());assert sum(State.counts[op] for op,b in State.originals.items() if b['text'].startswith('cache-clear-confirmed'))==1;State.done=True
     else:raise ValueError('unknown fixture '+n)
    self.reply(200,dict(ok=True,syncs=State.syncs,peak=State.peak));return
   assert self.headers.get('X-API-Key')=='fixture-key-1014' and self.headers.get('Authorization')=='Bearer fixture-session-1014' and not self.headers.get('If-Match')
@@ -148,9 +148,10 @@ class HTTP(BaseHTTPRequestHandler):
     if b['text'].startswith('rate'):self.reply(429,dict(code='CHAT_RATE_LIMITED'));return
     replay=op in State.receipts
     if not replay:
-     msg=dict(id=str(uuid.uuid4()),channelId=ID,authorId=A,text=b['text'],createdAt=stamp(),expiresAt=LATER);State.rows.append(msg);State.rev+=1;State.receipts[op]=dict(operationId=op,issuedAt=b['issuedAt'],channelId=ID,messageId=msg['id'],createdAt=msg['createdAt'],expiresAt=LATER);State.push()
+     msg=dict(id=str(uuid.uuid4()),channelId=ID,authorId=A,text=b['text'],createdAt=stamp(),expiresAt=LATER);State.rows=(State.rows+[msg])[-20:];State.rev+=1;State.receipts[op]=dict(operationId=op,issuedAt=b['issuedAt'],channelId=ID,messageId=msg['id'],createdAt=msg['createdAt'],expiresAt=LATER);State.push()
     receipt=copy.deepcopy(State.receipts[op])
    if b['text'].startswith('lost') and n==1:self.connection.shutdown(socket.SHUT_RDWR);self.connection.close();return
+   if b['text'].startswith('cache-clear-confirmed'):assert n==1;time.sleep(.2)
    self.reply(200 if replay else 201,dict(receipt=receipt,replayed=replay,serverTime=stamp()));return
   m=re.fullmatch(ROOT+r'/operations/([^/]+)',p)
   if m:
