@@ -23,7 +23,7 @@ int main()
 	assert(!IsStatisticsBatch({}) && !IsStatisticsBatch({{"kills", 1}, {"kills", 2}}));
 	assert(!IsStatisticsBatch({{"kills", StatisticsMaxValue + 1}}));
 	std::vector<std::pair<std::string,int64_t>> Batch;
-	for (int Index = 0; Index < 100; ++Index) Batch.emplace_back("k" + std::to_string(Index), Index);
-	assert(IsStatisticsBatch(Batch)); Batch.emplace_back("extra", 1); assert(!IsStatisticsBatch(Batch));
+	for (int Index = 0; Index < 201; ++Index) Batch.emplace_back("k" + std::to_string(Index), Index);
+	assert(IsStatisticsBatch(Batch)); Batch.emplace_back("k200", 1); assert(!IsStatisticsBatch(Batch));
 	std::cout << "Unreal statistics safe integer, key and explicit operation contract passed\n";
 }

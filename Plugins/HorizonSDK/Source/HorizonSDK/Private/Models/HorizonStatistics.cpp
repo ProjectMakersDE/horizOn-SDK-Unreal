@@ -35,7 +35,7 @@ FHorizonStatisticsCatalog FHorizonStatisticsCatalog::FromJson(const TSharedPtr<F
 	const auto Field = Json->TryGetField(TEXT("definitions"));
 	if (!Field.IsValid()) return Result;
 	if (Field->Type == EJson::Null) { Result.bValid = true; return Result; }
-	if (Field->Type != EJson::Array || Field->AsArray().Num() > 100) return Result;
+	if (Field->Type != EJson::Array) return Result;
 	TSet<FString> Keys;
 	for (const auto& Value : Field->AsArray())
 	{
@@ -62,7 +62,7 @@ FHorizonStatisticsSnapshot FHorizonStatisticsSnapshot::FromJson(const TSharedPtr
 		|| !Integer(Json, TEXT("revision"), Result.Revision) || Result.Revision < 0) return Result;
 	Result.DefinitionVersion = Catalog.DefinitionVersion; Result.Definitions = Catalog.Definitions; Result.bDefinitionsIncluded = Catalog.bDefinitionsIncluded;
 	const auto Values = Json->TryGetField(TEXT("values"));
-	if (!Values.IsValid() || Values->Type != EJson::Array || Values->AsArray().Num() > 100) return Result;
+	if (!Values.IsValid() || Values->Type != EJson::Array) return Result;
 	TSet<FString> Keys;
 	for (const auto& Value : Values->AsArray())
 	{

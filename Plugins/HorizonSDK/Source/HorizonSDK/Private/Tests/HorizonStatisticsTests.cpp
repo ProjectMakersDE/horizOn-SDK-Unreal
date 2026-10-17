@@ -42,17 +42,18 @@ struct FStatisticsTransportState : TSharedFromThis<FStatisticsTransportState>
 	}
 	void Snapshot(bool Success, const FHorizonStatisticsSnapshot& Result, const FString& Code, int32 RequestedStage)
 	{
-		const FString Expected = RequestedStage == 6 ? TEXT("OPERATION_CONFLICT") : RequestedStage == 8 || RequestedStage == 10 || RequestedStage == 11 ? TEXT("STATE_CONFLICT") : RequestedStage >= 13 ? TEXT("INVALID_RESPONSE") : TEXT("");
+		const FString Expected = RequestedStage == 6 ? TEXT("OPERATION_CONFLICT") : RequestedStage == 8 || RequestedStage == 10 || RequestedStage == 11 ? TEXT("STATE_CONFLICT") : RequestedStage == 13 || RequestedStage == 14 ? TEXT("INVALID_RESPONSE") : TEXT("");
 		Test->TestEqual(TEXT("Expected statistics outcome"), Success, Expected.IsEmpty());
 		Test->TestEqual(TEXT("Stable statistics code"), Code, Expected);
 		if (Success != Expected.IsEmpty() || Code != Expected) bFailed = true;
 		if (Success)
 		{
-			Test->TestEqual(TEXT("Definitions available after conditional response"), Result.Definitions.Num(), 1);
-			if (!Test->TestEqual(TEXT("One counter received"), Result.Values.Num(), 1)) { bFailed = true; bWaiting = false; return; }
+			const int32 ExpectedCount = RequestedStage == 15 ? 201 : 1;
+			Test->TestEqual(TEXT("Configured definitions available after response"), Result.Definitions.Num(), ExpectedCount);
+			if (!Test->TestEqual(TEXT("Configured counters received"), Result.Values.Num(), ExpectedCount)) { bFailed = true; bWaiting = false; return; }
 			if (RequestedStage == 2) Test->TestEqual(TEXT("Exact negative safe integer"), Result.Values[0].Value, -9007199254740991LL);
 			if (RequestedStage == 4) Test->TestEqual(TEXT("Exact positive safe integer"), Result.Values[0].Value, 9007199254740991LL);
-			if (RequestedStage == 5) Test->TestTrue(TEXT("Original operation replayed"), Result.bReplayed);
+			if (RequestedStage == 5 || RequestedStage == 16) Test->TestTrue(TEXT("Original operation replayed after catalog change"), Result.bReplayed);
 		}
 		bWaiting = false; ++Stage;
 	}
@@ -79,7 +80,7 @@ struct FStatisticsTransportState : TSharedFromThis<FStatisticsTransportState>
 			bWaiting = true;
 			Statistics->GetDefinitions(FOnStatisticsDefinitionsLoaded::CreateLambda([Weak](bool Success, const FHorizonStatisticsCatalog& Catalog, const FString&, const FString&) { if (auto Self = Weak.Pin()) { Self->Test->TestTrue(TEXT("New catalog loaded"), Success); Self->Test->TestEqual(TEXT("Catalog invalidates old projection"), Self->Statistics->GetCurrentStatistics().Revision, static_cast<int64>(-1)); Self->bWaiting = false; ++Self->Stage; } }));
 		}
-		else if (Stage >= 15)
+		else if (Stage >= 17)
 		{
 			const auto Cached = Statistics->GetCurrentStatistics();
 			Test->TestEqual(TEXT("Invalid JSON cannot replace cache"), Cached.Values.Num(), 1);
@@ -92,7 +93,17 @@ struct FStatisticsTransportState : TSharedFromThis<FStatisticsTransportState>
 		{
 			bWaiting = true; const int32 RequestedStage = Stage;
 			auto Callback = FOnStatisticsLoaded::CreateLambda([Weak, RequestedStage](bool Success, const FHorizonStatisticsSnapshot& Result, const FString& Code, const FString&) { if (auto Self = Weak.Pin()) Self->Snapshot(Success, Result, Code, RequestedStage); });
-			if (Stage >= 4 && Stage <= 6)
+			if (Stage == 15 || Stage == 16)
+			{
+				if (Stage == 15) Operation = Statistics->CreateOperationId();
+				TArray<FHorizonStatisticUpdate> Large;
+				for (int32 Index = 0; Index < 201; ++Index)
+				{
+					FHorizonStatisticUpdate Entry; Entry.Key = FString::Printf(TEXT("stat%d"), Index); Entry.Value = Index; Large.Add(Entry);
+				}
+				Statistics->UpdateStatistics(Large, Operation, Callback);
+			}
+			else if (Stage >= 4 && Stage <= 6)
 			{
 				if (Operation.IsEmpty()) Operation = Statistics->CreateOperationId();
 				FHorizonStatisticUpdate Entry; Entry.Key = TEXT("kills"); Entry.Value = Stage == 6 ? 1 : 9007199254740991LL;

@@ -56,7 +56,8 @@ namespace HorizonTransportContract
 	}
 	inline bool IsStatisticsBatch(const std::vector<std::pair<std::string, int64_t>>& Updates)
 	{
-		if (Updates.empty() || Updates.size() > 100) return false;
+		// Catalog limits are server-configured. Original retries remain valid after a limit reduction.
+		if (Updates.empty()) return false;
 		std::set<std::string> Keys;
 		for (const auto& Entry : Updates)
 			if (!IsStatisticKey(Entry.first) || Entry.second < -StatisticsMaxValue || Entry.second > StatisticsMaxValue || !Keys.insert(Entry.first).second) return false;
