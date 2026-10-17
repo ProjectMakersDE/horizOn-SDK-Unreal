@@ -104,7 +104,7 @@ bool FHorizonInboxEntry::TryGetSource(FHorizonInboxSource& Out) const
     FHorizonInboxSource Value; Value.Kind=SourceKind();
     if (Value.Kind==EHorizonInboxSourceKind::Unknown || !HorizonInboxJson::Uuid(Reference)) return false;
     Value.SourceId=Reference.ToLower();
-    auto ParameterId=[&](const TCHAR* Name,FString& Id) { const auto* Raw=Parameters.Find(Name); if (!Raw || !HorizonInboxJson::Uuid(*Raw)) return false; Id=Raw->ToLower(); return true; };
+    auto ParameterId=[&](const TCHAR* Name,FString& OutId) { const auto* Raw=Parameters.Find(Name); if (!Raw || !HorizonInboxJson::Uuid(*Raw)) return false; OutId=Raw->ToLower(); return true; };
     if (Value.Kind==EHorizonInboxSourceKind::FriendRequest || Value.Kind==EHorizonInboxSourceKind::FriendAccepted)
     { if (!ParameterId(TEXT("userId"),Value.UserId)) return false; }
     else if (Value.Kind==EHorizonInboxSourceKind::GroupInvitation || Value.Kind==EHorizonInboxSourceKind::GroupRequest || Value.Kind==EHorizonInboxSourceKind::GroupInvitationAccepted || Value.Kind==EHorizonInboxSourceKind::GroupRequestAccepted)

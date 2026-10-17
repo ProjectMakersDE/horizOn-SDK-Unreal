@@ -24,7 +24,7 @@ void AHorizonInboxExample::Remove(const FString& EntryId)
 }
 void AHorizonInboxExample::Loaded(bool Success,const FHorizonInboxSnapshot& Inbox,const FString& Code,const FString&)
 {
-    if (!Success) UE_LOG(LogTemp,Warning,TEXT("[InboxExample] Snapshot/action failed: %s"),*Code);
+    if (!Success) { UE_LOG(LogTemp,Warning,TEXT("[InboxExample] Snapshot/action failed: %s"),*Code); }
     else for (const auto& Entry:Inbox.Entries)
     {
         // Use a plain text widget (rich text disabled). Other messages use localization keys.
