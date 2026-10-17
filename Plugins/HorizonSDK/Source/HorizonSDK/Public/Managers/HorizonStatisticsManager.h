@@ -6,13 +6,16 @@
 #include "Models/HorizonStatistics.h"
 #include "HorizonStatisticsManager.generated.h"
 
+class UHorizonPlayerValuesManager;
+class UHorizonAchievementsManager;
+
 /** Explicit statistics snapshots and atomic batches. Initialization/sign-in performs no HTTP. */
 UCLASS(BlueprintType)
 class HORIZONSDK_API UHorizonStatisticsManager : public UObject
 {
 	GENERATED_BODY()
 public:
-	void Initialize(UHorizonHttpClient* Http, UHorizonAuthManager* Auth);
+	void Initialize(UHorizonHttpClient* Http, UHorizonAuthManager* Auth, UHorizonPlayerValuesManager* Values=nullptr, UHorizonAchievementsManager* Achievements=nullptr);
 	void GetStatistics(FOnStatisticsLoaded OnComplete);
 	void GetDefinitions(FOnStatisticsDefinitionsLoaded OnComplete);
 	/** Persist OperationId + original Updates before calling; never replace an uncertain ID. */
@@ -32,6 +35,8 @@ public:
 private:
 	UPROPERTY() UHorizonHttpClient* HttpClient = nullptr;
 	UPROPERTY() UHorizonAuthManager* AuthManager = nullptr;
+	UPROPERTY() UHorizonPlayerValuesManager* PlayerValues = nullptr;
+	UPROPERTY() UHorizonAchievementsManager* AchievementManager = nullptr;
 	struct FScope { FString User, Token, Host, Project; bool operator==(const FScope& Other) const { return User == Other.User && Token == Other.Token && Host == Other.Host && Project == Other.Project; } };
 	FScope LastScope;
 	FHorizonStatisticsSnapshot Current;

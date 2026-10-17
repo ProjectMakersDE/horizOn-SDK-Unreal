@@ -50,12 +50,16 @@ bool Definition(const TSharedPtr<FJsonObject>& Object,FHorizonAchievementDefinit
         !String(Condition->AsObject(),TEXT("statisticKey"),D.Condition.StatisticKey,24) || !Key(D.Condition.StatisticKey) || !Number(Condition->AsObject(),TEXT("threshold"),D.Condition.Threshold)) return false;
     D.Condition.bPresent=true; return true;
 }
-bool State(const FString& Value) { return Value==TEXT("none") || Value==TEXT("pending") || Value==TEXT("delivered"); }
+bool State(const FString& Value) { return Value==TEXT("complete") || Value==TEXT("none") || Value==TEXT("pending") || Value==TEXT("delivered"); }
 bool Entry(const FString& Value) { return Value.StartsWith(TEXT("message:")) && FHorizonInboxEntry::IsEntryId(Value); }
 bool Progress(const TSharedPtr<FJsonObject>& Object,FHorizonAchievementProgress& P)
 {
-    if (!String(Object,TEXT("key"),P.Key,24) || !Key(P.Key) || !String(Object,TEXT("unlockedAt"),P.UnlockedAt,40) || !Time(P.UnlockedAt) ||
+    if (!String(Object,TEXT("key"),P.Key,24) || !Key(P.Key) ||
         !String(Object,TEXT("rewardState"),P.RewardState,16) || !State(P.RewardState) || !Optional(Object,TEXT("inboxEntryId"),P.InboxEntryId,64)) return false;
+    const auto UnlockedAt=Object->TryGetField(TEXT("unlockedAt"));
+    if (P.RewardState==TEXT("complete"))
+    { if (!UnlockedAt || !UnlockedAt->IsNull()) return false; }
+    else if (!String(Object,TEXT("unlockedAt"),P.UnlockedAt,40) || !Time(P.UnlockedAt)) return false;
     auto Pending=Object->TryGetField(TEXT("pendingReward"));
     if (Pending && !Pending->IsNull())
     {
@@ -88,14 +92,14 @@ bool FHorizonAchievementsSnapshot::TryFromJson(const TSharedPtr<FJsonObject>& Js
     const TSharedPtr<FJsonObject>* Limits; const TArray<TSharedPtr<FJsonValue>>* Rows;
     if (!String(Json,TEXT("userId"),S.UserId,36) || !FGuid::ParseExact(S.UserId,EGuidFormats::DigitsWithHyphens,User) || !Number(Json,TEXT("revision"),S.Revision) ||
         !String(Json,TEXT("definitionVersion"),S.DefinitionVersion,512) || !String(Json,TEXT("serverTime"),S.ServerTime,40) || !Time(S.ServerTime) ||
-        !Json->TryGetObjectField(TEXT("limits"),Limits) || !Number(*Limits,TEXT("maxDefinitions"),Active) || Active<1 || Active>250 ||
-        !Number(*Limits,TEXT("maxLifetimeKeys"),Lifetime) || Lifetime<1 || Lifetime>500 || !Json->TryGetArrayField(TEXT("progress"),Rows) || Rows->Num()>500) return false;
+        !Json->TryGetObjectField(TEXT("limits"),Limits) || !Number(*Limits,TEXT("maxDefinitions"),Active) || Active<1 || Active>MAX_int32 ||
+        !Number(*Limits,TEXT("maxLifetimeKeys"),Lifetime) || Lifetime<1 || Lifetime>MAX_int32 || !Json->TryGetArrayField(TEXT("progress"),Rows)) return false;
     S.Limits.MaxDefinitions=int32(Active); S.Limits.MaxLifetimeKeys=int32(Lifetime); TSet<FString> Keys;
     for (const auto& V:*Rows) { FHorizonAchievementProgress P; if (!V || V->Type!=EJson::Object || !HorizonAchievementsJson::Progress(V->AsObject(),P) || Keys.Contains(P.Key)) return false; Keys.Add(P.Key); S.Progress.Add(P); }
     auto Definitions=Json->TryGetField(TEXT("definitions")); if (!Definitions) return false;
     if (!Definitions->IsNull())
     {
-        if (!Json->TryGetArrayField(TEXT("definitions"),Rows) || Rows->Num()>500) return false;
+        if (!Json->TryGetArrayField(TEXT("definitions"),Rows)) return false;
         Keys.Empty(); S.bDefinitionsIncluded=true;
         for (const auto& V:*Rows) { FHorizonAchievementDefinition D; if (!V || V->Type!=EJson::Object || !Definition(V->AsObject(),D) || Keys.Contains(D.Key)) return false; Keys.Add(D.Key); S.Definitions.Add(D); }
     }

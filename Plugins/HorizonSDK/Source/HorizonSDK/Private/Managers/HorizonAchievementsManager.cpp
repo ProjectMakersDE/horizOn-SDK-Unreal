@@ -1,9 +1,10 @@
 #include "Managers/HorizonAchievementsManager.h"
 #include "Dom/JsonObject.h"
+#include "Managers/HorizonPlayerValuesManager.h"
 #include "GenericPlatform/GenericPlatformHttp.h"
 
-void UHorizonAchievementsManager::Initialize(UHorizonHttpClient* Http,UHorizonAuthManager* Auth)
-{ HttpClient=Http; AuthManager=Auth; ClearCache(); }
+void UHorizonAchievementsManager::Initialize(UHorizonHttpClient* Http,UHorizonAuthManager* Auth,UHorizonPlayerValuesManager* Values)
+{ HttpClient=Http; AuthManager=Auth; PlayerValues=Values; ClearCache(); }
 void UHorizonAchievementsManager::SyncIdentity()
 {
     const FString Next=HttpClient && AuthManager?AuthManager->GetCurrentUser().UserId+TEXT("|")+HttpClient->GetSessionToken():FString();
@@ -35,7 +36,7 @@ void UHorizonAchievementsManager::Call(const FString& User,const FString& Route,
 {
     const FString Failure=Begin(User);
     if (!Failure.IsEmpty()) { Complete.ExecuteIfBound(Error(Failure,Failure)); return; }
-    bBusy=true; if (Mutation) ++Epoch;
+    bBusy=true; if (Mutation) { ++Epoch; if (PlayerValues) PlayerValues->ClearCache(); }
     const uint64 SentTicket=++Ticket,SentContext=ContextEpoch; const int64 SentEpoch=Epoch; const FString SentIdentity=Identity;
     TWeakObjectPtr<UHorizonAchievementsManager> Weak(this);
     const auto Callback=FOnHttpResponse::CreateLambda([Weak,SentTicket,SentContext,SentEpoch,SentIdentity,Complete](const FHorizonNetworkResponse& Response)
@@ -93,8 +94,13 @@ void UHorizonAchievementsManager::Unlock(const FString& User,const FString& Key,
     {
         if (!Response.bSuccess) { Complete.ExecuteIfBound(false,{},Response.GetErrorCodeString(),Response.ErrorMessage); return; }
         FHorizonAchievementUnlockResponse R;
-        if (!FHorizonAchievementUnlockResponse::TryFromJson(Response.JsonData,R) || R.DeliveryResults.Num()!=1 || R.DeliveryResults[0].Key!=Key ||
-            (!R.bReplayed && (R.NewlyUnlocked.Num()!=1 || R.NewlyUnlocked[0]!=Key)))
+        if (!FHorizonAchievementUnlockResponse::TryFromJson(Response.JsonData,R))
+        { Complete.ExecuteIfBound(false,{},TEXT("INVALID_RESPONSE"),TEXT("Invalid unlock result")); return; }
+        const auto* Progress=R.Achievements.Progress.FindByPredicate([&](const FHorizonAchievementProgress& P) { return P.Key==Key; });
+        const bool ValidDelivery=R.DeliveryResults.IsEmpty()
+            ? Progress && (R.bReplayed || Progress->RewardState==TEXT("complete"))
+            : R.DeliveryResults.Num()==1 && R.DeliveryResults[0].Key==Key;
+        if (!ValidDelivery || (!R.bReplayed && (R.NewlyUnlocked.Num()!=1 || R.NewlyUnlocked[0]!=Key)))
         { Complete.ExecuteIfBound(false,{},TEXT("INVALID_RESPONSE"),TEXT("Invalid unlock result")); return; }
         if (!Adopt(User,R.Achievements)) { Complete.ExecuteIfBound(false,{},TEXT("STALE_RESPONSE"),TEXT("Cannot adopt achievement snapshot")); return; }
         Complete.ExecuteIfBound(true,R,TEXT(""),TEXT(""));

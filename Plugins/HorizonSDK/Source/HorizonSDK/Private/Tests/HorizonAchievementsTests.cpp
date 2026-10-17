@@ -1,6 +1,8 @@
 #if WITH_DEV_AUTOMATION_TESTS
 #include "Misc/AutomationTest.h"
 #include "Managers/HorizonAchievementsManager.h"
+#include "Managers/HorizonPlayerValuesManager.h"
+#include "Managers/HorizonStatisticsManager.h"
 #include "Managers/HorizonRealtimeManager.h"
 #include "HorizonSubsystem.h"
 #include "HorizonConfig.h"
@@ -14,6 +16,8 @@ struct FHorizonAchievementsNative : TSharedFromThis<FHorizonAchievementsNative>
     UHorizonHttpClient* Http;
     UHorizonAuthManager* Auth;
     UHorizonAchievementsManager* Achievements;
+    UHorizonPlayerValuesManager* Values;
+    UHorizonStatisticsManager* Statistics;
     TArray<FString> OriginalHosts;
     FString OriginalKey,VersionA,VersionG;
     int32 OriginalRetries;
@@ -29,11 +33,13 @@ struct FHorizonAchievementsNative : TSharedFromThis<FHorizonAchievementsNative>
         Config->Hosts={Host}; Config->ApiKey=TEXT("fixture-key-1008"); Config->MaxRetryAttempts=2; Config->RetryDelaySeconds=.1f;
         Http=NewObject<UHorizonHttpClient>(); Http->AddToRoot(); Http->Initialize();
         Auth=NewObject<UHorizonAuthManager>(); Auth->AddToRoot(); Auth->Initialize(Http);
-        Achievements=NewObject<UHorizonAchievementsManager>(); Achievements->AddToRoot(); Achievements->Initialize(Http,Auth);
+        Values=NewObject<UHorizonPlayerValuesManager>(); Values->AddToRoot(); Values->Initialize(Http,Auth);
+        Achievements=NewObject<UHorizonAchievementsManager>(); Achievements->AddToRoot(); Achievements->Initialize(Http,Auth,Values);
+        Statistics=NewObject<UHorizonStatisticsManager>(); Statistics->AddToRoot(); Statistics->Initialize(Http,Auth,Values,Achievements);
     }
     void Cleanup()
     {
-        Auth->SignOut(); Http->Disconnect(); Achievements->RemoveFromRoot(); Auth->RemoveFromRoot(); Http->RemoveFromRoot();
+        Auth->SignOut(); Http->Disconnect(); Statistics->RemoveFromRoot(); Values->RemoveFromRoot(); Achievements->RemoveFromRoot(); Auth->RemoveFromRoot(); Http->RemoveFromRoot();
         auto* Config=GetMutableDefault<UHorizonConfig>(); Config->Hosts=OriginalHosts; Config->ApiKey=OriginalKey; Config->MaxRetryAttempts=OriginalRetries; Config->RetryDelaySeconds=OriginalDelay;
     }
     void Next() { ++Stage; bPending=false; }
@@ -44,7 +50,7 @@ struct FHorizonAchievementsNative : TSharedFromThis<FHorizonAchievementsNative>
         {
             if (auto Self=Weak.Pin())
             {
-                const bool Expected=Sent==2 || Sent==3 || Sent==4 || Sent==5 || Sent==6 || Sent==13 || Sent==15 || Sent==18 || Sent==20 || Sent==22 || Sent==25 || Sent==30;
+                const bool Expected=Sent==2 || Sent==3 || Sent==4 || Sent==5 || Sent==6 || Sent==13 || Sent==15 || Sent==18 || Sent==20 || Sent==22 || Sent==25 || Sent==30 || Sent==34 || Sent==35;
                 const FString Error=Expected?TEXT(""):(Sent==17 || Sent==26 || Sent==27)?TEXT("INVALID_RESPONSE"):TEXT("STALE_RESPONSE");
                 Self->Test->TestEqual(FString::Printf(TEXT("Achievement read stage %d"),Sent),Ok,Expected);
                 Self->Test->TestEqual(TEXT("Stable snapshot error"),Code,Error);
@@ -56,6 +62,7 @@ struct FHorizonAchievementsNative : TSharedFromThis<FHorizonAchievementsNative>
                 if (Sent==11 || Sent==14) Self->Test->TestEqual(TEXT("Revision/time regression preserves accepted snapshot"),Self->Achievements->GetCurrentAchievements().Revision,int64(4));
                 if (Sent==12 || Sent==16 || Sent==17 || Sent==19 || Sent==21 || Sent==23) Self->Test->TestFalse(TEXT("Invalidated reply cannot refill cache"),Self->Achievements->GetCurrentAchievements().bPresent);
                 if (Sent==26 || Sent==27) Self->Test->TestEqual(TEXT("Malformed token/type preserves current snapshot"),Self->Achievements->GetCurrentAchievements().Revision,int64(8));
+                if (Sent==34 || Sent==35) Self->Test->TestTrue(TEXT("Admin raised capacity and retained rows after lower limits"),S.Progress.Num()==701 && S.Definitions.Num()==701 && S.Progress[0].UnlockedAt.IsEmpty());
                 Self->Next();
             }
         });
@@ -158,7 +165,30 @@ struct FHorizonAchievementsNative : TSharedFromThis<FHorizonAchievementsNative>
                 }
             }));
         }
-        else if (Stage<32) Achievements->GetAchievements(User,ReadCallback());
+        else if (Stage==32 || Stage==33)
+        {
+            const int64 ValuesEpoch=Values->GetCacheEpoch(); const int32 Sent=Stage;
+            Achievements->Unlock(User,TEXT("welcome"),FOnAchievementUnlockComplete::CreateLambda([Weak,Sent](bool Ok,const FHorizonAchievementUnlockResponse& R,const FString& Code,const FString&)
+            {
+                if (auto Self=Weak.Pin())
+                {
+                    Self->Test->TestTrue(TEXT("Compact unlock and replay accepted without delivery"),Ok && Code.IsEmpty() && R.DeliveryResults.IsEmpty() && R.bReplayed==(Sent==33));
+                    Self->Test->TestTrue(TEXT("Compact progress has no timestamp or reward payload"),R.Achievements.Progress.Num()==1 && R.Achievements.Progress[0].RewardState==TEXT("complete") && R.Achievements.Progress[0].UnlockedAt.IsEmpty() && !R.Achievements.Progress[0].PendingReward.bPresent);
+                    Self->Next();
+                }
+            }));
+            Test->TestTrue(TEXT("Value cache invalidated before unlock reply"),Values->GetCacheEpoch()>ValuesEpoch);
+        }
+        else if (Stage==36)
+        {
+            const int64 ValuesEpoch=Values->GetCacheEpoch();
+            Test->TestTrue(TEXT("Achievement snapshot populated before uncertain statistics mutation"),Achievements->GetCurrentAchievements().bPresent);
+            FHorizonStatisticUpdate Update; Update.Key=TEXT("wins"); Update.Value=1;
+            Statistics->UpdateStatistics({Update},TEXT("1792195200000:00000000-0000-4000-8000-000000001008"),FOnStatisticsLoaded::CreateLambda([Weak](bool Ok,const FHorizonStatisticsSnapshot&,const FString& Code,const FString&)
+            { if (auto Self=Weak.Pin()) { Self->Test->TestTrue(TEXT("Uncertain statistics reply rejected"),!Ok && Code==TEXT("INVALID_RESPONSE")); Self->Next(); } }));
+            Test->TestTrue(TEXT("Statistics clears reward and achievement caches before HTTP completes"),Values->GetCacheEpoch()>ValuesEpoch && !Achievements->GetCurrentAchievements().bPresent);
+        }
+        else if (Stage<37) Achievements->GetAchievements(User,ReadCallback());
         else
         {
             const auto Wrong=MakeShared<bool>(false);
@@ -210,6 +240,15 @@ bool FHorizonAchievementsModelTest::RunTest(const FString&)
     TestTrue(TEXT("Original amount remains separate from definition"),S.Progress.Num()==1 && S.Progress[0].PendingReward.Values.Num()==1 && S.Progress[0].PendingReward.Values[0].Amount==7);
     for (const FString& Bad:{Valid.Replace(TEXT("\"hidden\": false"),TEXT("\"hidden\": \"true\"")),Valid.Replace(TEXT("\"amount\": 7"),TEXT("\"amount\": 9007199254740991.1")),Valid.Replace(TEXT("\"rewardState\": \"pending\""),TEXT("\"rewardState\": \"unknown\"")),Valid.Replace(TEXT("\"statisticKey\": \"wins\""),TEXT("\"statisticKey\": 7"))})
         TestFalse(TEXT("Malformed booleans, safe numbers, states and keys rejected"),Parse(Bad,S));
+    TSharedPtr<FJsonObject> Compact;
+    TestTrue(TEXT("Compact fixture parse"),FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Valid),Compact,FJsonSerializer::EFlags::StoreNumbersAsStrings));
+    auto Row=Compact->GetArrayField(TEXT("progress"))[0]->AsObject();
+    Row->SetStringField(TEXT("rewardState"),TEXT("complete")); Row->SetField(TEXT("unlockedAt"),MakeShared<FJsonValueNull>()); Row->SetField(TEXT("pendingReward"),MakeShared<FJsonValueNull>());
+    TestTrue(TEXT("Only compact complete state accepts absent date"),FHorizonAchievementsSnapshot::TryFromJson(Compact,S));
+    Row->SetStringField(TEXT("unlockedAt"),TEXT("2026-10-16T00:00:01Z"));
+    TestFalse(TEXT("Mixed compact date rejected"),FHorizonAchievementsSnapshot::TryFromJson(Compact,S));
+    Row->SetField(TEXT("unlockedAt"),MakeShared<FJsonValueNull>()); Row->SetStringField(TEXT("rewardState"),TEXT("none"));
+    TestFalse(TEXT("Legacy state still requires original date"),FHorizonAchievementsSnapshot::TryFromJson(Compact,S));
     auto* Realtime=NewObject<UHorizonRealtimeManager>();
     TestTrue(TEXT("Optional own-player achievement invalidation topic supported"),Realtime->Subscribe(TEXT("achievements:00000000-0000-4000-8000-000000001008")));
     TestFalse(TEXT("Unknown feature topics remain rejected"),Realtime->Subscribe(TEXT("unknown:00000000-0000-4000-8000-000000001008")));
