@@ -22,12 +22,12 @@ UHorizonSubsystem* AHorizonGiftCodesExample::Session() const
 }
 void AHorizonGiftCodesExample::RedeemGiftCode() { Send(false); }
 void AHorizonGiftCodesExample::RetryPendingRedemption() { Send(true); }
-FString AHorizonGiftCodesExample::GetPendingIdempotencyId() const
+FHorizonGiftCodeIntent AHorizonGiftCodesExample::GetPendingIntent() const
 {
     auto* SDK=Session(); if (!SDK) return {};
     const FString Project=HorizonGiftCodesExampleStorage::Project(SDK),User=SDK->Auth->GetCurrentUser().UserId;
     auto* Pending=Cast<UHorizonGiftCodePendingRedeem>(UGameplayStatics::LoadGameFromSlot(HorizonGiftCodesExampleStorage::Slot(Project,User),0));
-    return HorizonGiftCodesExampleStorage::Valid(Pending,Project,User)?Pending->Intent.CampaignId+TEXT(":")+Pending->Intent.ExpectedCount:FString();
+    return HorizonGiftCodesExampleStorage::Valid(Pending,Project,User)?Pending->Intent:FHorizonGiftCodeIntent();
 }
 void AHorizonGiftCodesExample::Send(bool Retry)
 {

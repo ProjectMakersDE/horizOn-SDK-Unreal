@@ -24,7 +24,7 @@ public:
     UFUNCTION(BlueprintCallable,Category="horizOn|Example") void RedeemGiftCode();
     /** Reuses the original persisted V2 tuple after timeout/restart. */
     UFUNCTION(BlueprintCallable,Category="horizOn|Example") void RetryPendingRedemption();
-    UFUNCTION(BlueprintPure,Category="horizOn|Example") FString GetPendingIdempotencyId() const;
+    UFUNCTION(BlueprintPure,Category="horizOn|Example") FHorizonGiftCodeIntent GetPendingIntent() const;
 private:
     UHorizonSubsystem* Session() const;
     void Send(bool bRetry);
