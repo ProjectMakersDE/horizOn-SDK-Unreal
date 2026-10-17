@@ -26,7 +26,7 @@ def main():
     marker.unlink(missing_ok=True)
     environment = os.environ.copy()
     environment["MOCK_SERVER_READY_FILE"] = str(marker)
-    environment["HORIZON_ITEMS_FIXTURE_URL"] = "http://127.0.0.1:20115"
+    environment["HORIZON_MARKETPLACE_FIXTURE_URL"] = "http://127.0.0.1:20115"
     fixture = None
     engine = None
     with (report / "fixture.log").open("w") as fixture_log, (report / "editor-console.log").open("w") as editor_log:
