@@ -84,7 +84,7 @@ Once connected and signed in, call any manager method:
 | Leaderboard   | `Horizon->Leaderboard->SubmitScore()` | Submit Leaderboard Score |
 | Remote Config | `Horizon->RemoteConfig->GetAllConfigs()` | Get All Remote Configs |
 | News          | `Horizon->News->LoadNews()`   | Load News                  |
-| Gift Codes    | `Horizon->GiftCodes->Redeem()`| Redeem Gift Code           |
+| Gift Codes    | `PrepareRedemption()` then persist / `RedeemPrepared()` | PrepareRedemptionCode / RedeemPreparedCode           |
 | Player Profile | `Horizon->PlayerProfile->GetProfile()` / `SetProfile()` | Get Player Profile / Set Player Profile |
 | Validated Actions | `Horizon->ValidatedActions->StartRun()` / `SubmitValidated()` / `GetState()` / `UploadEvidence()` | Start Validated Run / Submit Validated Run / Get Validated Player State / Upload Validated Run Evidence |
 | Feedback      | `Horizon->Feedback->Submit()` | Submit Feedback            |

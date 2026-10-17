@@ -1,6 +1,7 @@
 // Copyright (c) 2025-2026 horizOn. All rights reserved.
 
 #include "Http/HorizonHttpClient.h"
+#include "Transport/HorizonGiftCodeTransportContract.h"
 #include "Http/HorizonLosslessJson.h"
 #include "Engine/Engine.h"
 #include "HorizonConfig.h"
@@ -232,8 +233,12 @@ void UHorizonHttpClient::PostJson(const TSharedRef<FJsonObject>& Body, const FSt
 	FTCHARToUTF8 Converter(*JsonString);
 	Payload.Append(reinterpret_cast<const uint8*>(Converter.Get()), Converter.Length());
 
-	FString IdempotencyId;
-	const bool HasId = Body->TryGetStringField(TEXT("idempotencyId"), IdempotencyId) && IdempotencyId.Len() <= 128 && HorizonTransportContract::HasNonBlankIdempotencyId(TCHAR_TO_UTF8(*IdempotencyId));
+	FString Campaign,Count,Revision; double Protocol=0;
+    const auto CampaignValue=Body->TryGetField(TEXT("campaignId")),CountValue=Body->TryGetField(TEXT("expectedCount")),RevisionValue=Body->TryGetField(TEXT("configRevision"));
+    const bool StringIdentity=CampaignValue && CampaignValue->Type==EJson::String && CountValue && CountValue->Type==EJson::String && RevisionValue && RevisionValue->Type==EJson::String;
+    const bool HasId=StringIdentity && Body->TryGetNumberField(TEXT("protocolVersion"),Protocol) && Protocol==2 && Body->TryGetStringField(TEXT("campaignId"),Campaign) &&
+        HorizonTransportContract::GiftUuid(TCHAR_TO_UTF8(*Campaign)) && Body->TryGetStringField(TEXT("expectedCount"),Count) && Body->TryGetStringField(TEXT("configRevision"),Revision) &&
+        HorizonTransportContract::GiftCount(TCHAR_TO_UTF8(*Count)) && HorizonTransportContract::GiftCount(TCHAR_TO_UTF8(*Revision));
 	const bool bAllowRetry = HorizonTransportContract::AllowJsonPostRetry(TCHAR_TO_UTF8(*Endpoint), HasId);
     SendRequest(TEXT("POST"), Url, TEXT("application/json"), Payload, bUseSessionToken, 0, OnComplete, TEXT(""), ExtraHeaders, bAllowRetry);
 }
@@ -248,8 +253,12 @@ void UHorizonHttpClient::PostJsonForBinary(const TSharedRef<FJsonObject>& Body, 
 	FTCHARToUTF8 Converter(*JsonString);
 	Payload.Append(reinterpret_cast<const uint8*>(Converter.Get()), Converter.Length());
 
-	FString IdempotencyId;
-	const bool HasId = Body->TryGetStringField(TEXT("idempotencyId"), IdempotencyId) && IdempotencyId.Len() <= 128 && HorizonTransportContract::HasNonBlankIdempotencyId(TCHAR_TO_UTF8(*IdempotencyId));
+	FString Campaign,Count,Revision; double Protocol=0;
+    const auto CampaignValue=Body->TryGetField(TEXT("campaignId")),CountValue=Body->TryGetField(TEXT("expectedCount")),RevisionValue=Body->TryGetField(TEXT("configRevision"));
+    const bool StringIdentity=CampaignValue && CampaignValue->Type==EJson::String && CountValue && CountValue->Type==EJson::String && RevisionValue && RevisionValue->Type==EJson::String;
+    const bool HasId=StringIdentity && Body->TryGetNumberField(TEXT("protocolVersion"),Protocol) && Protocol==2 && Body->TryGetStringField(TEXT("campaignId"),Campaign) &&
+        HorizonTransportContract::GiftUuid(TCHAR_TO_UTF8(*Campaign)) && Body->TryGetStringField(TEXT("expectedCount"),Count) && Body->TryGetStringField(TEXT("configRevision"),Revision) &&
+        HorizonTransportContract::GiftCount(TCHAR_TO_UTF8(*Count)) && HorizonTransportContract::GiftCount(TCHAR_TO_UTF8(*Revision));
 	const bool bAllowRetry = HorizonTransportContract::AllowJsonPostRetry(TCHAR_TO_UTF8(*Endpoint), HasId);
 	SendRequest(TEXT("POST"), Url, TEXT("application/json"), Payload, bUseSessionToken, 0, OnComplete,
 		TEXT("application/octet-stream"), TMap<FString,FString>(), bAllowRetry);

@@ -1,50 +1,14 @@
 #include "Transport/HorizonGiftCodeTransportContract.h"
-
+#include <cassert>
 #include <iostream>
-#include <stdexcept>
-#include <string>
-
-namespace
-{
-	void Require(bool Condition, const char* Message)
-	{
-		if (!Condition)
-		{
-			throw std::runtime_error(Message);
-		}
-	}
-}
-
-// Gift code redemption is bound to the player's Bearer session on the server (TASK-886).
 int main()
 {
-	using namespace HorizonTransportContract;
-
-	const FGiftCodeRedeemPlan Plan = BuildGiftCodeRedeemPlan("user-886", "session-token-886", "SUMMER2026");
-	Require(Plan.bShouldSend, "signed user did not produce a redeem plan");
-	Require(Plan.bUseSessionToken, "redeem must send the session token");
-	Require(Plan.Endpoint == "/api/v1/app/gift-codes/redeem", "incorrect redeem endpoint");
-	Require(Plan.BodyJson == "{\"code\":\"SUMMER2026\",\"userId\":\"user-886\"}", "incorrect redeem body");
-
-	bool bHasBearer = false;
-	for (const auto& Header : BuildHeaders("project-key-886", "session-token-886", Plan.bUseSessionToken))
-	{
-		if (Header.first == "Authorization" && Header.second == "Bearer session-token-886")
-		{
-			bHasBearer = true;
-		}
-	}
-	Require(bHasBearer, "redeem headers are missing the bearer session");
-
-	Require(!BuildGiftCodeRedeemPlan("", "session-token-886", "SUMMER2026").bShouldSend,
-		"missing user id did not block redeem");
-	Require(!BuildGiftCodeRedeemPlan("user-886", "", "SUMMER2026").bShouldSend,
-		"missing session token did not block redeem");
-	Require(!BuildGiftCodeRedeemPlan("user-886", "session-token-886", "").bShouldSend,
-		"empty code did not block redeem");
-	Require(BuildGiftCodeRedeemPlan("user-886", "session-token-886", "A\"B").BodyJson ==
-		"{\"code\":\"A\\\"B\",\"userId\":\"user-886\"}", "code is not JSON escaped");
-
-	std::cout << "Unreal SDK gift code transport contract passed\n";
-	return 0;
+ using namespace HorizonTransportContract;
+ assert(!BuildGiftCodeRedeemPlan("user","session","code").bShouldSend);
+ auto P=BuildGiftPreparedPlan("user","session","A\"B","00000000-0000-4000-8000-000000001007","9007199254740993","9223372036854775807");
+ assert(P.bShouldSend && P.bUseSessionToken && P.BodyJson.find("\"expectedCount\":\"9007199254740993\"")!=std::string::npos && P.BodyJson.find("A\\\"B")!=std::string::npos);
+ for(const auto Bad:{"","00","01","+1","-1","1.0","1e2","9223372036854775808"}) assert(!GiftCount(Bad));
+ assert(GiftCount("0") && GiftCount("9223372036854775807"));
+ assert(!BuildGiftPreparedPlan("user","","code","00000000-0000-4000-8000-000000001007","0","1").bShouldSend);
+ std::cout<<"Unreal V2 Gift tuple exact strings, V1 closure, session gate and Int64 overflow passed\n";
 }

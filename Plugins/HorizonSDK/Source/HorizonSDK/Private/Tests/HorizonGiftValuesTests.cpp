@@ -2,30 +2,24 @@
 #include "Misc/AutomationTest.h"
 #include "Managers/HorizonGiftCodeManager.h"
 #include "Managers/HorizonPlayerValuesManager.h"
+#include "Examples/HorizonGiftCodesExample.h"
+#include "Kismet/GameplayStatics.h"
 #include "HorizonConfig.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
+#include "Transport/HorizonGiftCodeTransportContract.h"
 
-struct FHorizonGiftValuesNative : TSharedFromThis<FHorizonGiftValuesNative>
+struct FHorizonGiftV2Native : TSharedFromThis<FHorizonGiftV2Native>
 {
-    FAutomationTestBase* Test;
-    UHorizonHttpClient* Http;
-    UHorizonAuthManager* Auth;
-    UHorizonGiftCodeManager* Gifts;
-    UHorizonPlayerValuesManager* Values;
-    TArray<FString> OriginalHosts;
-    FString OriginalKey;
-    int32 OriginalRetries;
-    float OriginalDelay;
-    int32 Stage=0;
-    bool bPending=false;
-    double Deadline=FPlatformTime::Seconds()+60;
+    FAutomationTestBase* Test; UHorizonHttpClient* Http; UHorizonAuthManager* Auth; UHorizonGiftCodeManager* Gifts; UHorizonPlayerValuesManager* Values;
+    TArray<FString> Hosts; FString Key; int32 Retries; float Delay; int32 Stage=0; bool Pending=false; bool PublicChecked=false;
+    FHorizonGiftCodeIntent Original,Second,Two,TwoSecond;
+    double Deadline=FPlatformTime::Seconds()+90;
     const FString User=TEXT("00000000-0000-4000-8000-000000001007");
-    FHorizonGiftValuesNative(FAutomationTestBase* InTest,const FString& Host):Test(InTest)
+    FHorizonGiftV2Native(FAutomationTestBase* T,const FString& Host):Test(T)
     {
-        auto* Config=GetMutableDefault<UHorizonConfig>();
-        OriginalHosts=Config->Hosts; OriginalKey=Config->ApiKey; OriginalRetries=Config->MaxRetryAttempts; OriginalDelay=Config->RetryDelaySeconds;
-        Config->Hosts={Host}; Config->ApiKey=TEXT("fixture-key-1007"); Config->MaxRetryAttempts=2; Config->RetryDelaySeconds=.1f;
+        auto* C=GetMutableDefault<UHorizonConfig>(); Hosts=C->Hosts; Key=C->ApiKey; Retries=C->MaxRetryAttempts; Delay=C->RetryDelaySeconds;
+        C->Hosts={Host}; C->ApiKey=TEXT("fixture-key-1007"); C->MaxRetryAttempts=2; C->RetryDelaySeconds=.05f;
         Http=NewObject<UHorizonHttpClient>(); Http->AddToRoot(); Http->Initialize();
         Auth=NewObject<UHorizonAuthManager>(); Auth->AddToRoot(); Auth->Initialize(Http);
         Values=NewObject<UHorizonPlayerValuesManager>(); Values->AddToRoot(); Values->Initialize(Http,Auth);
@@ -33,136 +27,125 @@ struct FHorizonGiftValuesNative : TSharedFromThis<FHorizonGiftValuesNative>
     }
     void Cleanup()
     {
-        Auth->SignOut(); Http->Disconnect(); Gifts->RemoveFromRoot(); Values->RemoveFromRoot(); Auth->RemoveFromRoot(); Http->RemoveFromRoot();
-        auto* Config=GetMutableDefault<UHorizonConfig>(); Config->Hosts=OriginalHosts; Config->ApiKey=OriginalKey; Config->MaxRetryAttempts=OriginalRetries; Config->RetryDelaySeconds=OriginalDelay;
+        UGameplayStatics::DeleteGameInSlot(TEXT("horizon-gift-v2-before-http"),0); Auth->SignOut(); Http->Disconnect(); Gifts->RemoveFromRoot(); Values->RemoveFromRoot(); Auth->RemoveFromRoot(); Http->RemoveFromRoot();
+        auto* C=GetMutableDefault<UHorizonConfig>(); C->Hosts=Hosts; C->ApiKey=Key; C->MaxRetryAttempts=Retries; C->RetryDelaySeconds=Delay;
     }
-    void Next() { ++Stage; bPending=false; }
-    FOnGiftCodeRedeemResultComplete Callback()
+    void Next() { ++Stage; Pending=false; }
+    void Prepare(const FString& Code)
     {
-        const int32 Sent=Stage; const TWeakPtr<FHorizonGiftValuesNative> Weak=AsShared();
-        return FOnGiftCodeRedeemResultComplete::CreateLambda([Weak,Sent](bool Ok,const FHorizonGiftCodeRedeemResult& Result,const FString& Code,const FString&)
+        const int32 Sent=Stage; const TWeakPtr<FHorizonGiftV2Native> Weak=AsShared();
+        Gifts->PrepareRedemption(Code,FOnGiftCodePrepareComplete::CreateLambda([Weak,Sent](bool Ok,const FHorizonGiftCodeIntent& I,const FString& Error,const FString&)
         {
-            if (auto Self=Weak.Pin())
+            if (auto S=Weak.Pin())
             {
-                const bool Expected=Sent==3 || Sent==4 || Sent==11 || Sent==17 || Sent==18 || Sent==23;
-                const FString ExpectedCode=Expected?TEXT(""):Sent==6?TEXT("PV_MAX_BALANCE"):(Sent==7 || Sent==8 || Sent==21 || Sent==22)?TEXT("INVALID_RESPONSE"):Sent==20?TEXT("REDEEM_REJECTED"):TEXT("STALE_RESPONSE");
-                Self->Test->TestEqual(FString::Printf(TEXT("Typed redeem stage %d success"),Sent),Ok,Expected);
-                Self->Test->TestEqual(TEXT("Stable typed error"),Code,ExpectedCode);
-                if (Sent==3 || Sent==4)
+                S->Test->TestEqual(TEXT("Prepared success"),Ok,Sent<25);
+                if(Sent>=25) S->Test->TestEqual(TEXT("Malformed canonical preparation refused"),Error,FString(TEXT("INVALID_RESPONSE")));
+                if(Sent==2)
                 {
-                    Self->Test->TestTrue(TEXT("Lost response and explicit replay preserve server marker"),Result.bReplayed);
-                    Self->Test->TestEqual(TEXT("Opaque giftData unchanged"),Result.GiftData,FString(TEXT("{\"original\":\"opaque\"}")));
-                    Self->Test->TestEqual(TEXT("Granted amount"),Result.GrantedValues.Num()==1?Result.GrantedValues[0].Amount:int64(-1),int64(7));
-                    const auto State=Self->Values->GetCurrentState();
-                    Self->Test->TestEqual(TEXT("Complete authoritative balance; no delta addition on replay"),State.Values.Num()==1?State.Values[0].Balance:int64(-1),int64(100));
+                    S->Original=I;
+                    auto* Save=Cast<UHorizonGiftCodePendingRedeem>(UGameplayStatics::CreateSaveGameObject(UHorizonGiftCodePendingRedeem::StaticClass())); Save->Intent=I;
+                    S->Test->TestTrue(TEXT("Durable original tuple before first HTTP redemption"),UGameplayStatics::SaveGameToSlot(Save,TEXT("horizon-gift-v2-before-http"),0));
                 }
-                if (Sent==6 || Sent==7 || Sent==8 || Sent==9) Self->Test->TestEqual(TEXT("Rejected receipt preserves previous balance revision"),Self->Values->GetCurrentState().Revision,int64(30));
-                if (Sent==10) Self->Test->TestFalse(TEXT("PV clear fences grant adoption"),Self->Values->GetCurrentState().bPresent);
-                if (Sent==12 || Sent==13 || Sent==14 || Sent==15) Self->Test->TestTrue(TEXT("Invalidated receipt not cached"),Self->Gifts->GetLastGrantedUnlocks().IsEmpty());
-                if (Sent==18)
-                {
-                    Self->Test->TestEqual(TEXT("Literal null string stays a string"),Result.GiftData,FString(TEXT("null")));
-                    Self->Test->TestTrue(TEXT("Missing additive fields default empty"),Result.GrantedValues.IsEmpty() && !Result.PlayerValues.bPresent && !Result.bReplayed);
-                }
-                Self->Next();
+                if(Sent==3) { S->Second=I; S->Test->TestTrue(TEXT("Two devices prepare identical slot"),I.SameIdentity(S->Original)); }
+                if(Sent==6) S->Test->TestNotEqual(TEXT("Visible code reused for new immutable campaign"),I.CampaignId,S->Original.CampaignId);
+                if(Sent==21) S->Two=I;
+                if(Sent==22) S->TwoSecond=I;
+                if(Ok) { S->Test->TestEqual(TEXT("Count exceeds JS safe integer exactly"),I.ExpectedCount,FString(TEXT("9007199254740993"))); S->Test->TestEqual(TEXT("Revision at Int64 max exactly"),I.ConfigRevision,FString(TEXT("9223372036854775807"))); }
+                S->Next();
             }
-        });
+        }));
+    }
+    void Redeem(const FHorizonGiftCodeIntent& I)
+    {
+        const int32 Sent=Stage; const TWeakPtr<FHorizonGiftV2Native> Weak=AsShared();
+        Gifts->RedeemPrepared(I,FOnGiftCodeRedeemResultComplete::CreateLambda([Weak,Sent](bool Ok,const FHorizonGiftCodeRedeemResult& R,const FString& Error,const FString&)
+        {
+            if(auto S=Weak.Pin())
+            {
+                const bool Expected=Sent==4 || Sent==5 || Sent==7 || Sent==23 || Sent==24;
+                S->Test->TestEqual(FString::Printf(TEXT("V2 redeem stage%d"),Sent),Ok,Expected);
+                if(Expected)
+                {
+                    S->Test->TestEqual(TEXT("Current balance adopted without adding grants"),S->Values->GetCurrentState().Values[0].Balance,int64(100));
+                    if(Sent!=23) { S->Test->TestTrue(TEXT("Replay marks consumed sequence"),R.bReplayed && R.bAlreadyApplied); S->Test->TestTrue(TEXT("No replay rewards"),R.GiftData.IsEmpty() && R.GrantedValues.IsEmpty() && R.GrantedUnlocks.IsEmpty()); }
+                    else S->Test->TestTrue(TEXT("Fresh immediate grant"),!R.bAlreadyApplied && R.GrantedValues.Num()==1 && R.GrantedValues[0].Amount==7);
+                }
+                if(Sent>=8 && Sent<=12) { const TCHAR* Errors[]={TEXT("COUNT_AHEAD"),TEXT("CAMPAIGN_CHANGED"),TEXT("UPGRADE_REQUIRED"),TEXT("MIGRATION_REQUIRED"),TEXT("COUNTER_EXHAUSTED")}; S->Test->TestEqual(TEXT("Domain code preserved with no new intent"),Error,FString(Errors[Sent-8])); }
+                if(Sent>=13 && Sent<=15) S->Test->TestEqual(TEXT("Malformed exact result/history rejected"),Error,FString(TEXT("INVALID_RESPONSE")));
+                if(Sent>=16 && Sent<=19) S->Test->TestEqual(TEXT("In-flight scope/cache fence"),Error,FString(TEXT("STALE_RESPONSE")));
+                S->Next();
+            }
+        }));
     }
     bool Update()
     {
-        if (FPlatformTime::Seconds()>Deadline) { Test->AddError(FString::Printf(TEXT("GiftValues timeout stage %d"),Stage)); Cleanup(); return true; }
-        if (bPending) return false;
-        bPending=true; const TWeakPtr<FHorizonGiftValuesNative> Weak=AsShared();
-        if (Stage==0) Http->ConnectToServer(FOnRequestComplete::CreateLambda([Weak](bool Ok,const FString&) { if (auto Self=Weak.Pin()) { Self->Test->TestTrue(TEXT("Loopback connected"),Ok); Self->Next(); } }));
-        else if (Stage==1 || Stage==16) Auth->SignInAnonymous(TEXT("fixture-anonymous-1007"),FOnAuthComplete::CreateLambda([Weak](bool Ok) { if (auto Self=Weak.Pin()) { Self->Test->TestTrue(TEXT("Existing identity restored"),Ok); Self->Next(); } }));
-        else if (Stage==2 || Stage==5 || Stage==19)
+        if(FPlatformTime::Seconds()>Deadline) { Test->AddError(FString::Printf(TEXT("V2 timeout stage%d"),Stage)); Cleanup(); return true; }
+        if(Pending) return false; Pending=true; const TWeakPtr<FHorizonGiftV2Native> Weak=AsShared();
+        if(Stage==0) Http->ConnectToServer(FOnRequestComplete::CreateLambda([Weak](bool Ok,const FString&) { if(auto S=Weak.Pin()) { S->Test->TestTrue(TEXT("Connected"),Ok); S->Next(); } }));
+        else if(Stage==1 && !PublicChecked) Gifts->Validate(TEXT("PUBLIC"),FOnGiftCodeValidateComplete::CreateLambda([Weak](bool Ok,bool Valid) { if(auto S=Weak.Pin()) { S->Test->TestTrue(TEXT("Public validate needs no player session"),Ok && Valid); S->PublicChecked=true; S->Pending=false; } }));
+        else if(Stage==1 || Stage==20) Auth->SignInAnonymous(TEXT("fixture-anonymous-1007"),FOnAuthComplete::CreateLambda([Weak](bool Ok) { if(auto S=Weak.Pin()) { S->Test->TestTrue(TEXT("Original player restored"),Ok); S->Next(); } }));
+        else if(Stage==2 || Stage==3 || Stage==6) Prepare(TEXT("VALUES"));
+        else if(Stage==4 || Stage==7) Redeem(Original);
+        else if(Stage==5)
         {
-            const int32 Sent=Stage;
-            Gifts->Redeem(Stage==2?TEXT("LEGACY"):Stage==5?TEXT("LEGACY-503"):TEXT("NULL"),FOnGiftCodeRedeemComplete::CreateLambda([Weak,Sent](bool Ok,const FString& Data,const FString&)
-            {
-                if (auto Self=Weak.Pin())
-                {
-                    Self->Test->TestEqual(TEXT("Legacy callback remains compatible"),Ok,Sent!=5);
-                    if (Sent==2) Self->Test->TestEqual(TEXT("Original legacy payload"),Data,FString(TEXT("{\"untouched\":true}")));
-                    if (Sent==19) Self->Test->TestTrue(TEXT("Nullable giftData maps to legacy empty string"),Data.IsEmpty());
-                    Self->Next();
-                }
-            }));
+            auto* Loaded=Cast<UHorizonGiftCodePendingRedeem>(UGameplayStatics::LoadGameFromSlot(TEXT("horizon-gift-v2-before-http"),0));
+            Test->TestTrue(TEXT("Read original durable identity after uncertain outcome"),Loaded && Loaded->Intent.SameIdentity(Original));
+            if(!Loaded) { Cleanup(); return true; } Redeem(Loaded->Intent);
         }
-        else if (Stage==3 || Stage==4) Gifts->RedeemWithIdempotency(TEXT("VALUES"),TEXT("original-1007"),Callback());
-        else if (Stage==6) Gifts->RedeemWithIdempotency(TEXT("MAX"),TEXT("max-1007"),Callback());
-        else if (Stage==7) Gifts->RedeemWithIdempotency(TEXT("FRACTION"),TEXT("fraction-1007"),Callback());
-        else if (Stage==8) Gifts->RedeemWithIdempotency(TEXT("WRONG-USER"),TEXT("wrong-user-1007"),Callback());
-        else if (Stage==9) Gifts->RedeemWithIdempotency(TEXT("OLD"),TEXT("old-1007"),Callback());
-        else if (Stage==10) { Gifts->RedeemWithIdempotency(TEXT("PV-CLEAR"),TEXT("pv-clear-1007"),Callback()); Values->ClearCache(); }
-        else if (Stage==11) Gifts->RedeemWithIdempotency(TEXT("BASELINE"),TEXT("baseline-1007"),Callback());
-        else if (Stage==12) { Gifts->RedeemWithIdempotency(TEXT("GIFT-CLEAR"),TEXT("gift-clear-1007"),Callback()); Gifts->ClearCache(); }
-        else if (Stage==13) { Gifts->RedeemWithIdempotency(TEXT("SESSION-ABA"),TEXT("session-aba-1007"),Callback()); Http->SetSessionToken(TEXT("other")); Http->SetSessionToken(TEXT("fixture-session-1007")); }
-        else if (Stage==14)
+        else if(Stage>=8 && Stage<=19)
         {
-            Gifts->RedeemWithIdempotency(TEXT("PROJECT-ABA"),TEXT("project-aba-1007"),Callback());
-            auto* Config=GetMutableDefault<UHorizonConfig>(); Config->ApiKey=TEXT("other"); Http->Initialize(); Config->ApiKey=TEXT("fixture-key-1007"); Http->Initialize();
+            const TCHAR* Codes[]={TEXT("COUNT_AHEAD"),TEXT("CAMPAIGN_CHANGED"),TEXT("UPGRADE_REQUIRED"),TEXT("MIGRATION_REQUIRED"),TEXT("COUNTER_EXHAUSTED"),TEXT("NUMERIC"),TEXT("OVERFLOW"),TEXT("HISTORY"),TEXT("CACHE"),TEXT("SESSION"),TEXT("PROJECT"),TEXT("SIGNOUT")};
+            auto I=Original; I.Code=Codes[Stage-8]; Redeem(I);
+            if(Stage==16) Values->ClearCache();
+            if(Stage==17) { Http->SetSessionToken(TEXT("temporary")); Http->SetSessionToken(TEXT("fixture-session-1007")); }
+            if(Stage==18) { auto* C=GetMutableDefault<UHorizonConfig>(); C->ApiKey=TEXT("other"); Http->Initialize(); C->ApiKey=TEXT("fixture-key-1007"); Http->Initialize(); }
+            if(Stage==19) Auth->SignOut();
         }
-        else if (Stage==15) { Gifts->RedeemWithIdempotency(TEXT("SIGNOUT"),TEXT("signout-1007"),Callback()); Auth->SignOut(); }
-        else if (Stage==17) Gifts->RedeemWithIdempotency(TEXT("RESTORED"),TEXT("restored-1007"),Callback());
-        else if (Stage==18) Gifts->RedeemWithIdempotency(TEXT("OLD-TYPED"),TEXT("old-typed-1007"),Callback());
-        else if (Stage==20) Gifts->RedeemWithIdempotency(TEXT("REJECTED"),TEXT("rejected-1007"),Callback());
-        else if (Stage==21) Gifts->RedeemWithIdempotency(TEXT("BAD-REPLAY"),TEXT("bad-replay-1007"),Callback());
-        else if (Stage==22) Gifts->RedeemWithIdempotency(TEXT("NO-STATE"),TEXT("no-state-1007"),Callback());
-        else if (Stage==23)
-        {
-            Gifts->RedeemWithIdempotency(TEXT("BUSY"),TEXT("busy-1007"),Callback());
-            bool Rejected=false;
-            Gifts->RedeemWithIdempotency(TEXT("DO-NOT-SEND"),TEXT("other-intent"),FOnGiftCodeRedeemResultComplete::CreateLambda([&](bool Ok,const FHorizonGiftCodeRedeemResult&,const FString& Code,const FString&) { Rejected=!Ok && Code==TEXT("REQUEST_IN_PROGRESS"); }));
-            Test->TestTrue(TEXT("Concurrent redeem does not invent or overtake original intent"),Rejected);
-        }
+        else if(Stage==21 || Stage==22) Prepare(TEXT("TWO"));
+        else if(Stage==23) Redeem(Two);
+        else if(Stage==24) Redeem(TwoSecond);
+        else if(Stage==25 || Stage==26) Prepare(Stage==25?TEXT("NUMERIC"):TEXT("OVERFLOW"));
         else
         {
-            for (const FString& Id:{FString(),FString(TEXT(" ")),FString(TEXT("\u00a0")),FString(TEXT("\u2007")),FString::ChrN(129,'x')})
-            {
-                bool Rejected=false;
-                Gifts->RedeemWithIdempotency(TEXT("DO-NOT-SEND"),Id,FOnGiftCodeRedeemResultComplete::CreateLambda([&](bool Ok,const FHorizonGiftCodeRedeemResult&,const FString& Code,const FString&) { Rejected=!Ok && Code==TEXT("INVALID_REQUEST"); }));
-                Test->TestTrue(TEXT("Invalid original IDs rejected before HTTP"),Rejected);
-            }
-            Auth->SignOut(); bool Rejected=false;
-            Gifts->RedeemWithIdempotency(TEXT("DO-NOT-SEND"),TEXT("original"),FOnGiftCodeRedeemResultComplete::CreateLambda([&](bool Ok,const FHorizonGiftCodeRedeemResult&,const FString& Code,const FString&) { Rejected=!Ok && Code==TEXT("SESSION_REQUIRED"); }));
-            Test->TestTrue(TEXT("Signed-out requests stay local"),Rejected);
-            Test->TestTrue(TEXT("Signed-out last grants are hidden"),Gifts->GetLastGrantedUnlocks().IsEmpty());
+            bool Rejected=false;
+            Gifts->RedeemWithIdempotency(TEXT("DO-NOT-SEND"),TEXT("old-id"),FOnGiftCodeRedeemResultComplete::CreateLambda([&](bool Ok,const FHorizonGiftCodeRedeemResult&,const FString& E,const FString&) { Rejected=!Ok && E==TEXT("UPGRADE_REQUIRED"); }));
+            Test->TestTrue(TEXT("V1 explicit upgrade without translating ID"),Rejected);
+            auto Wrong=Original; Wrong.UserId=TEXT("other"); Rejected=false;
+            Gifts->RedeemPrepared(Wrong,FOnGiftCodeRedeemResultComplete::CreateLambda([&](bool Ok,const FHorizonGiftCodeRedeemResult&,const FString& E,const FString&) { Rejected=!Ok && E==TEXT("INVALID_REQUEST"); }));
+            Test->TestTrue(TEXT("Cannot move intent to another owner"),Rejected);
+            const FString Slot=TEXT("horizon-gift-v2-native-artificial");
+            auto* Save=Cast<UHorizonGiftCodePendingRedeem>(UGameplayStatics::CreateSaveGameObject(UHorizonGiftCodePendingRedeem::StaticClass())); Save->Intent=Original;
+            Test->TestTrue(TEXT("Persist original tuple"),UGameplayStatics::SaveGameToSlot(Save,Slot,0));
+            auto* Loaded=Cast<UHorizonGiftCodePendingRedeem>(UGameplayStatics::LoadGameFromSlot(Slot,0)); Test->TestTrue(TEXT("Restart roundtrip keeps every exact field"),Loaded && Loaded->Intent.SameIdentity(Original)); UGameplayStatics::DeleteGameInSlot(Slot,0);
+            Auth->SignOut(); Rejected=false;
+            Gifts->RedeemPrepared(Original,FOnGiftCodeRedeemResultComplete::CreateLambda([&](bool Ok,const FHorizonGiftCodeRedeemResult&,const FString& E,const FString&) { Rejected=!Ok && E==TEXT("SESSION_REQUIRED"); }));
+            Test->TestTrue(TEXT("Signed-out intent never sent"),Rejected);
             Cleanup(); return true;
         }
         return false;
     }
 };
-DEFINE_LATENT_AUTOMATION_COMMAND_ONE_PARAMETER(FWaitForHorizonGiftValues,TSharedPtr<FHorizonGiftValuesNative>,State);
-bool FWaitForHorizonGiftValues::Update() { return State->Update(); }
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHorizonGiftValuesTransportTest,"Horizon.GiftValues.NativeTransport",EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-bool FHorizonGiftValuesTransportTest::RunTest(const FString&)
+DEFINE_LATENT_AUTOMATION_COMMAND_ONE_PARAMETER(FWaitForGiftV2,TSharedPtr<FHorizonGiftV2Native>,State);
+bool FWaitForGiftV2::Update() { return State->Update(); }
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FGiftV2Transport,"Horizon.GiftValues.NativeTransport",EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FGiftV2Transport::RunTest(const FString&)
 {
     const FString Host=FPlatformMisc::GetEnvironmentVariable(TEXT("HORIZON_GIFT_VALUES_FIXTURE_URL"));
-    if (Host.IsEmpty()) { AddWarning(TEXT("Set loopback HORIZON_GIFT_VALUES_FIXTURE_URL for native proof")); return true; }
-    if (!Host.StartsWith(TEXT("http://127.0.0.1:"))) { AddError(TEXT("Only artificial loopback accepted")); return false; }
-    TestNotNull(TEXT("Blueprint explicit-ID method"),UHorizonGiftCodeManager::StaticClass()->FindFunctionByName(TEXT("RedeemCodeWithIdempotency")));
-    ADD_LATENT_AUTOMATION_COMMAND(FWaitForHorizonGiftValues(MakeShared<FHorizonGiftValuesNative>(this,Host)));
-    return true;
+    if(!Host.StartsWith(TEXT("http://127.0.0.1:"))) { AddError(TEXT("Artificial loopback fixture required")); return false; }
+    TestNotNull(TEXT("Blueprint prepare"),UHorizonGiftCodeManager::StaticClass()->FindFunctionByName(TEXT("PrepareRedemptionCode")));
+    TestNotNull(TEXT("Blueprint send prepared"),UHorizonGiftCodeManager::StaticClass()->FindFunctionByName(TEXT("RedeemPreparedCode")));
+    ADD_LATENT_AUTOMATION_COMMAND(FWaitForGiftV2(MakeShared<FHorizonGiftV2Native>(this,Host))); return true;
 }
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHorizonGiftValuesModelTest,"Horizon.GiftValues.StrictModels",EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-bool FHorizonGiftValuesModelTest::RunTest(const FString&)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FGiftV2Models,"Horizon.GiftValues.StrictModels",EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FGiftV2Models::RunTest(const FString&)
 {
-    auto Parse=[](const FString& Text,FHorizonGiftCodeRedeemResult& Result)
-    { TSharedPtr<FJsonObject> Json; return FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Text),Json,FJsonSerializer::EFlags::StoreNumbersAsStrings) && FHorizonGiftCodeRedeemResult::TryFromJson(Json,Result); };
-    const FString Base=TEXT("{\"success\":true,\"message\":\"accepted\",\"giftData\":\"{\\\"opaque\\\":true}\",\"grantedValues\":[{\"key\":\"0.gold-test\",\"amount\":%s}],\"playerValues\":{\"userId\":\"00000000-0000-4000-8000-000000001007\",\"day\":\"2026-10-16\",\"revision\":1,\"definitionVersion\":1,\"values\":[],\"operationWindow\":{\"serverTime\":\"2026-10-16T00:00:01Z\",\"oldestAcceptedAt\":\"2026-09-16T00:00:01Z\"}},\"replayed\":true}");
-    for (const FString& Number:{FString(TEXT("9007199254740991")),FString(TEXT("9007199254740992")),FString(TEXT("9007199254740991.1")),FString(TEXT("1e3")),FString(TEXT("0")),FString(TEXT("-1"))})
-    {
-        FHorizonGiftCodeRedeemResult Result; const bool Expected=Number==TEXT("9007199254740991");
-        TestEqual(TEXT("Positive safe integer from original token"),Parse(Base.Replace(TEXT("%s"),*Number),Result),Expected);
-        if (Expected) TestEqual(TEXT("Exact int64 preserved"),Result.GrantedValues[0].Amount,int64(9007199254740991LL));
-    }
-    FHorizonGiftCodeRedeemResult Result;
-    TestTrue(TEXT("Older response without additive fields"),Parse(TEXT("{\"success\":true,\"message\":\"old\",\"giftData\":\"null\"}"),Result));
-    TestEqual(TEXT("Opaque literal null unchanged"),Result.GiftData,FString(TEXT("null")));
-    TestTrue(TEXT("Older defaults empty"),Result.GrantedValues.IsEmpty() && !Result.PlayerValues.bPresent && !Result.bReplayed);
-    for (const FString& Bad:{FString(TEXT("{\"success\":true,\"message\":\"bad\",\"grantedValues\":null}")),FString(TEXT("{\"success\":true,\"message\":\"bad\",\"replayed\":\"true\"}")),Base.Replace(TEXT("%s"),TEXT("1")).Replace(TEXT("\"amount\":1}"),TEXT("\"amount\":1},{\"key\":\"0.gold-test\",\"amount\":1}")),Base.Replace(TEXT("%s"),TEXT("1")).Replace(TEXT("\"success\":true"),TEXT("\"success\":\"true\"")),Base.Replace(TEXT("%s"),TEXT("1")).Replace(TEXT("\"message\":\"accepted\""),TEXT("\"message\":7")),Base.Replace(TEXT("%s"),TEXT("1")).Replace(TEXT("\"key\":\"0.gold-test\""),TEXT("\"key\":7"))})
-        TestFalse(TEXT("Malformed additive fields and duplicates rejected"),Parse(Bad,Result));
+    for(const auto* Bad:{TEXT(""),TEXT("00"),TEXT("01"),TEXT("+1"),TEXT("-1"),TEXT("1.0"),TEXT("1e2"),TEXT("9223372036854775808")}) TestFalse(TEXT("Invalid Int64 lexeme"),HorizonTransportContract::GiftCount(TCHAR_TO_UTF8(Bad)));
+    auto Parse=[](const FString& S) { TSharedPtr<FJsonObject> J; FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(S),J,FJsonSerializer::EFlags::StoreNumbersAsStrings); return J; };
+    const FString Valid=TEXT("{\"valid\":true,\"protocolVersion\":2,\"campaignId\":\"00000000-0000-4000-8000-000000101007\",\"expectedCount\":\"9007199254740993\",\"configRevision\":\"9223372036854775807\"}");
+    FHorizonGiftCodeIntent I;
+    TestTrue(TEXT("Exact strings parsed natively"),FHorizonGiftCodeIntent::TryPrepare(Parse(Valid),TEXT("scope"),TEXT("user"),TEXT("code"),I));
+    TestFalse(TEXT("JSON number never coerces to a count string"),FHorizonGiftCodeIntent::TryPrepare(Parse(Valid.Replace(TEXT("\"9007199254740993\""),TEXT("9007199254740993"))),TEXT("scope"),TEXT("user"),TEXT("code"),I));
+    TestFalse(TEXT("Overflow rejected"),FHorizonGiftCodeIntent::TryPrepare(Parse(Valid.Replace(TEXT("9007199254740993"),TEXT("9223372036854775808"))),TEXT("scope"),TEXT("user"),TEXT("code"),I));
     return true;
 }
 #endif

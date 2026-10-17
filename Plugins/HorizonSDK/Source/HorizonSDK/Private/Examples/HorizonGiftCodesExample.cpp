@@ -11,10 +11,8 @@ namespace HorizonGiftCodesExampleStorage
 FString Project(UHorizonSubsystem* SDK) { return FMD5::HashAnsiString(*SDK->GetHttpClient()->GetApiKey()); }
 FString Slot(const FString& Project,const FString& User) { return TEXT("horizon-gift-redeem-")+FMD5::HashAnsiString(*(Project+TEXT("|")+User)); }
 bool Valid(const UHorizonGiftCodePendingRedeem* Pending,const FString& Project,const FString& User)
-{
-    return Pending && Pending->ProjectScope==Project && Pending->UserId==User && !Pending->Code.TrimStartAndEnd().IsEmpty() && Pending->Code.Len()<=50 &&
-        Pending->IdempotencyId.Len()<=128 && HorizonTransportContract::HasNonBlankIdempotencyId(TCHAR_TO_UTF8(*Pending->IdempotencyId));
-}
+{ return Pending && Pending->Intent.IsValidFor(Project,User); }
+
 }
 AHorizonGiftCodesExample::AHorizonGiftCodesExample() { PrimaryActorTick.bCanEverTick=false; }
 UHorizonSubsystem* AHorizonGiftCodesExample::Session() const
@@ -24,12 +22,12 @@ UHorizonSubsystem* AHorizonGiftCodesExample::Session() const
 }
 void AHorizonGiftCodesExample::RedeemGiftCode() { Send(false); }
 void AHorizonGiftCodesExample::RetryPendingRedemption() { Send(true); }
-FString AHorizonGiftCodesExample::GetPendingIdempotencyId() const
+FHorizonGiftCodeIntent AHorizonGiftCodesExample::GetPendingIntent() const
 {
     auto* SDK=Session(); if (!SDK) return {};
     const FString Project=HorizonGiftCodesExampleStorage::Project(SDK),User=SDK->Auth->GetCurrentUser().UserId;
     auto* Pending=Cast<UHorizonGiftCodePendingRedeem>(UGameplayStatics::LoadGameFromSlot(HorizonGiftCodesExampleStorage::Slot(Project,User),0));
-    return HorizonGiftCodesExampleStorage::Valid(Pending,Project,User)?Pending->IdempotencyId:FString();
+    return HorizonGiftCodesExampleStorage::Valid(Pending,Project,User)?Pending->Intent:FHorizonGiftCodeIntent();
 }
 void AHorizonGiftCodesExample::Send(bool Retry)
 {
@@ -41,27 +39,33 @@ void AHorizonGiftCodesExample::Send(bool Retry)
     if (Existing && !HorizonGiftCodesExampleStorage::Valid(Pending,Project,User))
     { UE_LOG(LogTemp,Warning,TEXT("[GiftCodesExample] Stored original intent needs recovery; nothing sent or replaced")); return; }
     if (Retry && !Existing) return;
-    if (!Retry && Existing && Pending->Code!=GiftCode)
-    { UE_LOG(LogTemp,Warning,TEXT("[GiftCodesExample] Finish the original pending code before starting another")); return; }
-    if (!Pending)
-    {
-        if (GiftCode.TrimStartAndEnd().IsEmpty() || GiftCode.Len()>50) return;
-        Pending=Cast<UHorizonGiftCodePendingRedeem>(UGameplayStatics::CreateSaveGameObject(UHorizonGiftCodePendingRedeem::StaticClass()));
-        Pending->ProjectScope=Project; Pending->UserId=User; Pending->Code=GiftCode; Pending->IdempotencyId=FGuid::NewGuid().ToString(EGuidFormats::DigitsWithHyphens);
-        if (!UGameplayStatics::SaveGameToSlot(Pending,Slot,0))
-        { UE_LOG(LogTemp,Warning,TEXT("[GiftCodesExample] Could not persist original intent; nothing sent")); return; }
-    }
-    const FString OriginalCode=Pending->Code,OriginalId=Pending->IdempotencyId;
+    if (!Retry && Existing) { UE_LOG(LogTemp,Warning,TEXT("Resolve or explicitly retry the saved tuple first")); return; }
     bSending=true;
-    SDK->GiftCodes->RedeemWithIdempotency(OriginalCode,OriginalId,FOnGiftCodeRedeemResultComplete::CreateWeakLambda(this,
-        [this,Slot,Project,User,OriginalCode,OriginalId](bool Success,const FHorizonGiftCodeRedeemResult& Result,const FString& Code,const FString&)
-        {
-            bSending=false;
-            if (!Success) { UE_LOG(LogTemp,Warning,TEXT("[GiftCodesExample] Keep original intent for explicit recovery/retry: %s"),*Code); return; }
-            auto* Stored=Cast<UHorizonGiftCodePendingRedeem>(UGameplayStatics::LoadGameFromSlot(Slot,0));
-            if (HorizonGiftCodesExampleStorage::Valid(Stored,Project,User) && Stored->Code==OriginalCode && Stored->IdempotencyId==OriginalId)
-                if (!UGameplayStatics::DeleteGameInSlot(Slot,0)) UE_LOG(LogTemp,Warning,TEXT("[GiftCodesExample] Receipt accepted; retain original ID for safe replay"));
-            // Render Result.PlayerValues or the manager's complete state. Never add GrantedValues locally.
-            UE_LOG(LogTemp,Log,TEXT("[GiftCodesExample] Receipt accepted (replayed=%s, %d value grants)"),Result.bReplayed?TEXT("true"):TEXT("false"),Result.GrantedValues.Num());
-        }));
+    if (Pending) { Dispatch(SDK,Pending->Intent,Slot); return; }
+    SDK->GiftCodes->PrepareRedemption(GiftCode,FOnGiftCodePrepareComplete::CreateWeakLambda(this,[this,Project,User,Slot](bool Ok,const FHorizonGiftCodeIntent& Intent,const FString& Error,const FString&)
+    {
+        auto* Current=Session();
+        if (!Ok || !Current || HorizonGiftCodesExampleStorage::Project(Current)!=Project || Current->Auth->GetCurrentUser().UserId!=User)
+        { bSending=false; UE_LOG(LogTemp,Warning,TEXT("Preparation stopped: %s"),*Error); return; }
+        if (UGameplayStatics::DoesSaveGameExist(Slot,0)) { bSending=false; return; }
+        auto* Saved=Cast<UHorizonGiftCodePendingRedeem>(UGameplayStatics::CreateSaveGameObject(UHorizonGiftCodePendingRedeem::StaticClass()));
+        Saved->Intent=Intent;
+        if (!UGameplayStatics::SaveGameToSlot(Saved,Slot,0)) { bSending=false; return; }
+        auto* Verified=Cast<UHorizonGiftCodePendingRedeem>(UGameplayStatics::LoadGameFromSlot(Slot,0));
+        if (!Verified || !Verified->Intent.SameIdentity(Intent)) { bSending=false; return; }
+        Dispatch(Current,Intent,Slot);
+    }));
+}
+void AHorizonGiftCodesExample::Dispatch(UHorizonSubsystem* SDK,const FHorizonGiftCodeIntent& Intent,const FString& Slot)
+{
+    SDK->GiftCodes->RedeemPrepared(Intent,FOnGiftCodeRedeemResultComplete::CreateWeakLambda(this,[this,Intent,Slot](bool Ok,const FHorizonGiftCodeRedeemResult& Result,const FString& Error,const FString&)
+    {
+        bSending=false;
+        if (!Ok) { UE_LOG(LogTemp,Warning,TEXT("Keep original tuple for recovery/retry: %s"),*Error); return; }
+        auto* Current=Session();
+        if (!Current || !Intent.IsValidFor(HorizonGiftCodesExampleStorage::Project(Current),Current->Auth->GetCurrentUser().UserId)) return;
+        auto* Saved=Cast<UHorizonGiftCodePendingRedeem>(UGameplayStatics::LoadGameFromSlot(Slot,0));
+        if (Saved && Saved->Intent.SameIdentity(Intent)) UGameplayStatics::DeleteGameInSlot(Slot,0);
+        UE_LOG(LogTemp,Log,TEXT("Current state accepted; alreadyApplied=%s, no historical rewards on replay"),Result.bAlreadyApplied?TEXT("true"):TEXT("false"));
+    }));
 }

@@ -121,9 +121,10 @@ struct FHorizonRateLimitNativeState : TSharedFromThis<FHorizonRateLimitNativeSta
         else if (Stage>=8 && Stage<=10)
         {
             Body=MakeShared<FJsonObject>(); Body->SetStringField(TEXT("code"),Stage==8?TEXT("legacy"):Stage==9?TEXT("blank"):TEXT("explicit"));
-            if (Stage>=9) Body->SetStringField(TEXT("idempotencyId"),Stage==9?TEXT("\u00a0"):TEXT("original-id"));
+            if(Stage==9) Body->SetStringField(TEXT("idempotencyId"),TEXT("\u00a0"));
+            if(Stage==10) { Body->SetNumberField(TEXT("protocolVersion"),2); Body->SetStringField(TEXT("campaignId"),TEXT("00000000-0000-4000-8000-000000001007")); Body->SetStringField(TEXT("expectedCount"),TEXT("9007199254740993")); Body->SetStringField(TEXT("configRevision"),TEXT("9223372036854775807")); }
             Http->PostJson(Body,TEXT("/api/v1/app/gift-codes/redeem"),true,Callback());
-            Body->SetStringField(TEXT("idempotencyId"),TEXT("caller-replaced-id"));
+            Body->SetStringField(TEXT("expectedCount"),TEXT("caller-replaced-count"));
         }
         else if (Stage==11)
         {

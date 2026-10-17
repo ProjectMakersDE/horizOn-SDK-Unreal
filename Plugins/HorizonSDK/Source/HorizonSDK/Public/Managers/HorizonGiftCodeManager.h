@@ -12,6 +12,8 @@
 class UHorizonPlayerProfileManager;
 class UHorizonPlayerValuesManager;
 
+DECLARE_DELEGATE_FourParams(FOnGiftCodePrepareComplete,bool,const FHorizonGiftCodeIntent&,const FString&,const FString&);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_FourParams(FOnGiftCodePrepared,bool,bSuccess,const FHorizonGiftCodeIntent&,Intent,const FString&,Code,const FString&,Message);
 DECLARE_DELEGATE_ThreeParams(FOnGiftCodeRedeemComplete, bool /*bSuccess*/, const FString& /*GiftData*/, const FString& /*Message*/);
 DECLARE_DELEGATE_TwoParams(FOnGiftCodeValidateComplete, bool /*bRequestSuccess*/, bool /*bValid*/);
 DECLARE_DELEGATE_FourParams(FOnGiftCodeRedeemResultComplete,bool,const FHorizonGiftCodeRedeemResult&,const FString&,const FString&);
@@ -33,15 +35,21 @@ public:
 	void Initialize(UHorizonHttpClient* InHttpClient, UHorizonAuthManager* InAuthManager);
 
 	/**
-	 * Redeem a gift code for the current user.
+	 * V1 compatibility entry: always reports UPGRADE_REQUIRED without HTTP.
 	 * @param Code       The gift code to redeem.
 	 * @param OnComplete Called with (bSuccess, GiftData, Message).
 	 */
 	void Redeem(const FString& Code, FOnGiftCodeRedeemComplete OnComplete);
 
-	/** Persist the caller's original ID before the first send; retries never replace it. */
+	/** Read-only preparation. Persist the complete intent before RedeemPrepared. */
+    void PrepareRedemption(const FString& Code,FOnGiftCodePrepareComplete OnComplete);
+    void RedeemPrepared(const FHorizonGiftCodeIntent& Intent,FOnGiftCodeRedeemResultComplete OnComplete);
+    UFUNCTION(BlueprintCallable,Category="horizOn|GiftCodes") void PrepareRedemptionCode(const FString& Code);
+    UFUNCTION(BlueprintCallable,Category="horizOn|GiftCodes") void RedeemPreparedCode(const FHorizonGiftCodeIntent& Intent);
+    UPROPERTY(BlueprintAssignable,Category="horizOn|GiftCodes") FOnGiftCodePrepared OnPrepared;
+	/** V1 compatibility entry: arbitrary IDs cannot be translated; returns UPGRADE_REQUIRED. */
 	void RedeemWithIdempotency(const FString& Code,const FString& IdempotencyId,FOnGiftCodeRedeemResultComplete OnComplete);
-	UFUNCTION(BlueprintCallable,Category="horizOn|GiftCodes") void RedeemCodeWithIdempotency(const FString& Code,const FString& IdempotencyId);
+	UFUNCTION(BlueprintCallable,Category="horizOn|GiftCodes",meta=(DeprecatedFunction,DeprecationMessage="V1 is closed. Prepare and persist a V2 intent, then RedeemPreparedCode.")) void RedeemCodeWithIdempotency(const FString& Code,const FString& IdempotencyId);
 	UPROPERTY(BlueprintAssignable,Category="horizOn|GiftCodes") FOnGiftCodeTypedRedeemResult OnRedeemResult;
 	UFUNCTION(BlueprintCallable,Category="horizOn|GiftCodes") void ClearCache();
 	UFUNCTION(BlueprintPure,Category="horizOn|GiftCodes") FHorizonGiftCodeRedeemResult GetLastRedeemResult();
@@ -83,5 +91,5 @@ private:
 	int64 Epoch=0;
 	bool bRedeeming=false;
 	void SyncIdentity();
-	void RedeemInternal(const FString& Code,const FString& IdempotencyId,bool bExplicitId,FOnGiftCodeRedeemResultComplete OnComplete);
+
 };

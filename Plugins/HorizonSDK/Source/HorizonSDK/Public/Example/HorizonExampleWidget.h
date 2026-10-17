@@ -79,6 +79,8 @@ protected:
 	UHorizonSubsystem* GetSubsystem() const;
 
 private:
+    bool bGiftV2Busy=false;
+    void DispatchGiftIntent(const struct FHorizonGiftCodeIntent& Intent,const FString& Slot);
 	// --- Self-constructed UI state ---
 	bool bDefaultUIBuilt = false;
 
