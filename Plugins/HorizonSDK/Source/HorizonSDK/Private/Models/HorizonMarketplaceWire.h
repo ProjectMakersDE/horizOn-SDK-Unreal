@@ -5,7 +5,8 @@
 namespace HorizonMarketplaceWire
 {
 inline std::string Utf8(const FString& S){const FTCHARToUTF8 B(*S,S.Len());return std::string(B.Get(),B.Length());}
-inline bool Id(const FString& S){FGuid G;return S.Len()==36&&FGuid::ParseExact(S,EGuidFormats::DigitsWithHyphens,G)&&G.ToString(EGuidFormats::DigitsWithHyphens)==S;}
+inline bool Id(const FString& S){FGuid G;return S.Len()==36&&FGuid::ParseExact(S,EGuidFormats::DigitsWithHyphens,G)&&G.ToString(EGuidFormats::DigitsWithHyphens).Equals(S,ESearchCase::CaseSensitive);}
+inline bool Choice(const FString& S,std::initializer_list<const TCHAR*> Values){for(const TCHAR* V:Values)if(S.Equals(V,ESearchCase::CaseSensitive))return true;return false;}
 inline bool Key(const FString& S){return HorizonItemsContract::Key(Utf8(S));}
 inline bool Currency(const FString& S){return HorizonMarketplaceContract::Currency(Utf8(S));}
 inline bool Parse(const FString& Body,TSharedPtr<FJsonObject>& Out)

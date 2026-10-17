@@ -80,4 +80,4 @@ void UHorizonMarketplaceExample::Apply(const TSharedPtr<FHorizonMarketplaceFlow>
     if(Lookup)S->Marketplace->GetOperation(F->User,F->Lease->Original.Intent.Operation(),Done);else S->Marketplace->SubmitPrepared(F->Lease->Original.Intent,Done);
 }
 void UHorizonMarketplaceExample::RetryReturnDelivery(const FString& I){if(auto* S=Session())S->Marketplace->RetryReturnDelivery(S->Auth->GetCurrentUser().UserId,I);}
-void UHorizonMarketplaceExample::ClaimReturn(const FString& I){if(auto* S=Session())S->Inbox->Claim(S->Auth->GetCurrentUser().UserId,I,FOnInboxClaimComplete::CreateLambda([](bool,const FHorizonInboxClaim&,const FString&,const FString&){}));}
+void UHorizonMarketplaceExample::ClaimReturn(const FString& I){if(auto* S=Session())S->Inbox->ClaimEntry(S->Auth->GetCurrentUser().UserId,I);}

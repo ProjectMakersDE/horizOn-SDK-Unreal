@@ -50,7 +50,7 @@ bool Definition(const TSharedPtr<FJsonObject>& J,FHorizonItemDefinition& D)
 bool FHorizonItemInstance::TryFromJson(const TSharedPtr<FJsonObject>& J,FHorizonItemInstance& Out)
 {
     using namespace HorizonItemsJson;FHorizonItemInstance I;
-    if(!Id(J,TEXT("instanceId"),I.InstanceId)||!ReadKey(J,TEXT("itemKey"),I.ItemKey)||!Properties(J->TryGetField(TEXT("properties")),I.Properties)||!Bool(J,TEXT("equipped"),I.bEquipped)||!Time(J,TEXT("createdAt"),I.CreatedAt))return false;
+    if(!Id(J,TEXT("instanceId"),I.InstanceId)||!ReadKey(J,TEXT("itemKey"),I.ItemKey)||!HorizonItemsJson::Properties(J->TryGetField(TEXT("properties")),I.Properties)||!Bool(J,TEXT("equipped"),I.bEquipped)||!Time(J,TEXT("createdAt"),I.CreatedAt))return false;
     Out=MoveTemp(I);return true;
 }
 bool FHorizonInventorySnapshot::TryFromJson(const TSharedPtr<FJsonObject>& J,FHorizonInventorySnapshot& Out)

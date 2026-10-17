@@ -41,5 +41,5 @@ private:
     UHorizonSubsystem* Session() const;
     bool ReviewListing(const FString& Id,bool Cancel);
     void Resume(bool Lookup);
-    void Apply(const TSharedPtr<class FHorizonMarketplaceFlow>& Flow,bool Lookup);
+    void Apply(const TSharedPtr<struct FHorizonMarketplaceFlow>& Flow,bool Lookup);
 };

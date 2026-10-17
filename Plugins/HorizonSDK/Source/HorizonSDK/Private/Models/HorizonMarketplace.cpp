@@ -21,12 +21,13 @@ bool Listing(const TSharedPtr<FJsonObject>& J,FHorizonMarketplaceListing& L)
     if(!Null(J,TEXT("terminalAt"))&&!Time(J,TEXT("terminalAt"),L.TerminalAt))return false;
     if(!Null(J,TEXT("returnEntryId"))&&(!Text(J,TEXT("returnEntryId"),L.ReturnEntryId)||!L.ReturnEntryId.StartsWith(TEXT("message:"),ESearchCase::CaseSensitive)||!Id(L.ReturnEntryId.Mid(8))))return false;
     L.HasItem=!Null(J,TEXT("item"));if(L.HasItem&&(!FHorizonItemInstance::TryFromJson(Object(J,TEXT("item")),L.Item)||L.Item.bEquipped||L.Item.InstanceId!=L.ItemReference.InstanceId||L.Item.ItemKey!=L.ItemReference.ItemKey))return false;
+    if(!Choice(L.Status,{TEXT("active"),TEXT("return_pending"),TEXT("return_delivered"),TEXT("sold"),TEXT("returned")}))return false;
     const bool Terminal=L.Status==TEXT("sold")||L.Status==TEXT("returned");
     return (Terminal||L.Status==TEXT("active")||L.Status==TEXT("return_pending")||L.Status==TEXT("return_delivered"))&&Terminal!=L.HasItem&&Terminal!=L.TerminalAt.IsEmpty()&&(L.Status==TEXT("sold"))!=L.BuyerId.IsEmpty()&&L.FeeAmount==HorizonMarketplaceContract::Fee(L.Price,L.FeeBps)&&L.SellerNet==L.Price-L.FeeAmount&&Millis(L.ExpiresAt)>=Millis(L.CreatedAt);
 }
 bool Receipt(const TSharedPtr<FJsonObject>& J,FHorizonMarketplaceReceipt& R)
 {
-    return ReadId(J,TEXT("operationId"),R.OperationId)&&Time(J,TEXT("issuedAt"),R.IssuedAt)&&Text(J,TEXT("kind"),R.Kind)&&(R.Kind==TEXT("create")||R.Kind==TEXT("buy")||R.Kind==TEXT("cancel"))&&ReadId(J,TEXT("listingId"),R.ListingId)&&Number(J,TEXT("listingRevision"),R.ListingRevision,1)&&Time(J,TEXT("recordedAt"),R.RecordedAt)&&Ref(Object(J,TEXT("itemReference")),R.ItemReference)&&Text(J,TEXT("currencyKey"),R.CurrencyKey)&&Currency(R.CurrencyKey)&&Number(J,TEXT("price"),R.Price,1)&&Number(J,TEXT("feeAmount"),R.FeeAmount,0,R.Price)&&Number(J,TEXT("sellerNet"),R.SellerNet)&&R.SellerNet==R.Price-R.FeeAmount;
+    return ReadId(J,TEXT("operationId"),R.OperationId)&&Time(J,TEXT("issuedAt"),R.IssuedAt)&&Text(J,TEXT("kind"),R.Kind)&&Choice(R.Kind,{TEXT("create"),TEXT("buy"),TEXT("cancel")})&&ReadId(J,TEXT("listingId"),R.ListingId)&&Number(J,TEXT("listingRevision"),R.ListingRevision,1)&&Time(J,TEXT("recordedAt"),R.RecordedAt)&&Ref(Object(J,TEXT("itemReference")),R.ItemReference)&&Text(J,TEXT("currencyKey"),R.CurrencyKey)&&Currency(R.CurrencyKey)&&Number(J,TEXT("price"),R.Price,1)&&Number(J,TEXT("feeAmount"),R.FeeAmount,0,R.Price)&&Number(J,TEXT("sellerNet"),R.SellerNet)&&R.SellerNet==R.Price-R.FeeAmount;
 }
 bool Listings(const TSharedPtr<FJsonObject>& J,const TCHAR* K,TArray<FHorizonMarketplaceListing>& Out,int32 Max=MAX_int32)
 {
@@ -44,19 +45,19 @@ bool NullableCursor(const TSharedPtr<FJsonObject>& J,FString& Out,bool IsKey){re
 bool FHorizonMarketplaceResponse::TryFromJson(const FString& Body,const FString& Kind,FHorizonMarketplaceResponse& Out)
 {
     using namespace HorizonMarketplaceWire;TSharedPtr<FJsonObject> J;if(!Parse(Body,J))return false;FHorizonMarketplaceResponse V;V.Kind=Kind;if(!Time(J,TEXT("serverTime"),V.ServerTime))return false;
-    if(Kind==TEXT("limits")){auto C=Object(J,TEXT("capabilities"));bool Enabled;if(!Limits(Object(J,TEXT("limits")),V.Limits)||!Config(Object(J,TEXT("config")),V.Config)||!Bool(C,TEXT("marketplace"),Enabled)||!Enabled||!Bool(C,TEXT("realtime"),V.Realtime))return false;}
+    if(Kind==TEXT("limits")){auto C=Object(J,TEXT("capabilities"));bool Enabled;if(!HorizonMarketplaceWire::Limits(Object(J,TEXT("limits")),V.Limits)||!HorizonMarketplaceWire::Config(Object(J,TEXT("config")),V.Config)||!Bool(C,TEXT("marketplace"),Enabled)||!Enabled||!Bool(C,TEXT("realtime"),V.Realtime))return false;}
     else if(Kind==TEXT("rules"))
     {
         const TArray<TSharedPtr<FJsonValue>>* Rows;if(!Number(J,TEXT("revision"),V.CatalogRevision)||!J->TryGetArrayField(TEXT("rules"),Rows)||Rows->Num()>50||!NullableCursor(J,V.NextCursor,true))return false;FString Last;
         for(auto R:*Rows){FHorizonMarketplaceRule Rule;if(!R||R->Type!=EJson::Object)return false;auto O=R->AsObject();if(!Text(O,TEXT("itemKey"),Rule.ItemKey)||!Key(Rule.ItemKey)||!Bool(O,TEXT("active"),Rule.Active)||!Number(O,TEXT("minPrice"),Rule.MinPrice,1)||!Number(O,TEXT("maxPrice"),Rule.MaxPrice,Rule.MinPrice)||!Last.IsEmpty()&&Last.Compare(Rule.ItemKey,ESearchCase::CaseSensitive)>=0)return false;Last=Rule.ItemKey;V.Rules.Add(Rule);}if(!V.NextCursor.IsEmpty()&&(V.Rules.IsEmpty()||V.NextCursor!=Last))return false;
     }
-    else if(Kind==TEXT("state")){if(!State(Object(J,TEXT("state")),V.State))return false;}
-    else if(Kind==TEXT("query")){if(!Listings(J,TEXT("listings"),V.Listings,50)||!NullableCursor(J,V.NextCursor,false))return false;}
-    else if(Kind==TEXT("point")||Kind==TEXT("return")){if(!Listing(Object(J,TEXT("listing")),V.Listing))return false;V.HasListing=true;if(Kind==TEXT("return")&&(!Text(J,TEXT("delivery"),V.Delivery)||(V.Delivery!=TEXT("pending")&&V.Delivery!=TEXT("delivered")&&V.Delivery!=TEXT("returned"))))return false;}
-    else if(Kind==TEXT("operation")){if(!Receipt(Object(J,TEXT("receipt")),V.Receipt))return false;}
+    else if(Kind==TEXT("state")){if(!HorizonMarketplaceWire::State(Object(J,TEXT("state")),V.State))return false;}
+    else if(Kind==TEXT("query")){if(!HorizonMarketplaceWire::Listings(J,TEXT("listings"),V.Listings,50)||!NullableCursor(J,V.NextCursor,false))return false;}
+    else if(Kind==TEXT("point")||Kind==TEXT("return")){if(!HorizonMarketplaceWire::Listing(Object(J,TEXT("listing")),V.Listing))return false;V.HasListing=true;if(Kind==TEXT("return")&&(!Text(J,TEXT("delivery"),V.Delivery)||!Choice(V.Delivery,{TEXT("pending"),TEXT("delivered"),TEXT("returned")})))return false;}
+    else if(Kind==TEXT("operation")){if(!HorizonMarketplaceWire::Receipt(Object(J,TEXT("receipt")),V.Receipt))return false;}
     else if(Kind==TEXT("written"))
     {
-        if(!Receipt(Object(J,TEXT("receipt")),V.Receipt)||!Bool(J,TEXT("replayed"),V.Replayed))return false;V.HasListing=!Null(J,TEXT("listing"));if(V.HasListing&&!Listing(Object(J,TEXT("listing")),V.Listing))return false;
+        if(!HorizonMarketplaceWire::Receipt(Object(J,TEXT("receipt")),V.Receipt)||!Bool(J,TEXT("replayed"),V.Replayed))return false;V.HasListing=!Null(J,TEXT("listing"));if(V.HasListing&&!HorizonMarketplaceWire::Listing(Object(J,TEXT("listing")),V.Listing))return false;
         const auto& L=V.Listing;const auto& R=V.Receipt;
         if(V.HasListing&&(L.Id!=R.ListingId||L.Revision<R.ListingRevision||L.ItemReference.InstanceId!=R.ItemReference.InstanceId||L.ItemReference.ItemKey!=R.ItemReference.ItemKey||L.CurrencyKey!=R.CurrencyKey||L.Price!=R.Price||L.FeeAmount!=R.FeeAmount||L.SellerNet!=R.SellerNet))return false;
         if(!V.Replayed&&(!V.HasListing||L.Revision!=R.ListingRevision||L.Status!=(R.Kind==TEXT("create")?TEXT("active"):R.Kind==TEXT("buy")?TEXT("sold"):TEXT("return_pending"))))return false;
@@ -66,7 +67,7 @@ bool FHorizonMarketplaceResponse::TryFromJson(const FString& Body,const FString&
 bool FHorizonMarketplaceIntent::IsValid() const
 {
     using namespace HorizonMarketplaceWire;TSharedPtr<FJsonObject> J;FString U,O,T,I,C;int64 A,B,P,D;
-    if(!Parse(Json,J)||!ReadId(J,TEXT("userId"),U)||!ReadId(J,TEXT("operationId"),O)||!Time(J,TEXT("issuedAt"),T))return false;
+    if(!Choice(Kind,{TEXT("create"),TEXT("buy"),TEXT("cancel")})||!Parse(Json,J)||!ReadId(J,TEXT("userId"),U)||!ReadId(J,TEXT("operationId"),O)||!Time(J,TEXT("issuedAt"),T))return false;
     if(Kind==TEXT("create"))return ListingId.IsEmpty()&&J->Values.Num()==8&&ReadId(J,TEXT("instanceId"),I)&&Number(J,TEXT("expectedInventoryRevision"),A)&&Number(J,TEXT("expectedConfigRevision"),B)&&Number(J,TEXT("price"),P,1)&&Number(J,TEXT("durationSeconds"),D,300,604800);
     if(!Id(ListingId)||!Number(J,TEXT("expectedListingRevision"),A))return false;
     return Kind==TEXT("cancel")?J->Values.Num()==4:Kind==TEXT("buy")&&J->Values.Num()==6&&Number(J,TEXT("expectedPrice"),P,1)&&Text(J,TEXT("expectedCurrencyKey"),C)&&Currency(C);
