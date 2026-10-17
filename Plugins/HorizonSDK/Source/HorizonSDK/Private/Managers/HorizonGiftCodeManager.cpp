@@ -45,7 +45,6 @@ void UHorizonGiftCodeManager::PrepareRedemption(const FString& Code,FOnGiftCodeP
     {
         auto* Self=Weak.Get(); if (!Self) return; Self->SyncIdentity();
         if (Self->Identity!=SentIdentity || Self->TransportEpoch!=SentTransport || Self->Epoch!=SentEpoch) { Complete.ExecuteIfBound(false,{},TEXT("STALE_RESPONSE"),TEXT("Identity changed")); return; }
-        if (!R.bAlreadyApplied && (R.Count!=LexToString(FCString::Atoi64(*Intent.ExpectedCount)+1) || R.ConfigRevision!=Intent.ConfigRevision)) { Complete.ExecuteIfBound(false,{},TEXT("INVALID_RESPONSE"),TEXT("Fresh sequence changed")); return; }
         if (!R.bSuccess) { Complete.ExecuteIfBound(false,{},R.GetErrorCodeString(),R.ErrorMessage); return; }
         bool Valid=false;
         if (R.JsonData && R.JsonData->TryGetBoolField(TEXT("valid"),Valid) && !Valid) { Complete.ExecuteIfBound(false,{},TEXT("CODE_NOT_ELIGIBLE"),TEXT("Code cannot be redeemed")); return; }
