@@ -112,6 +112,10 @@ bool FHorizonMarketplaceModelsTest::RunTest(const FString&)
     TestTrue(TEXT("Alphabetic lowercase user/operation/instance UUIDs accepted"),Lower.IsValid());
     auto Upper=Lower;Upper.Json=Lower.Json.Replace(*AlphaOperation,*AlphaOperation.ToUpper());TestFalse(TEXT("Uppercase operation UUID rejected before HTTP"),Upper.IsValid());
     TestFalse(TEXT("Uppercase user UUID rejected before preparing intent"),UHorizonMarketplaceManager::PrepareCreate(Alpha.ToUpper(),AlphaOperation,TEXT("2026-10-17T12:00:00.000Z"),Alpha,9,7,101,300).IsValid());
+    const FString Point=TEXT(R"MARKET({"listing":{"id":"abcdefab-cdef-4abc-8def-abcdefabcdef","revision":1,"sellerId":"abcdefab-cdef-4abc-8def-abcdefabcdef","buyerId":null,"returnOwnerId":"abcdefab-cdef-4abc-8def-abcdefabcdef","item":{"instanceId":"abcdefab-cdef-4abc-8def-abcdefabcdef","itemKey":"hat","properties":{"power":9007199254740991},"equipped":false,"createdAt":"2026-10-17T12:00:00.000Z"},"itemReference":{"instanceId":"abcdefab-cdef-4abc-8def-abcdefabcdef","itemKey":"hat"},"currencyKey":"1coin.gold","price":101,"feeBps":333,"feeAmount":3,"sellerNet":98,"status":"active","createdAt":"2026-10-17T12:00:00.000Z","expiresAt":"2026-10-18T12:00:00.000Z","terminalAt":null,"returnEntryId":null,"ownerUnavailable":false},"serverTime":"2026-10-17T12:00:00.000Z"})MARKET");FHorizonMarketplaceResponse View;
+    TestTrue(TEXT("Alphabetic lowercase listing/reference/original UUIDs accepted"),FHorizonMarketplaceResponse::TryFromJson(Point,TEXT("point"),View));
+    const FString UpperOriginal=Point.Replace(TEXT("\"item\":{\"instanceId\":\"abcdefab-cdef-4abc-8def-abcdefabcdef\""),TEXT("\"item\":{\"instanceId\":\"ABCDEFAB-CDEF-4ABC-8DEF-ABCDEFABCDEF\""));
+    TestFalse(TEXT("Original escrow UUID is not accepted via case-insensitive FString equality"),FHorizonMarketplaceResponse::TryFromJson(UpperOriginal,TEXT("point"),View));
     auto Date=I;Date.Json=I.Json.Replace(TEXT("2026-10-17"),TEXT("2026-02-30"));TestFalse(TEXT("Impossible dates not normalized"),Date.IsValid());
     return true;
 }

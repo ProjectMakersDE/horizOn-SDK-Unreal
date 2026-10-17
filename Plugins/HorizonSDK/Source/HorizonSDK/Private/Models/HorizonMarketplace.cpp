@@ -20,7 +20,7 @@ bool Listing(const TSharedPtr<FJsonObject>& J,FHorizonMarketplaceListing& L)
     if(!Null(J,TEXT("buyerId"))&&!ReadId(J,TEXT("buyerId"),L.BuyerId))return false;
     if(!Null(J,TEXT("terminalAt"))&&!Time(J,TEXT("terminalAt"),L.TerminalAt))return false;
     if(!Null(J,TEXT("returnEntryId"))&&(!Text(J,TEXT("returnEntryId"),L.ReturnEntryId)||!L.ReturnEntryId.StartsWith(TEXT("message:"),ESearchCase::CaseSensitive)||!Id(L.ReturnEntryId.Mid(8))))return false;
-    L.HasItem=!Null(J,TEXT("item"));if(L.HasItem&&(!FHorizonItemInstance::TryFromJson(Object(J,TEXT("item")),L.Item)||L.Item.bEquipped||L.Item.InstanceId!=L.ItemReference.InstanceId||L.Item.ItemKey!=L.ItemReference.ItemKey))return false;
+    L.HasItem=!Null(J,TEXT("item"));if(L.HasItem&&(!FHorizonItemInstance::TryFromJson(Object(J,TEXT("item")),L.Item)||!Id(L.Item.InstanceId)||L.Item.bEquipped||L.Item.InstanceId!=L.ItemReference.InstanceId||L.Item.ItemKey!=L.ItemReference.ItemKey))return false;
     if(!Choice(L.Status,{TEXT("active"),TEXT("return_pending"),TEXT("return_delivered"),TEXT("sold"),TEXT("returned")}))return false;
     const bool Terminal=L.Status==TEXT("sold")||L.Status==TEXT("returned");
     return (Terminal||L.Status==TEXT("active")||L.Status==TEXT("return_pending")||L.Status==TEXT("return_delivered"))&&Terminal!=L.HasItem&&Terminal!=L.TerminalAt.IsEmpty()&&(L.Status==TEXT("sold"))!=L.BuyerId.IsEmpty()&&L.FeeAmount==HorizonMarketplaceContract::Fee(L.Price,L.FeeBps)&&L.SellerNet==L.Price-L.FeeAmount&&Millis(L.ExpiresAt)>=Millis(L.CreatedAt);
