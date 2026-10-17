@@ -5,6 +5,7 @@
 #include "Managers/HorizonPlayerValuesManager.h"
 #include "Managers/HorizonInboxManager.h"
 #include "Examples/HorizonMarketplaceExample.h"
+#include "Examples/HorizonMarketplaceQuickstart.h"
 #include "Examples/HorizonMarketplaceJournal.h"
 #include "HorizonSubsystem.h"
 #include "HorizonConfig.h"
@@ -62,8 +63,8 @@ struct FHorizonMarketplaceNative : TSharedFromThis<FHorizonMarketplaceNative>
         Steps.Add([this]{auto Changed=Original;Changed.Json=Changed.Json.Replace(TEXT("\"price\":101"),TEXT("\"price\":102"));S->Marketplace->SubmitPrepared(Changed,Market(TEXT("OPERATION_CONFLICT")));});
         Steps.Add([this]{{auto I=Original;I.Json=I.Json.Replace(*I.Operation(),*Unknown);HorizonMarketplaceJournal::FLease L(Project,Seller);Test->TestTrue(TEXT("Artificial unknown original persisted"),L.Begin(I));}Sample->RecoverOriginalOperation();Wait=[this]{return !Sample->Busy;};});
         Steps.Add([this]{CheckSaved(Seller,false);Test->TestEqual(TEXT("404 does not acknowledge or replace"),Sample->LastErrorCode,FString(TEXT("OPERATION_NOT_FOUND")));IFileManager::Get().Delete(*File(Seller));Login(TEXT("buyer"));});
-        Steps.Add([this]{Test->TestFalse(TEXT("Session boundary clears old current cache"),S->Marketplace->GetCurrent(TEXT("state")).Present);S->Marketplace->GetListing(Buyer,L2,Market());});
-        Steps.Add([this]{Test->TestTrue(TEXT("Buyer reviews exact original listing"),Sample->ReviewBuy(L2));Sample->ConfirmReviewedTrade();Wait=[this]{return !Sample->Busy;};});
+        Steps.Add([this]{Test->TestFalse(TEXT("Session boundary clears old current cache"),S->Marketplace->GetCurrent(TEXT("state")).Present);UHorizonMarketplaceQuickstart::ReadOneListing(Sample,L2);Wait=[this]{const auto V=S->Marketplace->GetCurrent(TEXT("point"));return V.Present&&V.Listing.Id==L2;};});
+        Steps.Add([this]{Test->TestTrue(TEXT("Compiled Quickstart starts durable original buy"),UHorizonMarketplaceQuickstart::BuyReviewedListing(Sample,L2));Wait=[this]{return !Sample->Busy;};});
         Steps.Add([this]{CheckSaved(Buyer,false,&BuyOriginal);Actor();Sample->RetryPending();Wait=[this]{return !Sample->Busy;};});
         Steps.Add([this]{Test->TestTrue(TEXT("Confirmed buyer inventory GET does not recreate later-discarded purchase"),S->Items->GetCurrentInventory().Instances.IsEmpty());const int64 Now=S->Marketplace->GetServerNow();auto I=UHorizonMarketplaceManager::PrepareBuy(Buyer,Listing,Unknown,(FDateTime::FromUnixTimestamp(Now/1000)+FTimespan::FromMilliseconds(Now%1000)).ToIso8601(),1,101,TEXT("1coin.gold"));S->Marketplace->SubmitPrepared(I,Market(TEXT("LISTING_UNAVAILABLE")));});
         Steps.Add([this]{Login(TEXT("seller"));});
