@@ -4,16 +4,17 @@
 #include "Managers/HorizonAuthManager.h"
 #include "Models/HorizonAchievements.h"
 #include "HorizonAchievementsManager.generated.h"
+class UHorizonPlayerValuesManager;
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_FourParams(FOnHorizonAchievementsSnapshotResult,bool,bSuccess,const FHorizonAchievementsSnapshot&,Snapshot,const FString&,Code,const FString&,Message);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_FourParams(FOnHorizonAchievementUnlockResult,bool,bSuccess,const FHorizonAchievementUnlockResponse&,Result,const FString&,Code,const FString&,Message);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_FourParams(FOnHorizonAchievementDeliveryResult,bool,bSuccess,const FHorizonAchievementDeliveryResponse&,Result,const FString&,Code,const FString&,Message);
-/** Explicit bounded requests. Rewards remain in Inbox; never credit player values locally. */
+/** Explicit bounded requests. Rewards are credited atomically by the server; refresh values after unlocking. */
 UCLASS(BlueprintType)
 class HORIZONSDK_API UHorizonAchievementsManager : public UObject
 {
     GENERATED_BODY()
 public:
-    void Initialize(UHorizonHttpClient* Http,UHorizonAuthManager* Auth);
+    void Initialize(UHorizonHttpClient* Http,UHorizonAuthManager* Auth,UHorizonPlayerValuesManager* Values=nullptr);
     void GetAchievements(const FString& UserId,FOnAchievementsComplete Complete,const FString& DefinitionVersion=FString());
     void Unlock(const FString& UserId,const FString& Key,FOnAchievementUnlockComplete Complete);
     void DeliverRewards(const FString& UserId,const TArray<FString>& Keys,FOnAchievementDeliveryComplete Complete);
@@ -29,6 +30,7 @@ public:
 private:
     UPROPERTY() UHorizonHttpClient* HttpClient=nullptr;
     UPROPERTY() UHorizonAuthManager* AuthManager=nullptr;
+    UPROPERTY() UHorizonPlayerValuesManager* PlayerValues=nullptr;
     FString Identity;
     uint64 ContextEpoch=0,Ticket=0;
     int64 Epoch=0,Revision=-1,ServerMillis=-1;

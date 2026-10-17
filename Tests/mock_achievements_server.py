@@ -12,7 +12,7 @@ def definition(key='welcome',amount=7,mode='manual',hidden=True):
     return {'key':key,'name':key,'description':'fixture','imageUrl':None,'hidden':hidden,'active':True,'mode':mode,
             'condition':None if mode=='manual' else {'statisticKey':'wins','threshold':3},'rewards':{'values':[{'key':'gold','amount':amount}]}}
 def progress(key='welcome',state='pending',amount=7):
-    return {'key':key,'unlockedAt':'2026-10-16T00:00:01Z','rewardState':state,
+    return {'key':key,'unlockedAt':None if state=='complete' else '2026-10-16T00:00:01Z','rewardState':state,
             'inboxEntryId':(ENTRY if key=='welcome' else SECOND) if state=='delivered' else None,
             'pendingReward':{'issuedAt':'2026-10-16T00:00:01Z','values':[{'key':'gold','amount':amount}]} if state=='pending' else None}
 def snapshot(label='A',revision=0,second=1,definitions=True,empty=False,rewards=7,states=()):
@@ -60,6 +60,18 @@ EXPECTED=[
  get(snapshot('L',10,25,states=DELIVERED),known='K',delay=.15),
  get(snapshot('M',11,26,states=DELIVERED)),
 ]
+compact=snapshot('N',12,27,states=(('welcome','complete'),))
+for replay in (False,True):
+    EXPECTED.append(post('/unlock',{'key':'welcome'},{'achievements':compact,'newlyUnlocked':[] if replay else ['welcome'],'replayed':replay,'deliveryResults':[]}))
+large=snapshot('O',13,28)
+large['limits']={'maxDefinitions':800,'maxLifetimeKeys':1000}
+keys=['welcome']+[f'a{i}' for i in range(1,701)]
+large['definitions']=[definition(key) for key in keys]
+large['progress']=[progress(key,'complete') for key in keys]
+EXPECTED.append(get(large,known='N'))
+lowered=copy.deepcopy(large);lowered['limits']={'maxDefinitions':20,'maxLifetimeKeys':50};lowered['serverTime']='2026-10-16T00:00:29Z'
+EXPECTED.append(get(lowered,known='O'))
+EXPECTED.append(('POST','/api/v1/app/statistics',{}, {'userId':USER,'operationId':'1792195200000:00000000-0000-4000-8000-000000001008','updates':[{'key':'wins','value':1}]},200,{},.15))
 class Handler(BaseHTTPRequestHandler):
     count=0;failure=None
     def json(self,status,value):

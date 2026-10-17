@@ -52,7 +52,7 @@ void UHorizonSubsystem::Initialize(FSubsystemCollectionBase& Collection)
     Inbox = NewObject<UHorizonInboxManager>(this);
     Inbox->Initialize(HttpClient, Auth, PlayerValues);
     Achievements = NewObject<UHorizonAchievementsManager>(this);
-    Achievements->Initialize(HttpClient, Auth);
+    Achievements->Initialize(HttpClient, Auth, PlayerValues);
     Friends = NewObject<UHorizonFriendsManager>(this);
     Friends->Initialize(HttpClient, Auth);
     Groups = NewObject<UHorizonGroupsManager>(this);
@@ -104,7 +104,7 @@ void UHorizonSubsystem::Initialize(FSubsystemCollectionBase& Collection)
     Matches=NewObject<UHorizonMatchesManager>(this);Matches->Initialize(HttpClient,Auth,ValidatedActions);Matches->SetRealtime(Realtime);
 
 	Statistics = NewObject<UHorizonStatisticsManager>(this);
-	Statistics->Initialize(HttpClient, Auth);
+	Statistics->Initialize(HttpClient, Auth, PlayerValues, Achievements);
 
 	// An accepted validated run with a board clears the leaderboard cache (like SubmitScore).
 	ValidatedActions->SetLeaderboardManager(Leaderboard);

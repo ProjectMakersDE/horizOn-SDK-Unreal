@@ -2,14 +2,16 @@
 #include "Managers/HorizonStatisticsManager.h"
 #include "Transport/HorizonStatisticsTransportContract.h"
 #include "Dom/JsonObject.h"
+#include "Managers/HorizonPlayerValuesManager.h"
+#include "Managers/HorizonAchievementsManager.h"
 #include "Dom/JsonValue.h"
 #include "GenericPlatform/GenericPlatformHttp.h"
 
 namespace { int64 StatisticsNow() { const auto Now = FDateTime::UtcNow(); return Now.ToUnixTimestamp() * 1000 + Now.GetMillisecond(); } }
 
-void UHorizonStatisticsManager::Initialize(UHorizonHttpClient* Http, UHorizonAuthManager* Auth)
+void UHorizonStatisticsManager::Initialize(UHorizonHttpClient* Http, UHorizonAuthManager* Auth, UHorizonPlayerValuesManager* Values, UHorizonAchievementsManager* Achievements)
 {
-	HttpClient = Http; AuthManager = Auth;
+	HttpClient = Http; AuthManager = Auth; PlayerValues = Values; AchievementManager = Achievements;
 	Auth->OnUserSignedIn.AddUniqueDynamic(this, &UHorizonStatisticsManager::OnSignedIn);
 	Auth->OnUserSignedOut.AddUniqueDynamic(this, &UHorizonStatisticsManager::OnSignedOut);
 	SyncScope();
@@ -142,6 +144,9 @@ void UHorizonStatisticsManager::UpdateStatistics(const TArray<FHorizonStatisticU
 		JsonUpdates.Add(MakeShared<FJsonValueObject>(Entry));
 	}
 	Body->SetArrayField(TEXT("updates"), JsonUpdates);
+	// An uncertain response may already have atomically unlocked and credited rewards.
+	if (PlayerValues) PlayerValues->ClearCache();
+	if (AchievementManager) AchievementManager->ClearCache();
 	TWeakObjectPtr<UHorizonStatisticsManager> Weak(this);
 	HttpClient->PostJson(Body, TEXT("/api/v1/app/statistics"), true, FOnHttpResponse::CreateLambda([Weak, Expected, Epoch, OperationId, Complete](const FHorizonNetworkResponse& Response)
 	{ if (auto* Self = Weak.Get()) Self->HandleSnapshot(Response, Expected, Epoch, OperationId, Complete); }));
