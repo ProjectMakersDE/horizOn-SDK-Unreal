@@ -21,7 +21,7 @@ bool Scalar(const FHorizonSharedScalar& V,TSharedPtr<FJsonValue>& Out)
 }
 bool Input(const FString& U,const FHorizonSharedObjectInput& I,TSharedPtr<FJsonObject>& B)
 {
-    if(I.Data.Num()>65536||I.Search.Num()>3||(I.bHasPosition&&(I.Position.X< -HorizonSharedContract::MaxSafe||I.Position.X>HorizonSharedContract::MaxSafe||I.Position.Y< -HorizonSharedContract::MaxSafe||I.Position.Y>HorizonSharedContract::MaxSafe)))return false;
+    if(I.Data.Num()>int32(HorizonSharedContract::MaxObjectBytes)||I.Search.Num()>3||(I.bHasPosition&&(I.Position.X< -HorizonSharedContract::MaxSafe||I.Position.X>HorizonSharedContract::MaxSafe||I.Position.Y< -HorizonSharedContract::MaxSafe||I.Position.Y>HorizonSharedContract::MaxSafe)))return false;
     B=MakeShared<FJsonObject>();B->SetStringField(TEXT("userId"),U);B->SetStringField(TEXT("dataBase64"),FBase64::Encode(I.Data));auto Search=MakeShared<FJsonObject>();TSet<FString> Keys;
     for(const auto& Row:I.Search){TSharedPtr<FJsonValue> V;if(!Key(Row.Key)||Keys.Contains(Row.Key)||!Scalar(Row.Value,V))return false;Keys.Add(Row.Key);Search->SetField(Row.Key,V);}B->SetObjectField(TEXT("search"),Search);
     if(I.bHasPosition){auto P=MakeShared<FJsonObject>();P->SetField(TEXT("x"),MakeShared<FJsonValueNumberString>(LexToString(I.Position.X)));P->SetField(TEXT("y"),MakeShared<FJsonValueNumberString>(LexToString(I.Position.Y)));B->SetObjectField(TEXT("position"),P);}else B->SetField(TEXT("position"),MakeShared<FJsonValueNull>());return true;

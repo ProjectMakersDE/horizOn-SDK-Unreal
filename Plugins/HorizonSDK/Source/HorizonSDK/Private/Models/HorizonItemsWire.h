@@ -36,7 +36,7 @@ inline bool Restore(const TSharedPtr<FJsonValue>& V,const FString& Prefix,const 
 inline bool Parse(const FString& Body,TSharedPtr<FJsonObject>& Out)
 {
     const FTCHARToUTF8 Bytes(*Body,Body.Len());const FString Prefix=TEXT("horizon-items-")+FGuid::NewGuid().ToString(EGuidFormats::Digits)+TEXT("-");std::vector<std::string> Raw;std::string Masked;
-    if(!HorizonGroupsContract::JsonObject(std::string(Bytes.Get(),Bytes.Length())).MaskObjects(TCHAR_TO_UTF8(*Prefix),Raw,Masked,{"properties","baseProperties"},256))return false;
+    if(!HorizonGroupsContract::JsonObject(std::string(Bytes.Get(),Bytes.Length())).MaskObjects(TCHAR_TO_UTF8(*Prefix),Raw,Masked,{"properties","baseProperties"}))return false;
     TSharedPtr<FJsonObject> Json;if(!FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(UTF8_TO_TCHAR(Masked.c_str())),Json,FJsonSerializer::EFlags::StoreNumbersAsStrings)||!Json)return false;
     int32 Count=0;if(!Restore(MakeShared<FJsonValueObject>(Json),Prefix,Raw,Count)||size_t(Count)!=Raw.size())return false;Out=MoveTemp(Json);return true;
 }

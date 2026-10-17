@@ -5,13 +5,14 @@
 #include <locale>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 namespace HorizonGroupsContract
 {
 // Strict UTF-8 JSON grammar, preserving numeric lexemes and every character of a key.
 class JsonObject
 {
-    const std::string& S;size_t I=0;std::string Out;int MaxDepth=16;
-    std::vector<std::string>* Objects=nullptr;std::string Marker;bool Mask=false;std::vector<std::string> Fields={"data"};size_t ObjectLimit=128;
+    const std::string& S;size_t I=0;std::string Out;int MaxDepth=16;size_t MaxBytes=32*1024*1024;
+    std::vector<std::string>* Objects=nullptr;std::string Marker;bool Mask=false;std::vector<std::string> Fields={"data"};size_t ObjectLimit=std::numeric_limits<size_t>::max();
     void Space(){while(I<S.size()&&(S[I]==' '||S[I]=='\n'||S[I]=='\r'||S[I]=='\t'))++I;}
     bool Hex(uint32_t& N){N=0;for(int K=0;K<4;++K){if(I>=S.size())return false;unsigned char C=S[I++];int D=C>='0'&&C<='9'?C-'0':C>='a'&&C<='f'?C-'a'+10:C>='A'&&C<='F'?C-'A'+10:-1;if(D<0)return false;N=N*16+D;}return true;}
     void Character(uint32_t U)
@@ -66,9 +67,9 @@ class JsonObject
         std::string Number=S.substr(Start,I-Start);std::istringstream Stream(Number);Stream.imbue(std::locale::classic());double D=0;Stream>>D;if((Stream.fail()&&D!=0)||!std::isfinite(D))return false;Out+=Number;return true;
     }
 public:
-    explicit JsonObject(const std::string& Input):S(Input){}
-    bool Parse(std::string& Compact){Space();if(I>=S.size()||S[I]!='{'||!Value(0))return false;Space();if(I!=S.size())return false;Compact=Out;return true;}
-    bool MaskObjects(const std::string& Prefix,std::vector<std::string>& Raw,std::string& Sanitized,const std::vector<std::string>& Names={"data"},size_t Limit=128){MaxDepth=64;Objects=&Raw;Marker=Prefix;Fields=Names;ObjectLimit=Limit;Mask=true;return Parse(Sanitized);}
+    explicit JsonObject(const std::string& Input,int Depth=16,size_t Bytes=32*1024*1024):S(Input),MaxDepth(Depth),MaxBytes(Bytes){}
+    bool Parse(std::string& Compact){Space();if(S.size()>MaxBytes||I>=S.size()||S[I]!='{'||!Value(0))return false;Space();if(I!=S.size())return false;Compact=Out;return true;}
+    bool MaskObjects(const std::string& Prefix,std::vector<std::string>& Raw,std::string& Sanitized,const std::vector<std::string>& Names={"data"},size_t Limit=std::numeric_limits<size_t>::max()){MaxDepth=1024;Objects=&Raw;Marker=Prefix;Fields=Names;ObjectLimit=Limit;Mask=true;return Parse(Sanitized);}
 };
-inline bool CompactObject(const std::string& Raw,std::string& Compact){return JsonObject(Raw).Parse(Compact);}
+inline bool CompactObject(const std::string& Raw,std::string& Compact,int Depth=16,size_t Bytes=32*1024*1024){return JsonObject(Raw,Depth,Bytes).Parse(Compact);}
 }

@@ -51,6 +51,8 @@ public:
     UFUNCTION(BlueprintCallable,Category="horizOn|Matches Example") void CreateLobby(const FHorizonMatchCreateInput& Input);
     /** join/decline/start/turn/timeout/leave/cancel/result/ranked. Ids are turn order or sorted winners. Result/ranked revision is the original finalStateRevision. */
     UFUNCTION(BlueprintCallable,Category="horizOn|Matches Example") void StartAction(const FString& Action,const FString& MatchId,int64 OriginalRevision,const TArray<uint8>& Data,const TArray<FString>& Ids,bool bFinish=false);
+    /** Uses a reviewed minimal pending source after full match detail has expired. Persists before its single POST. */
+    UFUNCTION(BlueprintCallable,Category="horizOn|Matches Example") void StartRankedFromPendingResult(const FString& MatchId);
     UFUNCTION(BlueprintCallable,Category="horizOn|Matches Example") void RetryOriginal();
     UFUNCTION(BlueprintCallable,Category="horizOn|Matches Example") bool ConfirmRecoveredCreate(const FString& MatchId);
     /** A deliberate acknowledgement after reading the exact original match; never infers a game winner or value grant. */
@@ -62,6 +64,7 @@ public:
     UFUNCTION(BlueprintPure,Category="horizOn|Matches Example") FHorizonMatchPage GetOpenMatches() const;
     UPROPERTY(BlueprintReadOnly,Category="horizOn|Matches Example") FString LastErrorCode;
 private:
+    friend struct FHorizonConfiguredNative;
     friend struct FHorizonMatchesNative;
     UHorizonSubsystem* Session() const;
     bool Fresh() const;

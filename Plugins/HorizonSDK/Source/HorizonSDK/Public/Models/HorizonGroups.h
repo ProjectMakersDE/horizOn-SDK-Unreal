@@ -50,6 +50,7 @@ struct HORIZONSDK_API FHorizonGroupPending
     UPROPERTY(BlueprintReadOnly,Category="horizOn|Groups") FString RequestId;
     UPROPERTY(BlueprintReadOnly,Category="horizOn|Groups") FString IssuerId;
     UPROPERTY(BlueprintReadOnly,Category="horizOn|Groups") FString CreatedAt;
+    UPROPERTY(BlueprintReadOnly,Category="horizOn|Groups") bool bHasCreatedAt=false;
 };
 USTRUCT(BlueprintType)
 struct HORIZONSDK_API FHorizonGroupPendingView
@@ -59,6 +60,7 @@ struct HORIZONSDK_API FHorizonGroupPendingView
     UPROPERTY(BlueprintReadOnly,Category="horizOn|Groups") FString RequestId;
     UPROPERTY(BlueprintReadOnly,Category="horizOn|Groups") FString IssuerId;
     UPROPERTY(BlueprintReadOnly,Category="horizOn|Groups") FString CreatedAt;
+    UPROPERTY(BlueprintReadOnly,Category="horizOn|Groups") bool bHasCreatedAt=false;
     UPROPERTY(BlueprintReadOnly,Category="horizOn|Groups") FHorizonGroupView Group;
     UPROPERTY(BlueprintReadOnly,Category="horizOn|Groups") bool bHasGroup=false;
 };
@@ -72,6 +74,12 @@ struct HORIZONSDK_API FHorizonGroupLimits
     UPROPERTY(BlueprintReadOnly,Category="horizOn|Groups") int32 MaxJoinRequests=0;
     UPROPERTY(BlueprintReadOnly,Category="horizOn|Groups") int32 MaxDataBytes=0;
     UPROPERTY(BlueprintReadOnly,Category="horizOn|Groups") int32 MemberPageSize=0;
+    UPROPERTY(BlueprintReadOnly,Category="horizOn|Groups") int32 MaxPlayerInvitations=0;
+    UPROPERTY(BlueprintReadOnly,Category="horizOn|Groups") int32 MaxPlayerRequests=0;
+    UPROPERTY(BlueprintReadOnly,Category="horizOn|Groups") int32 MaxNameBytes=0;
+    UPROPERTY(BlueprintReadOnly,Category="horizOn|Groups") int32 MaxDescriptionBytes=0;
+    UPROPERTY(BlueprintReadOnly,Category="horizOn|Groups") int32 MaxDataDepth=0;
+
 };
 USTRUCT(BlueprintType)
 struct HORIZONSDK_API FHorizonMyGroupsView

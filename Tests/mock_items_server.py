@@ -1254,16 +1254,16 @@ for request in EXPECTED:
 configured_user=EXPECTED[0]['reply']['userId']
 def configured_inventory(revision, lowered=False, equipped=False):
  reply=copy.deepcopy(EXPECTED[0]['reply']);reply['revision']=revision
- reply['limits']={'catalog':20,'inventory':10,'receipts':10} if lowered else {'catalog':6000,'inventory':250,'receipts':80}
+ reply['limits']={'catalog':20,'inventory':10,'receipts':10} if lowered else {'catalog':6000,'inventory':3000,'receipts':80}
  original=copy.deepcopy(reply['instances'][0]);reply['instances'][0]['equipped']=equipped
- for i in range(200):
+ for i in range(2050):
   item=copy.deepcopy(original);item['instanceId']='30000000-0000-4000-8000-%012d'%i;reply['instances'].append(item)
  return reply
 def configured_request(method,path,reply,query=None,body=None):
  EXPECTED.append(dict(method=method,path='/api/v1/app/items'+path,query=query or {},body=body,status=200,reply=reply,delay=0,raw=False))
 configured_request('GET','',configured_inventory(8),{'userId':[configured_user]})
 configured_request('GET','',configured_inventory(9,True),{'userId':[configured_user]})
-page=copy.deepcopy(EXPECTED[1]['reply']);page.update(revision=2,total=6000,nextAfterKey='sword',limits={'catalog':6000,'inventory':250,'receipts':80})
+page=copy.deepcopy(EXPECTED[1]['reply']);page.update(revision=2,total=6000,nextAfterKey='sword',limits={'catalog':6000,'inventory':3000,'receipts':80})
 configured_request('GET','/catalog',page,{'userId':[configured_user],'limit':['1']})
 page=copy.deepcopy(page);page['definitions'][0]['key']='wand';page.update(nextAfterKey='wand',limits={'catalog':20,'inventory':10,'receipts':10})
 configured_request('GET','/catalog',page,{'userId':[configured_user],'limit':['1'],'afterKey':['sword'],'catalogRevision':['2']})

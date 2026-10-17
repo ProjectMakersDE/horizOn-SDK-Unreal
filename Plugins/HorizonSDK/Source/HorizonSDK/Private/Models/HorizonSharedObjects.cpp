@@ -16,7 +16,7 @@ bool Small(const TSharedPtr<FJsonObject>& J,const TCHAR* K,int32& N,int32 Max,bo
 bool Bool(const TSharedPtr<FJsonObject>& J,const TCHAR* K,bool& B){auto V=J?J->TryGetField(K):nullptr;return V&&V->Type==EJson::Boolean&&V->TryGetBool(B);}
 bool Time(const TSharedPtr<FJsonObject>& J,const TCHAR* K,FString& S){FDateTime T;return Text(J,K,S,40)&&S.Len()==FCString::Strlen(*S)&&FDateTime::ParseIso8601(*S,T);}
 bool Envelope(const TSharedPtr<FJsonObject>& J,int32& Poll,FString& Server){return Small(J,TEXT("pollAfterSeconds"),Poll,MAX_int32)&&Time(J,TEXT("serverTime"),Server);}
-bool ReadLimits(const TSharedPtr<FJsonObject>& J,FHorizonSharedLimits& L){const TSharedPtr<FJsonObject>* O;return J&&J->TryGetObjectField(TEXT("limits"),O)&&Small(*O,TEXT("collections"),L.Collections,100)&&ReadRevision(*O,TEXT("storageBytes"),L.StorageBytes)&&L.StorageBytes>0&&L.StorageBytes<=2147483648LL&&Small(*O,TEXT("objectBytes"),L.ObjectBytes,65536);}
+bool ReadLimits(const TSharedPtr<FJsonObject>& J,FHorizonSharedLimits& L){const TSharedPtr<FJsonObject>* O;return J&&J->TryGetObjectField(TEXT("limits"),O)&&Small(*O,TEXT("collections"),L.Collections,MAX_int32)&&ReadRevision(*O,TEXT("storageBytes"),L.StorageBytes)&&L.StorageBytes>0&&Small(*O,TEXT("objectBytes"),L.ObjectBytes,1048576);}
 bool Null(const TSharedPtr<FJsonObject>& J,const TCHAR* K,bool& Present){auto V=J?J->TryGetField(K):nullptr;if(!V)return false;Present=!V->IsNull();return true;}
 bool ReadSearch(const TSharedPtr<FJsonValue>& V,TArray<FHorizonSharedSearchValue>& Out)
 {
@@ -38,13 +38,13 @@ bool Position(const TSharedPtr<FJsonObject>& J,FHorizonSharedPosition& P,bool& H
 bool ReadObject(const TSharedPtr<FJsonObject>& J,FHorizonSharedObject& O)
 {
     FString Encoded;
-    if(!Id(J,TEXT("id"),O.Id)||!ReadKey(J,TEXT("collection"),O.Collection)||!Id(J,TEXT("ownerId"),O.OwnerId)||!Null(J,TEXT("groupId"),O.bHasGroupId)||(O.bHasGroupId&&!Id(J,TEXT("groupId"),O.GroupId))||!ReadRevision(J,TEXT("revision"),O.Revision)||O.Revision==0||!Text(J,TEXT("dataBase64"),Encoded,87384,true)||!ReadSearch(J->TryGetField(TEXT("search")),O.Search)||!Position(J,O.Position,O.bHasPosition)||!Time(J,TEXT("createdAt"),O.CreatedAt)||!Time(J,TEXT("updatedAt"),O.UpdatedAt)||!Null(J,TEXT("expiresAt"),O.bHasExpiresAt)||(O.bHasExpiresAt&&!Time(J,TEXT("expiresAt"),O.ExpiresAt)))return false;
+    if(!Id(J,TEXT("id"),O.Id)||!ReadKey(J,TEXT("collection"),O.Collection)||!Id(J,TEXT("ownerId"),O.OwnerId)||!Null(J,TEXT("groupId"),O.bHasGroupId)||(O.bHasGroupId&&!Id(J,TEXT("groupId"),O.GroupId))||!ReadRevision(J,TEXT("revision"),O.Revision)||O.Revision==0||!Text(J,TEXT("dataBase64"),Encoded,1398104,true)||!ReadSearch(J->TryGetField(TEXT("search")),O.Search)||!Position(J,O.Position,O.bHasPosition)||!Time(J,TEXT("createdAt"),O.CreatedAt)||!Time(J,TEXT("updatedAt"),O.UpdatedAt)||!Null(J,TEXT("expiresAt"),O.bHasExpiresAt)||(O.bHasExpiresAt&&!Time(J,TEXT("expiresAt"),O.ExpiresAt)))return false;
     const FTCHARToUTF8 B(*Encoded,Encoded.Len()+1);std::vector<uint8_t> Bytes;if(!HorizonSharedContract::DecodeBase64(std::string(B.Get(),B.Length()),Bytes))return false;if(!Bytes.empty())O.Data.Append(Bytes.data(),int32(Bytes.size()));O.bPresent=true;return true;
 }
 bool Definition(const TSharedPtr<FJsonObject>& J,FHorizonSharedDefinition& D)
 {
     const TArray<TSharedPtr<FJsonValue>>* Fields;
-    if(!ReadKey(J,TEXT("key"),D.Key)||!Text(J,TEXT("name"),D.Name,120)||D.Name.TrimStartAndEnd().IsEmpty()||!Bool(J,TEXT("active"),D.bActive)||!Text(J,TEXT("readPolicy"),D.ReadPolicy,16)||!Text(J,TEXT("writePolicy"),D.WritePolicy,16)||!Small(J,TEXT("maxObjectBytes"),D.MaxObjectBytes,65536)||!Small(J,TEXT("maxObjectsPerOwner"),D.MaxObjectsPerOwner,100)||!Null(J,TEXT("ttlSeconds"),D.bHasTtlSeconds)||(D.bHasTtlSeconds&&(!Number(J,TEXT("ttlSeconds"),D.TtlSeconds)||D.TtlSeconds<60||D.TtlSeconds>2592000))||!Bool(J,TEXT("positionEnabled"),D.bPositionEnabled)||!Bool(J,TEXT("used"),D.bUsed)||!ReadRevision(J,TEXT("revision"),D.Revision)||!J->TryGetArrayField(TEXT("searchFields"),Fields)||Fields->Num()>3)return false;
+    if(!ReadKey(J,TEXT("key"),D.Key)||!Text(J,TEXT("name"),D.Name,120)||D.Name.TrimStartAndEnd().IsEmpty()||!Bool(J,TEXT("active"),D.bActive)||!Text(J,TEXT("readPolicy"),D.ReadPolicy,16)||!Text(J,TEXT("writePolicy"),D.WritePolicy,16)||!Small(J,TEXT("maxObjectBytes"),D.MaxObjectBytes,1048576)||!Small(J,TEXT("maxObjectsPerOwner"),D.MaxObjectsPerOwner,MAX_int32)||!Null(J,TEXT("ttlSeconds"),D.bHasTtlSeconds)||(D.bHasTtlSeconds&&(!Number(J,TEXT("ttlSeconds"),D.TtlSeconds)||D.TtlSeconds<60||D.TtlSeconds>2592000))||!Bool(J,TEXT("positionEnabled"),D.bPositionEnabled)||!Bool(J,TEXT("used"),D.bUsed)||!ReadRevision(J,TEXT("revision"),D.Revision)||!J->TryGetArrayField(TEXT("searchFields"),Fields)||Fields->Num()>3)return false;
     if(D.ReadPolicy!=TEXT("owner")&&D.ReadPolicy!=TEXT("friends")&&D.ReadPolicy!=TEXT("group")&&D.ReadPolicy!=TEXT("all")&&D.ReadPolicy!=TEXT("dashboard"))return false;if(D.WritePolicy!=TEXT("owner")&&D.WritePolicy!=TEXT("group")&&D.WritePolicy!=TEXT("dashboard"))return false;if(D.ReadPolicy==TEXT("dashboard")&&D.WritePolicy!=TEXT("dashboard"))return false;
     TSet<FString> Keys;for(auto V:*Fields){FHorizonSharedSearchField F;FString Type;if(!V||V->Type!=EJson::Object||!ReadKey(V->AsObject(),TEXT("key"),F.Key)||Keys.Contains(F.Key)||!Text(V->AsObject(),TEXT("type"),Type,8)||(Type!=TEXT("integer")&&Type!=TEXT("string")))return false;Keys.Add(F.Key);F.Type=Type==TEXT("string")?EHorizonSharedScalarType::String:EHorizonSharedScalarType::Integer;D.SearchFields.Add(F);}return true;
 }
@@ -57,7 +57,7 @@ bool FHorizonSharedCollectionPage::TryFromJson(const TSharedPtr<FJsonObject>& J,
 }
 bool FHorizonSharedUsage::TryFromJson(const TSharedPtr<FJsonObject>& J,FHorizonSharedUsage& Out)
 {
-    using namespace HorizonSharedJson;FHorizonSharedUsage U;if(!Id(J,TEXT("userId"),U.UserId)||!ReadKey(J,TEXT("collection"),U.Collection)||!ReadRevision(J,TEXT("revision"),U.Revision)||!Small(J,TEXT("count"),U.Count,100,true)||!ReadLimits(J,U.Limits)||!Envelope(J,U.PollAfterSeconds,U.ServerTime))return false;U.bPresent=true;Out=MoveTemp(U);return true;
+    using namespace HorizonSharedJson;FHorizonSharedUsage U;if(!Id(J,TEXT("userId"),U.UserId)||!ReadKey(J,TEXT("collection"),U.Collection)||!ReadRevision(J,TEXT("revision"),U.Revision)||!Small(J,TEXT("count"),U.Count,MAX_int32,true)||!ReadLimits(J,U.Limits)||!Envelope(J,U.PollAfterSeconds,U.ServerTime))return false;U.bPresent=true;Out=MoveTemp(U);return true;
 }
 bool FHorizonSharedObjectRead::TryFromJson(const TSharedPtr<FJsonObject>& J,FHorizonSharedObjectRead& Out)
 {

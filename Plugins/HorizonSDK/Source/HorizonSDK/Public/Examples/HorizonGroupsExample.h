@@ -39,6 +39,7 @@ public:
     UFUNCTION(BlueprintPure,Category="horizOn|Groups Example") FHorizonMyGroupsView GetGroups() const;
     UFUNCTION(BlueprintPure,Category="horizOn|Groups Example") FHorizonGroupView GetGroup() const;
 private:
+    friend struct FHorizonConfiguredNative;
     friend struct FHorizonGroupsNative;
     UHorizonSubsystem* Session() const;
     void ReadOwn(const FString& Project,const FString& User,const FString& Slot,const FString& Intent,int64 Serial,uint64 Context);
