@@ -24,7 +24,15 @@ void AHorizonInboxExample::Remove(const FString& EntryId)
 }
 void AHorizonInboxExample::Loaded(bool Success,const FHorizonInboxSnapshot& Inbox,const FString& Code,const FString&)
 {
-    if (!Success) UE_LOG(LogTemp,Warning,TEXT("[InboxExample] Snapshot/action failed: %s"),*Code);
+    if (!Success) { UE_LOG(LogTemp,Warning,TEXT("[InboxExample] Snapshot/action failed: %s"),*Code); }
+    else for (const auto& Entry:Inbox.Entries)
+    {
+        // Use a plain text widget (rich text disabled). Other messages use localization keys.
+        FString Text; if (!Entry.TryGetFreeText(Text)) Text=Entry.TextKey;
+        UE_LOG(LogTemp,Log,TEXT("[InboxExample] %s"),*Text);
+        FHorizonInboxSource Source;
+        if (Entry.TryGetSource(Source)) UE_LOG(LogTemp,Log,TEXT("[InboxExample] Source %s"),*Source.SourceId);
+    }
 }
 FHorizonInboxSnapshot AHorizonInboxExample::GetCurrentInbox() const
 {
@@ -53,7 +61,7 @@ void AHorizonInboxExample::Claim(const FString& EntryId)
     {
         const auto Snapshot=SDK->Inbox->GetCurrentInbox();
         const auto* Item=Snapshot.Entries.FindByPredicate([&](const FHorizonInboxEntry& Value) { return Value.Id==EntryId; });
-        if (!Item || Item->bClaimed || Item->Attachment.Values.IsEmpty())
+        if (!Item || !Item->CanClaim())
         { UE_LOG(LogTemp,Warning,TEXT("[InboxExample] Load the Inbox and select an unclaimed valuable entry first")); return; }
         Pending=Cast<UHorizonInboxPendingClaim>(UGameplayStatics::CreateSaveGameObject(UHorizonInboxPendingClaim::StaticClass()));
         Pending->UserId=User; Pending->ProjectScope=Scope; Pending->EntryId=EntryId;
@@ -65,6 +73,8 @@ void AHorizonInboxExample::Claim(const FString& EntryId)
         bClaiming=false;
         if (!Success) { UE_LOG(LogTemp,Warning,TEXT("[InboxExample] Original pending entry retained: %s"),*Code); return; }
         // Both managers already adopted complete server snapshots. Render via GetCurrentInbox().
+        // Returned references are not full items. Refresh the authoritative inventory explicitly.
+        for (const auto& Item:Result.Items) UE_LOG(LogTemp,Log,TEXT("[InboxExample] Returned %s: %s"),*Item.ItemKey,*Item.InstanceId);
         if (!UGameplayStatics::DeleteGameInSlot(Slot,0)) UE_LOG(LogTemp,Warning,TEXT("[InboxExample] Receipt accepted; original entry retained for safe replay"));
     }));
 }

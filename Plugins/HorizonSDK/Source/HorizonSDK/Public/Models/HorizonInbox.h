@@ -1,8 +1,33 @@
 #pragma once
 #include "CoreMinimal.h"
 #include "Models/HorizonPlayerValues.h"
+#include "Models/HorizonItems.h"
 #include "HorizonInbox.generated.h"
 class FJsonObject;
+
+UENUM(BlueprintType)
+enum class EHorizonInboxSourceKind : uint8 { Unknown, FriendRequest, FriendAccepted, GroupInvitation, GroupRequest, GroupInvitationAccepted, GroupRequestAccepted, MatchTurn, MarketReturn };
+USTRUCT(BlueprintType)
+struct HORIZONSDK_API FHorizonInboxSource
+{
+    GENERATED_BODY()
+    UPROPERTY(BlueprintReadOnly, Category="horizOn|Inbox") bool bPresent = false;
+    UPROPERTY(BlueprintReadOnly, Category="horizOn|Inbox") EHorizonInboxSourceKind Kind = EHorizonInboxSourceKind::Unknown;
+    UPROPERTY(BlueprintReadOnly, Category="horizOn|Inbox") FString SourceId;
+    UPROPERTY(BlueprintReadOnly, Category="horizOn|Inbox") FString UserId;
+    UPROPERTY(BlueprintReadOnly, Category="horizOn|Inbox") FString GroupId;
+    UPROPERTY(BlueprintReadOnly, Category="horizOn|Inbox") bool bHasRevision = false;
+    UPROPERTY(BlueprintReadOnly, Category="horizOn|Inbox") int64 Revision = 0;
+};
+USTRUCT(BlueprintType)
+struct HORIZONSDK_API FHorizonInboxItemReturn
+{
+    GENERATED_BODY()
+    UPROPERTY(BlueprintReadOnly, Category="horizOn|Inbox") bool bPresent = false;
+    UPROPERTY(BlueprintReadOnly, Category="horizOn|Inbox") FString ListingId;
+    UPROPERTY(BlueprintReadOnly, Category="horizOn|Inbox") FString InstanceId;
+    UPROPERTY(BlueprintReadOnly, Category="horizOn|Inbox") FString ItemKey;
+};
 
 USTRUCT(BlueprintType)
 struct HORIZONSDK_API FHorizonInboxAttachment
@@ -10,6 +35,8 @@ struct HORIZONSDK_API FHorizonInboxAttachment
     GENERATED_BODY()
     UPROPERTY(BlueprintReadOnly, Category="horizOn|Inbox") bool bPresent = false;
     UPROPERTY(BlueprintReadOnly, Category="horizOn|Inbox") TArray<FHorizonPlayerValueAmount> Values;
+    UPROPERTY(BlueprintReadOnly, Category="horizOn|Inbox") FHorizonInboxItemReturn ItemReturn;
+    bool HasReward() const { return !Values.IsEmpty() || ItemReturn.bPresent; }
 };
 USTRUCT(BlueprintType)
 struct HORIZONSDK_API FHorizonInboxEntry
@@ -28,6 +55,10 @@ struct HORIZONSDK_API FHorizonInboxEntry
     UPROPERTY(BlueprintReadOnly, Category="horizOn|Inbox") bool bClaimed = false;
     UPROPERTY(BlueprintReadOnly, Category="horizOn|Inbox") FHorizonInboxAttachment Attachment;
     static bool IsEntryId(const FString& Value);
+    EHorizonInboxSourceKind SourceKind() const;
+    bool TryGetSource(FHorizonInboxSource& Out) const;
+    bool TryGetFreeText(FString& Out) const;
+    bool CanClaim() const { return !bClaimed && Attachment.bPresent && Attachment.HasReward(); }
 };
 USTRUCT(BlueprintType)
 struct HORIZONSDK_API FHorizonInboxCount
@@ -43,6 +74,9 @@ struct HORIZONSDK_API FHorizonInboxLimits
     GENERATED_BODY()
     UPROPERTY(BlueprintReadOnly, Category="horizOn|Inbox") int32 Targeted = 0;
     UPROPERTY(BlueprintReadOnly, Category="horizOn|Inbox") int32 Broadcasts = 0;
+    UPROPERTY(BlueprintReadOnly, Category="horizOn|Inbox") int32 FreeTexts = 2;
+    UPROPERTY(BlueprintReadOnly, Category="horizOn|Inbox") int32 FreeTextBytes = 256;
+    UPROPERTY(BlueprintReadOnly, Category="horizOn|Inbox") int32 FreeTextRetentionDays = 7;
 };
 USTRUCT(BlueprintType)
 struct HORIZONSDK_API FHorizonInboxSnapshot
@@ -70,6 +104,7 @@ struct HORIZONSDK_API FHorizonInboxClaim
     UPROPERTY(BlueprintReadOnly, Category="horizOn|Inbox") bool bReplayed = false;
     UPROPERTY(BlueprintReadOnly, Category="horizOn|Inbox") FHorizonInboxSnapshot Inbox;
     UPROPERTY(BlueprintReadOnly, Category="horizOn|Inbox") FHorizonPlayerValuesState PlayerValues;
+    UPROPERTY(BlueprintReadOnly, Category="horizOn|Inbox") TArray<FHorizonItemReference> Items;
     static bool TryFromJson(const TSharedPtr<FJsonObject>& Json,FHorizonInboxClaim& Out);
 };
 DECLARE_DELEGATE_FourParams(FOnInboxComplete,bool,const FHorizonInboxSnapshot&,const FString&,const FString&);
