@@ -285,62 +285,10 @@ Horizon->News->LoadNews(20, TEXT("en"), true,
 
 ### Gift Codes
 
-`Redeem` needs a signed-in player and sends the player session (`Authorization: Bearer`). The server only redeems codes for the player who owns that session.
+Use `PrepareRedemption(Code, callback)` (Blueprint: `PrepareRedemptionCode` / `OnPrepared`) to read a V2 intent. Persist the complete `FHorizonGiftCodeIntent` in a SaveGame before `RedeemPrepared(Intent, callback)` (Blueprint: `RedeemPreparedCode` / `OnRedeemResult`). The feature example includes explicit redeem/retry actions and verified scoped storage. A timeout or restart reuses the exact stored tuple; never prepare or advance automatically.
 
-```cpp
-// Validate
-Horizon->GiftCodes->Validate(TEXT("ABCD-1234"),
-    FOnGiftCodeValidateComplete::CreateLambda([](bool bRequestSuccess, bool bValid) { }));
+Campaign UUID, expected count and config revision define the operation; counts/revisions are canonical Int64 decimal strings. Replay returns current Player Values, `bAlreadyApplied/bReplayed=true`, empty grants and no original giftData. Replace balances, never add grants. V1 `Redeem` and arbitrary-ID methods return `UPGRADE_REQUIRED`. `MIGRATION_REQUIRED`, `COUNT_AHEAD`, `CAMPAIGN_CHANGED`, `COUNTER_EXHAUSTED` and other domain errors require reconciliation. Player/project changes fence responses and cannot retarget persisted intents; reusing a visible code cannot redirect the immutable campaign UUID.
 
-// Redeem
-Horizon->GiftCodes->Redeem(TEXT("ABCD-1234"),
-    FOnGiftCodeRedeemComplete::CreateLambda([Horizon](bool bSuccess, const FString& GiftData, const FString& Message)
-    {
-        if (bSuccess)
-        {
-            // GiftData is the original custom payload. Never credit player values locally.
-            // Cosmetics from the code's "grants" are unlocked on the server:
-            const TArray<FString>& Unlocked = Horizon->GiftCodes->GetLastGrantedUnlocks();
-            // The cached player profile was cleared; GetProfile now shows the unlocks.
-        }
-    }));
-```
-
-A code whose `giftData` contains `grants` (for example `{"grants": ["badge.supporter"]}`)
-unlocks those cosmetics for the player. `GetLastGrantedUnlocks()` returns them after a
-successful redeem (empty when the code had no grants); in Blueprints use
-**"Get Horizon Last Granted Unlocks"**.
-
-#### Values and replay-safe redemption (Develop, TASK-1007)
-
-The original `Redeem(Code, FOnGiftCodeRedeemComplete)` callback is unchanged. It makes one transport attempt because it has no reusable caller intent ID. Prefer the additive typed method for valuable codes:
-
-```cpp
-#include "Managers/HorizonGiftCodeManager.h"
-#include "Models/HorizonGiftCodes.h"
-
-// Persist Code + OriginalId for this project/player BEFORE the first send.
-// The same saved values are used after a timeout or restart; never create a new ID there.
-Horizon->GiftCodes->RedeemWithIdempotency(Code, OriginalId,
-    FOnGiftCodeRedeemResultComplete::CreateLambda([](bool Ok,
-        const FHorizonGiftCodeRedeemResult& Receipt, const FString& ErrorCode, const FString& Message)
-    {
-        if (!Ok) { return; } // Preserve the original pending intent for explicit recovery/retry.
-        // Receipt.GiftData stays an opaque string; GrantedUnlocks is additive.
-        // GrantedValues is the original grant, bReplayed marks replay.
-        // PlayerValues.bPresent is optional on older backends.
-        // The manager already adopted the COMPLETE authorized balance snapshot.
-        // Render that state; never add GrantedValues to a local balance.
-    }));
-```
-
-Explicit IDs must be nonblank and at most 128 characters; invalid IDs fail before HTTP. Original request bytes and ID survive transport retries. Feature 4xx codes, including `PV_MAX_BALANCE` and `IDEMPOTENCY_CONFLICT`, reach the callback without automatic rebinding. A lost response remains unknown until the same code/ID is explicitly replayed. Older responses without additive fields use empty grants, absent player values and `bReplayed=false`.
-
-`RedeemCodeWithIdempotency` and `OnRedeemResult` expose the same typed receipt to Blueprints. `GetLastRedeemResult()` returns the last successful receipt; `ClearCache`, sign-out and identity changes fence late replies. A concurrent player-value cache clear also prevents adoption. All amounts are checked against their original integer token before conversion to safe `int64`.
-
-`AHorizonGiftCodesExample` requires an already restored session and only redeems on explicit `RedeemGiftCode` / `RetryPendingRedemption` calls. Its project/player save retains the original code and ID across regions and restarts, blocks conflicting or unreadable pending records and sends nothing when persistence fails. It creates no identity and performs no automatic startup redemption. Definitive failures remain saved for deliberate game-specific recovery instead of silently replacing an uncertain intent. REST works without realtime.
-
-Native `Horizon.GiftValues` tests run with `Tests/run_native_gift_values_test.py` against the artificial loopback fixture on port 18818. They exercise lost-response replay, unchanged legacy callbacks, strict additive DTOs, authoritative cache replacement and session/project/cache fences. They do not claim live Develop acceptance or a released SDK version.
 
 ### Friends (Develop, TASK-1009)
 
@@ -932,7 +880,7 @@ Horizon->Auth->SignInEmail(TEXT("user@example.com"), TEXT("password"),
 
 All JSON, binary-upload and JSON-to-binary response paths share one dispatcher. A 429 with any nonempty string `code` is a feature decision and reaches the caller immediately, including unknown future codes. Missing, null or empty codes use the global policy: wait at least `Retry-After` seconds (minimum one second), then add random delay up to 20%, bounded by `MaxRetryAttempts`. Native timers reject NaN/infinite waits and avoid float overflow. Status, machine-readable code, response body and headers remain available after the final attempt.
 
-Requests capture their original JSON/bytes, extra headers and host/project/session context. Host/project lifecycle changes cancel old responses and scheduled retries with `SESSION_CHANGED`, including A→B→A changes. Session-bound calls additionally fence token-generation changes; session-independent calls remain valid during token changes. Backoff uses monotone wall time, so accelerated or paused game time cannot move a retry before the server minimum. Signup always has one transport attempt. Gift redemption without a nonblank caller `idempotencyId` also has one attempt because each legacy server request otherwise creates a new intent. A valid explicit ID permits identical transport retries; keep that original ID after an uncertain result.
+Requests capture their original JSON/bytes, extra headers and host/project/session context. Host/project lifecycle changes cancel old responses and scheduled retries with `SESSION_CHANGED`, including A→B→A changes. Session-bound calls additionally fence token-generation changes; session-independent calls remain valid during token changes. Backoff uses monotone wall time, so accelerated or paused game time cannot move a retry before the server minimum. Signup always has one transport attempt. Gift V2 retries preserve the original immutable campaign/count/revision tuple. V1 arbitrary-ID calls are closed and never authorize a replacement operation.
 
 `Horizon.Transport.RateLimit.NativeHTTP` uses the strict artificial `Tests/mock_rate_limit_server.py` on `127.0.0.1:18817`. `Tests/run_native_rate_limit_test.py --engine /path/to/UE_5.8 --host-project /path/to/HostProject.uproject --report /path/to/report` runs the native test after building the plugin. It verifies all three data paths, minimum waits, feature-code passthrough, retry exhaustion, immutable payloads/headers, single-attempt legacy/signup and a session change during backoff.
 

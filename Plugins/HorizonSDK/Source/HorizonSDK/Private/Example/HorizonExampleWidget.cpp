@@ -9,6 +9,9 @@
 #include "Managers/HorizonRemoteConfigManager.h"
 #include "Managers/HorizonNewsManager.h"
 #include "Managers/HorizonGiftCodeManager.h"
+#include "Examples/HorizonGiftCodesExample.h"
+#include "Kismet/GameplayStatics.h"
+#include "Misc/SecureHash.h"
 #include "Managers/HorizonFeedbackManager.h"
 
 #include "Blueprint/WidgetTree.h"
@@ -667,32 +670,39 @@ void UHorizonExampleWidget::TestLoadNews(int32 Limit)
 
 void UHorizonExampleWidget::TestRedeemCode(const FString& Code)
 {
-	UHorizonSubsystem* Sub = GetSubsystem();
-	if (!Sub || !Sub->GiftCodes)
-	{
-		AppendOutput(TEXT("[Gift] ERROR: Subsystem or GiftCodes not available."));
-		return;
-	}
-
-	AppendOutput(FString::Printf(TEXT("[Gift] Redeeming code '%s'..."), *Code));
-
-	TWeakObjectPtr<UHorizonExampleWidget> WeakSelf(this);
-
-	Sub->GiftCodes->Redeem(Code, FOnGiftCodeRedeemComplete::CreateLambda(
-		[WeakSelf](bool bSuccess, const FString& GiftData, const FString& Message)
-		{
-			if (UHorizonExampleWidget* Self = WeakSelf.Get())
-			{
-				if (bSuccess)
-				{
-					Self->AppendOutput(FString::Printf(TEXT("[Gift] SUCCESS: %s  Data: %s"), *Message, *GiftData));
-				}
-				else
-				{
-					Self->AppendOutput(FString::Printf(TEXT("[Gift] FAILED: %s"), *Message));
-				}
-			}
-		}));
+    auto* SDK=GetSubsystem(); if (!SDK || !SDK->GiftCodes || !SDK->Auth || !SDK->Auth->IsSignedIn() || bGiftV2Busy) return;
+    const FString User=SDK->Auth->GetCurrentUser().UserId,Project=FHorizonGiftCodeIntent::Fingerprint(SDK->GetHttpClient()->GetApiKey());
+    const FString Slot=TEXT("horizon-gift-widget-")+FMD5::HashAnsiString(*(Project+TEXT("|")+User));
+    if(UGameplayStatics::DoesSaveGameExist(Slot,0))
+    {
+        auto* Saved=Cast<UHorizonGiftCodePendingRedeem>(UGameplayStatics::LoadGameFromSlot(Slot,0));
+        if(!Saved || !Saved->Intent.IsValidFor(Project,User) || Saved->Intent.Code!=Code) { AppendOutput(TEXT("[Gift] Reconcile saved original intent before another code")); return; }
+        bGiftV2Busy=true; DispatchGiftIntent(Saved->Intent,Slot); return;
+    }
+    bGiftV2Busy=true;
+    SDK->GiftCodes->PrepareRedemption(Code,FOnGiftCodePrepareComplete::CreateWeakLambda(this,[this,Project,User,Slot](bool Ok,const FHorizonGiftCodeIntent& Intent,const FString& Error,const FString&)
+    {
+        auto* Current=GetSubsystem();
+        if(!Ok || !Current || !Current->Auth || !Intent.IsValidFor(FHorizonGiftCodeIntent::Fingerprint(Current->GetHttpClient()->GetApiKey()),Current->Auth->GetCurrentUser().UserId)) { bGiftV2Busy=false; AppendOutput(TEXT("[Gift] Prepare stopped: ")+Error); return; }
+        if(UGameplayStatics::DoesSaveGameExist(Slot,0)) { bGiftV2Busy=false; return; }
+        auto* Saved=Cast<UHorizonGiftCodePendingRedeem>(UGameplayStatics::CreateSaveGameObject(UHorizonGiftCodePendingRedeem::StaticClass())); Saved->Intent=Intent;
+        if(!UGameplayStatics::SaveGameToSlot(Saved,Slot,0)) { bGiftV2Busy=false; return; }
+        auto* Check=Cast<UHorizonGiftCodePendingRedeem>(UGameplayStatics::LoadGameFromSlot(Slot,0));
+        if(!Check || !Check->Intent.SameIdentity(Intent)) { bGiftV2Busy=false; return; }
+        DispatchGiftIntent(Intent,Slot);
+    }));
+}
+void UHorizonExampleWidget::DispatchGiftIntent(const FHorizonGiftCodeIntent& Intent,const FString& Slot)
+{
+    auto* SDK=GetSubsystem(); if(!SDK || !SDK->GiftCodes) { bGiftV2Busy=false; return; }
+    SDK->GiftCodes->RedeemPrepared(Intent,FOnGiftCodeRedeemResultComplete::CreateWeakLambda(this,[this,Intent,Slot](bool Ok,const FHorizonGiftCodeRedeemResult& Result,const FString& Error,const FString&)
+    {
+        bGiftV2Busy=false;
+        if(!Ok) { AppendOutput(TEXT("[Gift] Original tuple retained for retry/reconciliation: ")+Error); return; }
+        auto* Saved=Cast<UHorizonGiftCodePendingRedeem>(UGameplayStatics::LoadGameFromSlot(Slot,0));
+        if(Saved && Saved->Intent.SameIdentity(Intent)) UGameplayStatics::DeleteGameInSlot(Slot,0);
+        AppendOutput(FString::Printf(TEXT("[Gift] Accepted; alreadyApplied=%s; current state replaces balances"),Result.bAlreadyApplied?TEXT("true"):TEXT("false")));
+    }));
 }
 
 void UHorizonExampleWidget::TestSubmitFeedback(const FString& Title, const FString& Message)

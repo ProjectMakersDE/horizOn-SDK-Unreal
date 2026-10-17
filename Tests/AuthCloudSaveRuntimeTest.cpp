@@ -1,3 +1,4 @@
+#include "Transport/HorizonGiftCodeTransportContract.h"
 // Runs actual manager methods, with only the UE and network/storage boundaries replaced.
 #include "Transport/HorizonLeaderboardTransportContract.h"
 #include "Transport/HorizonCloudSaveTransportContract.h"
