@@ -52,7 +52,7 @@ def main():
             actual = {item.get("fullTestPath") for item in tests}
             if actual != expected or any(item.get("state") != "Success" or item.get("errors", 0) for item in tests):
                 raise RuntimeError("Native report did not contain both successful Inbox tests with zero errors")
-            print("Native Inbox: 2 tests passed; strict fixture passed, 21 exact requests")
+            print("Native Inbox: 2 tests passed; strict fixture passed, 24 exact requests")
         finally:
             for process in (engine, fixture):
                 if process is not None and process.poll() is None:

@@ -10,6 +10,7 @@ from urllib.parse import parse_qs, urlparse
 
 USER = "00000000-0000-4000-8000-000000001006"
 ENTRY = "broadcast:00000000-0000-4000-8000-000000001006"
+ITEM_ENTRY = "message:00000000-0000-4000-8000-000000001007"
 ROOT = "/api/v1/app/inbox"
 
 
@@ -41,6 +42,28 @@ def post(action, value, status=200, delay=0):
     return ("POST", ROOT + "/" + action, {}, {"userId": USER, "entryId": ENTRY}, status, value, delay)
 
 
+compact = snapshot(100, second=30)
+plain = copy.deepcopy(compact["entries"][0])
+plain.update(id="message:" + USER, kind="message", type="free_text", textKey="horizon.inbox.free_text", reference="",
+             parameters={"text": "ä" * 256}, attachment=None, createdAt="2030-01-01T00:00:00Z")
+returned = copy.deepcopy(plain)
+returned.update(id=ITEM_ENTRY, type="marketplace", textKey="marketplace.item_return", reference=USER, parameters={},
+                attachment={"values": [], "itemReturn": {"listingId": USER, "instanceId": USER, "itemKey": "sword"}})
+compact["entries"] = [plain, returned]
+for i in range(550):
+    ordinary = copy.deepcopy(plain)
+    ordinary.update(id=f"broadcast:00000000-0000-4000-8000-{i:012d}", kind="broadcast", type="custom", textKey="custom.notice", parameters={})
+    compact["entries"].append(ordinary)
+compact["limits"] = {"targeted": 1, "broadcasts": 1, "freeTexts": 4, "freeTextBytes": 512, "freeTextRetentionDays": 30}
+compact["counts"] = {"free_text": {"total": 1, "unread": 1, "claimable": 0}, "marketplace": {"total": 1, "unread": 1, "claimable": 1}, "custom": {"total": 550, "unread": 550, "claimable": 0}}
+item_claim = claim(30)
+item_claim.update(entryId=ITEM_ENTRY, inbox=snapshot(101, second=31), items=[{"instanceId": USER, "itemKey": "sword"}])
+item_claim["inbox"].update(entries=[], counts={})
+item_replay = copy.deepcopy(item_claim)
+item_replay["replayed"] = True
+item_replay["inbox"].update(revision=102, serverTime="2026-10-16T00:00:32Z")
+
+
 EXPECTED = [
     ("POST", "/api/v1/app/user-management/signup", {}, {"type": "ANONYMOUS", "username": "signup-503"}, 503, {"message": "uncertain signup"}, 0),
     ("POST", "/api/v1/app/user-management/signup", {}, {"type": "ANONYMOUS", "username": "signup-drop"}, 0, None, 0),
@@ -56,6 +79,9 @@ EXPECTED = [
     post("remove", {"code": "UNCLAIMED_REWARD", "message": "Claim valuable attachment first"}, 409),
     post("read", snapshot(18, 21, read=True), delay=.15),
     get(snapshot(19, 21), delay=.15),
+    get(compact),
+    ("POST", ROOT + "/claim", {}, {"userId": USER, "entryId": ITEM_ENTRY}, 200, item_claim, 0),
+    ("POST", ROOT + "/claim", {}, {"userId": USER, "entryId": ITEM_ENTRY}, 200, item_replay, 0),
 ]
 
 

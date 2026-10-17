@@ -10,6 +10,13 @@
 #include "Kismet/GameplayStatics.h"
 #include "Engine/GameInstance.h"
 
+FHorizonInboxSource UHorizonBlueprintLibrary::GetInboxSource(const FHorizonInboxEntry& Entry)
+{ FHorizonInboxSource Source; Entry.TryGetSource(Source); return Source; }
+bool UHorizonBlueprintLibrary::GetInboxFreeText(const FHorizonInboxEntry& Entry,FString& Text)
+{ Text.Reset(); return Entry.TryGetFreeText(Text); }
+bool UHorizonBlueprintLibrary::CanClaimInboxEntry(const FHorizonInboxEntry& Entry)
+{ return Entry.CanClaim(); }
+
 UHorizonSubsystem* UHorizonBlueprintLibrary::GetHorizonSubsystem(const UObject* WorldContextObject)
 {
 	if (!WorldContextObject)

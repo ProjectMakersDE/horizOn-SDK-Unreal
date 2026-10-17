@@ -7,6 +7,7 @@
 #include "Models/HorizonUserData.h"
 #include "Models/HorizonPlayerProfile.h"
 #include "Models/HorizonValidatedActions.h"
+#include "Models/HorizonInbox.h"
 #include "HorizonBlueprintLibrary.generated.h"
 
 class UHorizonSubsystem;
@@ -23,6 +24,16 @@ class HORIZONSDK_API UHorizonBlueprintLibrary : public UBlueprintFunctionLibrary
 	GENERATED_BODY()
 
 public:
+    /** Navigation metadata only; source feature APIs own their current state and actions. */
+    UFUNCTION(BlueprintPure, Category="horizOn|Inbox")
+    static FHorizonInboxSource GetInboxSource(const FHorizonInboxEntry& Entry);
+
+    /** Output must be rendered as plain text, with rich text disabled. */
+    UFUNCTION(BlueprintPure, Category="horizOn|Inbox")
+    static bool GetInboxFreeText(const FHorizonInboxEntry& Entry, FString& Text);
+
+    UFUNCTION(BlueprintPure, Category="horizOn|Inbox")
+    static bool CanClaimInboxEntry(const FHorizonInboxEntry& Entry);
 	/** Get the horizOn subsystem from a world context object. */
 	UFUNCTION(BlueprintPure, Category = "horizOn", meta = (WorldContext = "WorldContextObject"))
 	static UHorizonSubsystem* GetHorizonSubsystem(const UObject* WorldContextObject);
