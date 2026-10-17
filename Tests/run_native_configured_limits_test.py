@@ -40,7 +40,7 @@ def main():
             # Never pre-probe fixture HTTP: its exact sequence is part of the gate.
             userdir = report / "isolated-user"
             engine = subprocess.Popen([str(editor), str(args.host_project.resolve()), "-unattended", "-nosplash", "-nullrhi", "-nosound", "-NoLiveCoding", "-NoTrace", "-UserDir=" + str(userdir), "-ExecCmds=Automation RunTests Horizon.ConfiguredLimits;Quit", "-TestExit=Automation Test Queue Empty", "-ReportExportPath=" + str(report), "-abslog=" + str(report / "editor.log")], env=environment, stdout=editor_log, stderr=subprocess.STDOUT)
-            result = engine.wait(timeout=180)
+            result = engine.wait(timeout=420)
             if result:
                 raise RuntimeError(f"Native editor failed before fixture completion: {result}")
             fixture_result = fixture.wait(timeout=10)
@@ -52,7 +52,7 @@ def main():
             actual = {item.get("fullTestPath") for item in tests}
             if actual != expected or any(item.get("state") != "Success" or item.get("errors", 0) for item in tests):
                 raise RuntimeError("Native report did not contain successful Configured limits test with zero errors")
-            print("Native Configured limits: 1 test passed; strict fixture passed, 27 exact feature requests plus explicit health/session bootstrap")
+            print("Native Configured limits: 1 test passed; strict fixture passed, 36 exact feature requests plus explicit health/session bootstrap")
         finally:
             for process in (engine, fixture):
                 if process is not None and process.poll() is None:

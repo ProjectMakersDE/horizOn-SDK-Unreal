@@ -47,7 +47,7 @@ bool GroupPending(const TSharedPtr<FJsonObject>& J,const TCHAR* Key,TArray<FHori
 bool FHorizonGroupJsonData::TryFromJson(const FString& Raw,FHorizonGroupJsonData& Out)
 {
     const FTCHARToUTF8 Bytes(*Raw);std::string Compact;
-    if(Raw!=FString(UTF8_TO_TCHAR(Bytes.Get()))||!HorizonGroupsContract::CompactObject(std::string(Bytes.Get(),Bytes.Length()),Compact,1024))return false;
+    if(Raw!=FString(UTF8_TO_TCHAR(Bytes.Get()))||!HorizonGroupsContract::CompactObject(std::string(Bytes.Get(),Bytes.Length()),Compact,1024,size_t(Bytes.Length())))return false;
     FHorizonGroupJsonData Data;Data.Json=UTF8_TO_TCHAR(Compact.c_str());Out=MoveTemp(Data);return true;
 }
 bool FHorizonGroupView::TryFromJson(const TSharedPtr<FJsonObject>& J,FHorizonGroupView& Out)

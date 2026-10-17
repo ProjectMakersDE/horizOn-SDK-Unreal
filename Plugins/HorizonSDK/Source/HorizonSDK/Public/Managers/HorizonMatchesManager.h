@@ -80,7 +80,8 @@ private:
     void RememberSource(const FString& MatchId,int64 FinalRevision,const FString& RunId);
     uint64 Context=0,Epoch=0,Ticket=0;
     bool Busy=false;
-    int64 RevisionFloor=-1,ServerMillis=-1;
+    int64 ServerMillis=-1;
+    TMap<FString,int64> RevisionFloors;
     FHorizonMyMatches CurrentMatches;
     FHorizonMatchLimitsView CurrentLimits;
     FHorizonMatchPage CurrentOpen;
@@ -89,7 +90,7 @@ private:
     FHorizonMatchReported CurrentReported;
     void Sync();
     void ClearSnapshots();
-    bool Accept(const FString& ServerTime,int64 Revision=-1);
+    bool Accept(const FString& ServerTime,const TMap<FString,int64>& Versions={});
     void Call(const FString& User,const FString& Route,const FString& Verb,const TSharedPtr<FJsonObject>& Body,int64 OriginalRevision,FOnHttpResponse Complete);
     void Action(const FString& User,const FString& MatchId,int64 OriginalRevision,const FString& Action,const TSharedPtr<FJsonObject>& Body,FOnMatchComplete Complete);
     static FHorizonNetworkResponse Error(const FString& Code);

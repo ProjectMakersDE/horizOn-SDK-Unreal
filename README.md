@@ -1333,3 +1333,7 @@ context, including201 distinct pending sources. They cannot be evicted by an
 unrelated source read. Auth-context changes clear this local map. Like Group
 revision floors, repeated reads may grow it beyond one transport frame; it stores
 no result, item, reward or full state history and changes no server storage.
+
+Minimal Match revision watermarks remain across route/body changes and513 retained summaries; the context-wide server-time watermark remains monotone. Auth changes clear these small marks, while payload snapshots remain bounded.
+
+Groups responses aggregate independent BSON records and can duplicate a group in a mutation. A6MiB control-character name needs about36MiB JSON; the same mutation can exceed72MiB. Groups alone parses its already received body/fragments at their actual length, preserving strict field/grammar/depth checks. There is no derived32/96/192MiB aggregate product quota. Available engine/HTTP memory remains a technical client limit; a parse/transport failure must preserve the original for explicit recovery. Other feature frames and small payload caches are unchanged.

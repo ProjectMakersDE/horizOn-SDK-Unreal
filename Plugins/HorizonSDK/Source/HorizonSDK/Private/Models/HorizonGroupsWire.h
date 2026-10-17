@@ -42,8 +42,9 @@ inline bool Restore(const TSharedPtr<FJsonValue>& V,const FString& Prefix,const 
 inline bool Parse(const FString& Body,TSharedPtr<FJsonObject>& Out)
 {
     const FTCHARToUTF8 Bytes(*Body);const FString Prefix=TEXT("horizon-opaque-")+FGuid::NewGuid().ToString(EGuidFormats::Digits)+TEXT("-");
+    // Only Groups budgets the already received aggregate from its actual raw byte length.
     std::vector<std::string> Data;std::string Masked;
-    if(!HorizonGroupsContract::JsonObject(std::string(Bytes.Get(),Bytes.Length())).MaskObjects(TCHAR_TO_UTF8(*Prefix),Data,Masked))return false;
+    if(!HorizonGroupsContract::JsonObject(std::string(Bytes.Get(),Bytes.Length()),1024,size_t(Bytes.Length())).MaskObjects(TCHAR_TO_UTF8(*Prefix),Data,Masked))return false;
     TSharedPtr<FJsonObject> Json;
     if(!FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(UTF8_TO_TCHAR(Masked.c_str())),Json,FJsonSerializer::EFlags::StoreNumbersAsStrings)||!Json)return false;
     int32 Restored=0;if(!Restore(MakeShared<FJsonValueObject>(Json),Prefix,Data,Restored)||size_t(Restored)!=Data.size())return false;Out=MoveTemp(Json);return true;
