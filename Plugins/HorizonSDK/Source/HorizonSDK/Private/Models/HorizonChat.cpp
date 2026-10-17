@@ -37,10 +37,14 @@ bool ReadReceipt(const TSharedPtr<FJsonObject>& J,FHorizonChatReceipt& R)
 bool FHorizonChatLimitsView::TryFromJson(const TSharedPtr<FJsonObject>& J,FHorizonChatLimitsView& Out)
 {
     using namespace HorizonChatJson;FHorizonChatLimitsView V;const TSharedPtr<FJsonObject> *L,*C,*M;
-    if(!Keys(J,{TEXT("limits"),TEXT("capabilities"),TEXT("moderation"),TEXT("serverTime")})||!J->TryGetObjectField(TEXT("limits"),L)||!J->TryGetObjectField(TEXT("capabilities"),C)||!J->TryGetObjectField(TEXT("moderation"),M)||!Time(J,TEXT("serverTime"),V.ServerTime)||!ReadModeration(*M,V.Moderation)||!Keys(*C,{TEXT("chat"),TEXT("realtime"),TEXT("incrementalSync")})||!Bool(*C,TEXT("chat"),V.Capabilities.bChat)||!Bool(*C,TEXT("realtime"),V.Capabilities.bRealtime)||!Bool(*C,TEXT("incrementalSync"),V.Capabilities.bIncrementalSync)||!V.Capabilities.bIncrementalSync)return false;
-    if(!Small(*L,TEXT("retainedMessagesPerPlayer"),V.Limits.RetainedMessagesPerPlayer,100))return false;
-    if(!Small(*L,TEXT("retainedMessagesPerChannel"),V.Limits.RetainedMessagesPerChannel,100))return false;
-    if(!Small(*L,TEXT("retentionSeconds"),V.Limits.RetentionSeconds,604800))return false;
+    if(!Keys(J,{TEXT("limits"),TEXT("capabilities"),TEXT("moderation"),TEXT("serverTime")})||!J->TryGetObjectField(TEXT("limits"),L)||!J->TryGetObjectField(TEXT("capabilities"),C)||!J->TryGetObjectField(TEXT("moderation"),M)||!Time(J,TEXT("serverTime"),V.ServerTime)||!ReadModeration(*M,V.Moderation)||!Keys(*C,{TEXT("chat"),TEXT("realtime"),TEXT("incrementalSync"),TEXT("localHistory")})||!Bool(*C,TEXT("chat"),V.Capabilities.bChat)||!Bool(*C,TEXT("realtime"),V.Capabilities.bRealtime)||!Bool(*C,TEXT("incrementalSync"),V.Capabilities.bIncrementalSync)||!V.Capabilities.bIncrementalSync||!Bool(*C,TEXT("localHistory"),V.Capabilities.bLocalHistory)||!V.Capabilities.bLocalHistory)return false;
+    if(!Small(*L,TEXT("retainedMessagesPerPlayer"),V.Limits.RetainedMessagesPerPlayer,0))return false;
+    if(!Small(*L,TEXT("retainedMessagesPerChannel"),V.Limits.RetainedMessagesPerChannel,20)||V.Limits.RetainedMessagesPerChannel!=20)return false;
+    if(!Small(*L,TEXT("retentionSeconds"),V.Limits.RetentionSeconds,604800)||V.Limits.RetentionSeconds!=604800)return false;
+    if(!Small(*L,TEXT("privateRetainedMessagesPerChannel"),V.Limits.PrivateRetainedMessagesPerChannel,15)||V.Limits.PrivateRetainedMessagesPerChannel!=15)return false;
+    if(!Small(*L,TEXT("privateRetentionSeconds"),V.Limits.PrivateRetentionSeconds,30)||V.Limits.PrivateRetentionSeconds!=30)return false;
+    if(!Small(*L,TEXT("operationWindowSeconds"),V.Limits.OperationWindowSeconds,30)||V.Limits.OperationWindowSeconds!=30)return false;
+    if(!Small(*L,TEXT("operationFutureToleranceSeconds"),V.Limits.OperationFutureToleranceSeconds,60)||V.Limits.OperationFutureToleranceSeconds!=60)return false;
     if(!Small(*L,TEXT("messageCharacters"),V.Limits.MessageCharacters,500))return false;
     if(!Small(*L,TEXT("messageUtf8Bytes"),V.Limits.MessageUtf8Bytes,2000))return false;
     if(!Small(*L,TEXT("channelsPerAccount"),V.Limits.ChannelsPerAccount,2000))return false;
@@ -48,11 +52,11 @@ bool FHorizonChatLimitsView::TryFromJson(const TSharedPtr<FJsonObject>& J,FHoriz
     if(!Small(*L,TEXT("playerSendIntervalMillis"),V.Limits.PlayerSendIntervalMillis,3000))return false;
     if(!Small(*L,TEXT("channelSendIntervalMillis"),V.Limits.ChannelSendIntervalMillis,2000))return false;
     if(!Small(*L,TEXT("reportsPerProject"),V.Limits.ReportsPerProject,200))return false;
-    if(!Small(*L,TEXT("receiptCount"),V.Limits.ReceiptCount,100))return false;
-    if(!Small(*L,TEXT("reportReceiptCount"),V.Limits.ReportReceiptCount,32))return false;
+    if(!Small(*L,TEXT("receiptCount"),V.Limits.ReceiptCount,0))return false;
+    if(!Small(*L,TEXT("reportReceiptCount"),V.Limits.ReportReceiptCount,0))return false;
     if(!Small(*L,TEXT("wordFilterTerms"),V.Limits.WordFilterTerms,100))return false;
 
-    if(!Keys(*L,{TEXT("retainedMessagesPerPlayer"),TEXT("retainedMessagesPerChannel"),TEXT("retentionSeconds"),TEXT("messageCharacters"),TEXT("messageUtf8Bytes"),TEXT("channelsPerAccount"),TEXT("sendsPerAccountMinute"),TEXT("playerSendIntervalMillis"),TEXT("channelSendIntervalMillis"),TEXT("reportsPerProject"),TEXT("receiptCount"),TEXT("reportReceiptCount"),TEXT("wordFilterTerms")}))return false;V.bPresent=true;Out=MoveTemp(V);return true;
+    if(!Keys(*L,{TEXT("retainedMessagesPerPlayer"),TEXT("retainedMessagesPerChannel"),TEXT("retentionSeconds"),TEXT("privateRetainedMessagesPerChannel"),TEXT("privateRetentionSeconds"),TEXT("operationWindowSeconds"),TEXT("operationFutureToleranceSeconds"),TEXT("messageCharacters"),TEXT("messageUtf8Bytes"),TEXT("channelsPerAccount"),TEXT("sendsPerAccountMinute"),TEXT("playerSendIntervalMillis"),TEXT("channelSendIntervalMillis"),TEXT("reportsPerProject"),TEXT("receiptCount"),TEXT("reportReceiptCount"),TEXT("wordFilterTerms")}))return false;V.bPresent=true;Out=MoveTemp(V);return true;
 }
 bool FHorizonChatOpened::TryFromJson(const TSharedPtr<FJsonObject>& J,FHorizonChatOpened& Out)
 {
@@ -61,8 +65,8 @@ bool FHorizonChatOpened::TryFromJson(const TSharedPtr<FJsonObject>& J,FHorizonCh
 bool FHorizonChatSynced::TryFromJson(const TSharedPtr<FJsonObject>& J,FHorizonChatSynced& Out)
 {
     using namespace HorizonChatJson;FHorizonChatSynced V;const TSharedPtr<FJsonObject> *C,*M;const TArray<TSharedPtr<FJsonValue>>* A;
-    if(!Keys(J,{TEXT("channel"),TEXT("visibleMessageIds"),TEXT("messages"),TEXT("moderation"),TEXT("serverTime")})||!J->TryGetObjectField(TEXT("channel"),C)||!ReadChannel(*C,V.Channel)||!Ids(J,TEXT("visibleMessageIds"),V.VisibleMessageIds,100)||!J->TryGetArrayField(TEXT("messages"),A)||A->Num()>100||!J->TryGetObjectField(TEXT("moderation"),M)||!ReadModeration(*M,V.Moderation)||!Time(J,TEXT("serverTime"),V.ServerTime))return false;
-    TSet<FString> Seen;int32 Last=-1;for(const auto& Row:*A){FHorizonChatMessage R;if(!Row||Row->Type!=EJson::Object||!ReadMessage(Row->AsObject(),R)||R.ChannelId!=V.Channel.Id||Seen.Contains(R.Id))return false;const int32 Index=V.VisibleMessageIds.IndexOfByKey(R.Id);if(Index<=Last)return false;Last=Index;Seen.Add(R.Id);V.Messages.Add(R);}V.bPresent=true;Out=MoveTemp(V);return true;
+    if(!Keys(J,{TEXT("channel"),TEXT("visibleMessageIds"),TEXT("messages"),TEXT("moderation"),TEXT("serverTime")})||!J->TryGetObjectField(TEXT("channel"),C)||!ReadChannel(*C,V.Channel)||!Ids(J,TEXT("visibleMessageIds"),V.VisibleMessageIds,V.Channel.Kind==TEXT("project")?20:15)||!J->TryGetArrayField(TEXT("messages"),A)||A->Num()>(V.Channel.Kind==TEXT("project")?20:15)||!J->TryGetObjectField(TEXT("moderation"),M)||!ReadModeration(*M,V.Moderation)||!Time(J,TEXT("serverTime"),V.ServerTime))return false;
+    TSet<FString> Seen;int32 Last=-1;for(const auto& Row:*A){FHorizonChatMessage R;if(!Row||Row->Type!=EJson::Object||!ReadMessage(Row->AsObject(),R)||R.ChannelId!=V.Channel.Id||Seen.Contains(R.Id))return false;const int32 Index=V.VisibleMessageIds.IndexOfByKey(R.Id);if(Index<=Last)return false;FDateTime Created,Expires;FDateTime::ParseIso8601(*R.CreatedAt,Created);FDateTime::ParseIso8601(*R.ExpiresAt,Expires);if((Expires-Created).GetTotalSeconds()>(V.Channel.Kind==TEXT("project")?604800:30))return false;Last=Index;Seen.Add(R.Id);V.Messages.Add(R);}V.bPresent=true;Out=MoveTemp(V);return true;
 }
 bool FHorizonChatSent::TryFromJson(const TSharedPtr<FJsonObject>& J,FHorizonChatSent& Out){using namespace HorizonChatJson;FHorizonChatSent V;const TSharedPtr<FJsonObject>* R;if(!Keys(J,{TEXT("receipt"),TEXT("replayed"),TEXT("serverTime")})||!J->TryGetObjectField(TEXT("receipt"),R)||!ReadReceipt(*R,V.Receipt)||!Bool(J,TEXT("replayed"),V.bReplayed)||!Time(J,TEXT("serverTime"),V.ServerTime))return false;V.bPresent=true;Out=MoveTemp(V);return true;}
 bool FHorizonChatOperation::TryFromJson(const TSharedPtr<FJsonObject>& J,FHorizonChatOperation& Out){using namespace HorizonChatJson;FHorizonChatOperation V;const TSharedPtr<FJsonObject>* R;if(!Keys(J,{TEXT("receipt"),TEXT("serverTime")})||!J->TryGetObjectField(TEXT("receipt"),R)||!ReadReceipt(*R,V.Receipt)||!Time(J,TEXT("serverTime"),V.ServerTime))return false;V.bPresent=true;Out=MoveTemp(V);return true;}

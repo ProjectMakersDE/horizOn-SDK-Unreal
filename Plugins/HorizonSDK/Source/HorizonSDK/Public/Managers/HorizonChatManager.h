@@ -6,7 +6,9 @@
 #include "Models/HorizonChat.h"
 #include "HorizonChatManager.generated.h"
 class UHorizonRealtimeManager;
+class FHorizonChatHistory;
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnChatFeedChanged,const FString&,ChannelId);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnChatHistoryFailed,const FString&,ChannelId,const FString&,ErrorCode);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_FourParams(FOnHorizonChatLimitsViewResult,bool,bSuccess,const FHorizonChatLimitsView&,Result,const FString&,ErrorCode,const FString&,ErrorMessage);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_FourParams(FOnHorizonChatOpenedResult,bool,bSuccess,const FHorizonChatOpened&,Result,const FString&,ErrorCode,const FString&,ErrorMessage);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_FourParams(FOnHorizonChatSyncedResult,bool,bSuccess,const FHorizonChatSynced&,Result,const FString&,ErrorCode,const FString&,ErrorMessage);
@@ -31,6 +33,15 @@ public:
     UFUNCTION(BlueprintCallable,Category="horizOn|Chat") void UnwatchChannel(const FString& ChannelId);
     UFUNCTION(BlueprintCallable,Category="horizOn|Chat") void ClearCache();
     UFUNCTION(BlueprintPure,Category="horizOn|Chat") FHorizonChatFeed GetFeed(const FString& ChannelId);
+    /** Device copies in local delivery order. No HTTP and no server-expiry deletion. */
+    UFUNCTION(BlueprintCallable,Category="horizOn|Chat") FHorizonChatHistoryPage ReadLocalHistory(const FString& ChannelId,const FString& Cursor=TEXT(""),int32 Limit=50);
+    UFUNCTION(BlueprintCallable,Category="horizOn|Chat") bool ClearLocalHistory(const FString& ChannelId);
+    UFUNCTION(BlueprintCallable,Category="horizOn|Chat") bool ClearAllLocalHistory();
+    UPROPERTY(BlueprintAssignable,Category="horizOn|Chat") FOnChatFeedChanged OnLocalHistoryChanged;
+    UPROPERTY(BlueprintAssignable,Category="horizOn|Chat") FOnChatHistoryFailed OnLocalHistoryFailed;
+    /** Local-only recovery using the saved exact input and a verified GetOperation response. */
+    FString CaptureLocalHistory(const FString& ChannelId);
+    void ArchiveConfirmedSend(const FString& UserId,const FString& Text,const FHorizonChatReceipt& Receipt,const FString& Captured);
     UFUNCTION(BlueprintPure,Category="horizOn|Chat") bool IsChannelSubscribed(const FString& ChannelId);
     UFUNCTION(BlueprintPure,Category="horizOn|Chat") FHorizonChatLimitsView GetCurrentLimits();
     UFUNCTION(BlueprintPure,Category="horizOn|Chat") FHorizonChatResponseMetadata GetLastResponseMetadata();
@@ -69,6 +80,8 @@ private:
     FHorizonChatLimitsView Limits;
     FHorizonChatResponseMetadata ResponseMetadata;
     FString Identity;
+    FString HistoryIdentity;
+    TSharedPtr<FHorizonChatHistory> History;
     uint64 Context=0,Generation=0,NextSerial=0;
     void SyncIdentity();
     FString Validate(const FString& UserId);
@@ -82,4 +95,5 @@ private:
     UFUNCTION() void OnRealtimeError(const FString& Code);
     UFUNCTION() void OnSubscriptionError(const FString& Topic,const FString& Code);
     static FHorizonNetworkResponse Error(const FString& Code);
+    void Archive(const FString& Channel,TArray<FHorizonChatMessage> Messages,const FString& Captured);
 };

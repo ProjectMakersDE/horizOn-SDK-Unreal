@@ -25,9 +25,16 @@ private:
     UPROPERTY() UEditableTextBox* Reason=nullptr;
     UPROPERTY() UTextBlock* Status=nullptr;
     UPROPERTY() UTextBlock* Feed=nullptr;
+    UPROPERTY() UEditableTextBox* HistoryChannel=nullptr;
+    UPROPERTY() UTextBlock* HistoryFeed=nullptr;
+    FString HistoryCursor,HistoryIdentity,HistoryError;
     UFUNCTION() void Open();
     UFUNCTION() void Send();
     UFUNCTION() void Retry();
     UFUNCTION() void Reconcile();
     UFUNCTION() void Report();
+    UFUNCTION() void ReadHistory();
+    UFUNCTION() void OlderHistory();
+    UFUNCTION() void ClearHistory();
+    UFUNCTION() void HistoryFailed(const FString& Channel,const FString& Code);
 };
