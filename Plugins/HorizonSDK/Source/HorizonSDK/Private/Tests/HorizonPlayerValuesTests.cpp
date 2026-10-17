@@ -19,6 +19,7 @@ struct FPlayerValuesTransportTestState : TSharedFromThis<FPlayerValuesTransportT
     double Deadline = FPlatformTime::Seconds() + 45;
     const FString User = TEXT("00000000-0000-4000-8000-000000001004");
     const FString AdjustOperation = TEXT("1792065600000:00000000-0000-4000-8000-000000001005");
+    const FString CompactOperation = TEXT("1792065600000:00000000-0000-4000-8000-000000001006");
     const FString Operation = TEXT("1792065600000:00000000-0000-4000-8000-000000001004");
     FPlayerValuesTransportTestState(FAutomationTestBase* InTest, const FString& Host) : Test(InTest)
     {
@@ -41,7 +42,7 @@ struct FPlayerValuesTransportTestState : TSharedFromThis<FPlayerValuesTransportT
         {
             if (auto Self = Weak.Pin())
             {
-                const bool Expected = SentStage == 2 || SentStage == 5 || SentStage == 11;
+                const bool Expected = SentStage == 2 || SentStage == 5 || SentStage == 11 || SentStage == 14 || SentStage == 15 || SentStage == 16;
                 Self->Test->TestEqual(TEXT("Expected mutation/read result"), Success, Expected);
                 const FString ExpectedCode = SentStage == 4 ? TEXT("OPERATION_EXPIRED") : Expected ? TEXT("") : TEXT("STALE_RESPONSE");
                 Self->Test->TestEqual(TEXT("Stable error code"), Code, ExpectedCode);
@@ -54,6 +55,29 @@ struct FPlayerValuesTransportTestState : TSharedFromThis<FPlayerValuesTransportT
                     Self->Test->TestTrue(TEXT("Operation ID format"), UHorizonPlayerValuesManager::ValidOperationId(Self->Values->CreateOperationId()));
                 }
                 else if (SentStage == 2) Self->Test->AddError(TEXT("Expected two balances"));
+                if (SentStage >= 14 && SentStage <= 16)
+                    Self->Test->TestEqual(TEXT("Configured values above old tariff defaults remain readable"), State.Values.Num(), 80);
+                if (SentStage == 15)
+                {
+                    Self->Test->TestFalse(TEXT("Fresh purchase is not replayed"), State.Operation.bReplayed);
+                    Self->Test->TestEqual(TEXT("Fresh purchase carries immediate deltas"), State.Operation.Applied.Num(), 2);
+                    Self->Test->TestEqual(TEXT("Fresh purchase carries item reference"), State.Operation.Items.Num(), 1);
+                }
+                if (SentStage == 16)
+                {
+                    Self->Test->TestEqual(TEXT("Original operation identity preserved"), State.Operation.OperationId, Self->CompactOperation);
+                    Self->Test->TestTrue(TEXT("Compact replay acknowledged"), State.Operation.bReplayed);
+                    Self->Test->TestEqual(TEXT("Replay does not retain historical deltas"), State.Operation.Applied.Num(), 0);
+                    Self->Test->TestEqual(TEXT("Replay does not retain historical item references"), State.Operation.Items.Num(), 0);
+                    if (State.Values.Num() == 80)
+                    {
+                        Self->Test->TestEqual(TEXT("Replay adopts current balance instead of replaying credit"), State.Values[0].Balance, int64(33));
+                        Self->Test->TestEqual(TEXT("Lowered daily cap retains already earned values"), State.Values[0].EarnedToday, int64(50));
+                        Self->Test->TestTrue(TEXT("Zero cap remains explicit after lowering"), State.Values[0].bHasDailyCap && State.Values[0].DailyCap == 0);
+                    }
+                    Self->Test->TestEqual(TEXT("Current snapshot replaces cache"), Self->Values->GetCurrentState().Revision, int64(17));
+                    Self->Test->TestFalse(TEXT("Changed definitions invalidate old offers"), Self->Values->GetCurrentOffers().bPresent);
+                }
                 if (SentStage == 4) Self->Test->TestEqual(TEXT("Business error carries current revision"), State.Revision, int64(11));
                 if (!Expected && SentStage != 4) Self->Test->TestFalse(TEXT("Stale reply exposes no balance"), State.bPresent);
                 if (SentStage == 12) Self->Http->SetSessionToken(TEXT("fixture-session-1004"));
@@ -69,19 +93,33 @@ struct FPlayerValuesTransportTestState : TSharedFromThis<FPlayerValuesTransportT
         bPending = true;
         if (Stage == 0) Http->ConnectToServer(FOnRequestComplete::CreateLambda([Weak](bool Success, const FString&) { if (auto Self = Weak.Pin()) { Self->Test->TestTrue(TEXT("HTTP connected"), Success); Self->Stage++; Self->bPending = false; } }));
         else if (Stage == 1) Auth->SignInAnonymous(TEXT("fixture-anonymous"), FOnAuthComplete::CreateLambda([Weak](bool Success) { if (auto Self = Weak.Pin()) { Self->Test->TestTrue(TEXT("Player signed in"), Success); Self->Stage++; Self->bPending = false; } }));
-        else if (Stage == 3 || Stage == 8)
+        else if (Stage == 3 || Stage == 8 || Stage == 13)
         {
             Values->GetOffers(User, FOnPlayerValuesOffersComplete::CreateLambda([Weak](bool Success, const FHorizonPlayerValuesOffers& Offers, const FString&, const FString&)
-            { if (auto Self = Weak.Pin()) { Self->Test->TestTrue(TEXT("Offers loaded"), Success); Self->Test->TestTrue(TEXT("Offers contain safe costs"), Offers.Offers.Num() == 1 && Offers.Offers[0].Costs.Num() == 1 && Offers.Offers[0].Costs[0].Amount == 9007199254740991LL); if (Self->Stage == 8) Self->Test->TestFalse(TEXT("Catalogue clears snapshot"), Self->Values->GetCurrentState().bPresent); Self->Stage++; Self->bPending = false; } }));
+            { if (auto Self = Weak.Pin())
+                {
+                    Self->Test->TestTrue(TEXT("Offers loaded"), Success);
+                    if (Self->Stage == 13)
+                    {
+                        Self->Test->TestEqual(TEXT("Configured definitions above old defaults"), Offers.Definitions.Num(), 80);
+                        Self->Test->TestEqual(TEXT("Configured offers above old defaults"), Offers.Offers.Num(), 1201);
+                        for (const auto& Offer : Offers.Offers)
+                            Self->Test->TestFalse(TEXT("Removed offer day quota stays absent"), Offer.bHasPurchasesPerDay);
+                    }
+                    else Self->Test->TestTrue(TEXT("Offers contain safe costs"), Offers.Offers.Num() == 1 && Offers.Offers[0].Costs.Num() == 1 && Offers.Offers[0].Costs[0].Amount == 9007199254740991LL);
+                    if (Self->Stage == 8) Self->Test->TestFalse(TEXT("Catalogue clears snapshot"), Self->Values->GetCurrentState().bPresent);
+                    Self->Stage++; Self->bPending = false;
+                } }));
         }
         else if (Stage == 4) Values->Purchase(User, TEXT("energy-pack"), Operation, StateCallback());
         else if (Stage == 5) Values->Adjust(User, TEXT("gold"), -9007199254740991LL, TEXT("debug"), AdjustOperation, StateCallback());
         else if (Stage == 12) { RetryStarted = FPlatformTime::Seconds(); Values->Purchase(User, TEXT("energy-pack"), Operation, StateCallback()); }
-        else if (Stage <= 13)
+        else if (Stage == 15 || Stage == 16) Values->Purchase(User, TEXT("energy-pack"), CompactOperation, StateCallback());
+        else if (Stage <= 17)
         {
             Values->GetState(User, StateCallback());
             if (Stage == 6) Values->ClearCache();
-            if (Stage == 13) Auth->SignOut();
+            if (Stage == 17) Auth->SignOut();
         }
         else
         {
