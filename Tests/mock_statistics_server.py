@@ -47,12 +47,26 @@ class Contract(BaseHTTPRequestHandler):
             step = type(self).count + 1
             type(self).count = step
         try:
-            assert step <= 13, "unexpected extra request"
+            assert step <= 15, "unexpected extra request"
             assert self.headers.get("X-API-Key") == "project-statistics", "project key"
             token = "statistics-session"
             assert self.headers.get("Authorization") == "Bearer " + token, "bearer session"
             url = urlparse(self.path)
             query = parse_qs(url.query)
+            if step in (14, 15):
+                assert method == "POST" and url.path == "/api/v1/app/statistics"
+                body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", "0"))))
+                assert body["userId"] == "00000000-0000-4000-8000-000000000005"
+                assert body["updates"] == [{"key": f"stat{i}", "value": i} for i in range(201)]
+                if step == 14: type(self).operation = body["operationId"]
+                assert body["operationId"] == type(self).operation, "large replay keeps original ID"
+                result = snapshot(4, 3, version=3 if step == 14 else 4, at=MONDAY+3,
+                                  operation=body["operationId"], replay=step == 15)
+                if step == 14:
+                    result["definitions"] = [{"key": f"stat{i}", "name": "Stat", "mode": "sum", "reset": "none"} for i in range(201)]
+                    result["values"] = [{"key": f"stat{i}", "value": i, "hasValue": True, "period": None} for i in range(201)]
+                send_json(self, 200, result)
+                return
             if step in (3,4,5):
                 assert method == "POST" and url.path == "/api/v1/app/statistics", "POST path"
                 body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", "0"))))
@@ -106,12 +120,12 @@ def main():
         with open(ready,"w") as handle: handle.write("ready\n")
     server.timeout=.2
     deadline=time.monotonic()+420
-    while Contract.count < 13 and not Contract.failure and time.monotonic()<deadline: server.handle_request()
+    while Contract.count < 15 and not Contract.failure and time.monotonic()<deadline: server.handle_request()
     server.timeout=1
     server.handle_request()
     server.server_close()
-    if Contract.count != 13 or Contract.failure:
-        print(Contract.failure or f"expected 13 requests, saw {Contract.count}",file=sys.stderr)
+    if Contract.count != 15 or Contract.failure:
+        print(Contract.failure or f"expected 15 requests, saw {Contract.count}",file=sys.stderr)
         return 1
     print("Unreal statistics server observed exact integer, scope and stable retry contract")
     return 0
