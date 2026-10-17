@@ -47,11 +47,11 @@ bool FHorizonChatLimitsView::TryFromJson(const TSharedPtr<FJsonObject>& J,FHoriz
     if(!Small(*L,TEXT("operationFutureToleranceSeconds"),V.Limits.OperationFutureToleranceSeconds,60)||V.Limits.OperationFutureToleranceSeconds!=60)return false;
     if(!Small(*L,TEXT("messageCharacters"),V.Limits.MessageCharacters,500))return false;
     if(!Small(*L,TEXT("messageUtf8Bytes"),V.Limits.MessageUtf8Bytes,2000))return false;
-    if(!Small(*L,TEXT("channelsPerAccount"),V.Limits.ChannelsPerAccount,2000))return false;
-    if(!Small(*L,TEXT("sendsPerAccountMinute"),V.Limits.SendsPerAccountMinute,120))return false;
+    if(!Small(*L,TEXT("channelsPerAccount"),V.Limits.ChannelsPerAccount,MAX_int32))return false;
+    if(!Small(*L,TEXT("sendsPerAccountMinute"),V.Limits.SendsPerAccountMinute,MAX_int32))return false;
     if(!Small(*L,TEXT("playerSendIntervalMillis"),V.Limits.PlayerSendIntervalMillis,3000))return false;
     if(!Small(*L,TEXT("channelSendIntervalMillis"),V.Limits.ChannelSendIntervalMillis,2000))return false;
-    if(!Small(*L,TEXT("reportsPerProject"),V.Limits.ReportsPerProject,200))return false;
+    if(!Small(*L,TEXT("reportsPerProject"),V.Limits.ReportsPerProject,MAX_int32))return false;
     if(!Small(*L,TEXT("receiptCount"),V.Limits.ReceiptCount,0))return false;
     if(!Small(*L,TEXT("reportReceiptCount"),V.Limits.ReportReceiptCount,0))return false;
     if(!Small(*L,TEXT("wordFilterTerms"),V.Limits.WordFilterTerms,100))return false;

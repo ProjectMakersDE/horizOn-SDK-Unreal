@@ -39,11 +39,11 @@ void UHorizonGroupsManager::Call(const FString& User,const FString& Route,const 
     // These revision-only writes have no replay receipt. Never retry them implicitly.
     if(B)HttpClient->JsonOnce(B.ToSharedRef(),Route,Put,true,Done);else HttpClient->Get(Route,true,Done);
 }
-bool UHorizonGroupsManager::CheckRevision(const FString& G,int64 R) const {const auto* Old=GroupRevisions.Find(G.ToLower());return Old?R>=*Old:GroupRevisions.Num()<256;}
+bool UHorizonGroupsManager::CheckRevision(const FString& G,int64 R) const {const auto* Old=GroupRevisions.Find(G.ToLower());return !Old||R>=*Old;}
 bool UHorizonGroupsManager::CheckGroup(const FHorizonGroupView& G) const {return G.bPresent && CheckRevision(G.Id,G.Revision);}
 bool UHorizonGroupsManager::CheckSnapshot(const FString& U,const FHorizonMyGroupsView& S) const
 {
-    if(!S.bPresent||S.UserId!=U||S.Revision<PlayerRevision||HorizonGroupsRequest::Millis(S.ServerTime)<ServerMillis)return false;int32 New=0;for(const auto& G:S.Groups){if(!CheckGroup(G))return false;if(!GroupRevisions.Contains(G.Id.ToLower()))++New;}return GroupRevisions.Num()+New<=256;
+    if(!S.bPresent||S.UserId!=U||S.Revision<PlayerRevision||HorizonGroupsRequest::Millis(S.ServerTime)<ServerMillis)return false;for(const auto& G:S.Groups)if(!CheckGroup(G))return false;return true;
 }
 void UHorizonGroupsManager::RecordRevision(const FString& G,int64 R)
 {
@@ -54,16 +54,16 @@ void UHorizonGroupsManager::Remember(const FHorizonGroupView& G) {RecordRevision
 void UHorizonGroupsManager::Adopt(const FHorizonMyGroupsView& S) {Current=S;PlayerRevision=S.Revision;ServerMillis=HorizonGroupsRequest::Millis(S.ServerTime);for(const auto& G:S.Groups)Remember(G);}
 void UHorizonGroupsManager::GetGroups(const FString& U,FOnGroupsComplete Done)
 {
-    Call(U,HorizonGroupsRequest::Read(U,TEXT("")),nullptr,FOnHttpResponse::CreateWeakLambda(this,[this,U,Done](const FHorizonNetworkResponse& R){if(!R.bSuccess){Done.ExecuteIfBound(false,{},R.GetErrorCodeString(),R.ErrorMessage);return;}FHorizonMyGroupsView S;if(!FHorizonMyGroupsView::TryFromJson(R.JsonData,S)){Done.ExecuteIfBound(false,{},TEXT("INVALID_RESPONSE"),TEXT("Invalid groups snapshot"));return;}if(!CheckSnapshot(U,S)){Done.ExecuteIfBound(false,{},TEXT("STALE_RESPONSE"),TEXT("Older or foreign groups snapshot / bounded scope limit"));return;}Adopt(S);Done.ExecuteIfBound(true,S,TEXT(""),TEXT(""));}));
+    Call(U,HorizonGroupsRequest::Read(U,TEXT("")),nullptr,FOnHttpResponse::CreateWeakLambda(this,[this,U,Done](const FHorizonNetworkResponse& R){if(!R.bSuccess){Done.ExecuteIfBound(false,{},R.GetErrorCodeString(),R.ErrorMessage);return;}FHorizonMyGroupsView S;if(!FHorizonMyGroupsView::TryFromJson(R.JsonData,S)){Done.ExecuteIfBound(false,{},TEXT("INVALID_RESPONSE"),TEXT("Invalid groups snapshot"));return;}if(!CheckSnapshot(U,S)){Done.ExecuteIfBound(false,{},TEXT("STALE_RESPONSE"),TEXT("Older or foreign groups snapshot"));return;}Adopt(S);Done.ExecuteIfBound(true,S,TEXT(""),TEXT(""));}));
 }
 void UHorizonGroupsManager::GetGroup(const FString& U,const FString& G,FOnGroupComplete Done)
 {
     if(!HorizonGroupsRequest::Uuid(G)){Done.ExecuteIfBound(false,{},TEXT("INVALID_REQUEST"),TEXT("Group UUID required"));return;}
-    Call(U,HorizonGroupsRequest::Read(U,G),nullptr,FOnHttpResponse::CreateWeakLambda(this,[this,G,Done](const FHorizonNetworkResponse& R){if(!R.bSuccess){Done.ExecuteIfBound(false,{},R.GetErrorCodeString(),R.ErrorMessage);return;}FHorizonGroupView S;if(!FHorizonGroupView::TryFromJson(R.JsonData,S)||!S.Id.Equals(G,ESearchCase::IgnoreCase)){Done.ExecuteIfBound(false,{},TEXT("INVALID_RESPONSE"),TEXT("Invalid group"));return;}if(!CheckGroup(S)){Done.ExecuteIfBound(false,{},TEXT("STALE_RESPONSE"),TEXT("Older group / bounded scope limit"));return;}ClearCache();Remember(S);Done.ExecuteIfBound(true,S,TEXT(""),TEXT(""));}));
+    Call(U,HorizonGroupsRequest::Read(U,G),nullptr,FOnHttpResponse::CreateWeakLambda(this,[this,G,Done](const FHorizonNetworkResponse& R){if(!R.bSuccess){Done.ExecuteIfBound(false,{},R.GetErrorCodeString(),R.ErrorMessage);return;}FHorizonGroupView S;if(!FHorizonGroupView::TryFromJson(R.JsonData,S)||!S.Id.Equals(G,ESearchCase::IgnoreCase)){Done.ExecuteIfBound(false,{},TEXT("INVALID_RESPONSE"),TEXT("Invalid group"));return;}if(!CheckGroup(S)){Done.ExecuteIfBound(false,{},TEXT("STALE_RESPONSE"),TEXT("Older group"));return;}ClearCache();Remember(S);Done.ExecuteIfBound(true,S,TEXT(""),TEXT(""));}));
 }
 void UHorizonGroupsManager::GetMembers(const FString& U,const FString& G,FOnGroupMembersComplete Done,const FString& After,int32 Limit)
 {
-    if(!HorizonGroupsRequest::Uuid(G)||(!After.IsEmpty()&&!HorizonGroupsRequest::Uuid(After))||Limit<1||Limit>50){Done.ExecuteIfBound(false,{},TEXT("INVALID_REQUEST"),TEXT("Explicit bounded member page required"));return;}
+    if(!HorizonGroupsRequest::Uuid(G)||(!After.IsEmpty()&&!HorizonGroupsRequest::Uuid(After))||Limit<1||Limit==MAX_int32){Done.ExecuteIfBound(false,{},TEXT("INVALID_REQUEST"),TEXT("Explicit bounded member page required"));return;}
     FString Route=HorizonGroupsRequest::Read(U,G,TEXT("/members"))+TEXT("&limit=")+LexToString(Limit);if(!After.IsEmpty())Route+=TEXT("&afterUserId=")+FGenericPlatformHttp::UrlEncode(After);
     Call(U,Route,nullptr,FOnHttpResponse::CreateWeakLambda(this,[this,G,After,Limit,Done](const FHorizonNetworkResponse& R){if(!R.bSuccess){Done.ExecuteIfBound(false,{},R.GetErrorCodeString(),R.ErrorMessage);return;}FHorizonGroupMembersView S;if(!FHorizonGroupMembersView::TryFromJson(R.JsonData,S)||!S.GroupId.Equals(G,ESearchCase::IgnoreCase)||S.Members.Num()>Limit){Done.ExecuteIfBound(false,{},TEXT("INVALID_RESPONSE"),TEXT("Invalid members page"));return;}FString Last=After;for(const auto& M:S.Members){if(!Last.IsEmpty()&&M.UserId.Compare(Last,ESearchCase::IgnoreCase)<=0){Done.ExecuteIfBound(false,{},TEXT("INVALID_RESPONSE"),TEXT("Nonadvancing member cursor"));return;}Last=M.UserId;}if(!CheckRevision(G,S.Revision)||HorizonGroupsRequest::Millis(S.ServerTime)<ServerMillis){Done.ExecuteIfBound(false,{},TEXT("STALE_RESPONSE"),TEXT("Older members page"));return;}RecordRevision(G,S.Revision);ServerMillis=HorizonGroupsRequest::Millis(S.ServerTime);Done.ExecuteIfBound(true,S,TEXT(""),TEXT(""));}));
 }
@@ -76,12 +76,12 @@ void UHorizonGroupsManager::ReceiveMutation(const FString& U,const FString& G,co
 {
     if(!R.bSuccess){Done.ExecuteIfBound(false,{},R.GetErrorCodeString(),R.ErrorMessage);return;}FHorizonGroupMutationView S;if(!FHorizonGroupMutationView::TryFromJson(R.JsonData,S)||(S.bHasGroup&&!G.IsEmpty()&&!S.Group.Id.Equals(G,ESearchCase::IgnoreCase))){Done.ExecuteIfBound(false,{},TEXT("INVALID_RESPONSE"),TEXT("Invalid mutation snapshot"));return;}
     if(S.bHasGroup){const auto* Own=S.Groups.Groups.FindByPredicate([&](const FHorizonGroupView& Item){return Item.Id.Equals(S.Group.Id,ESearchCase::IgnoreCase);});if((Own && (Own->Revision!=S.Group.Revision||Own->MyRole!=S.Group.MyRole||!S.Group.bHasData))||(!Own && S.Group.bHasData)){Done.ExecuteIfBound(false,{},TEXT("INVALID_RESPONSE"),TEXT("Mixed membership/group snapshot"));return;}}
-    if(!CheckSnapshot(U,S.Groups)||(S.bHasGroup&&!CheckGroup(S.Group))){Done.ExecuteIfBound(false,{},TEXT("STALE_RESPONSE"),TEXT("Older mutation snapshot"));return;}TSet<FString> NewGroups;for(const auto& Item:S.Groups.Groups)if(!GroupRevisions.Contains(Item.Id.ToLower()))NewGroups.Add(Item.Id.ToLower());if(S.bHasGroup&&!GroupRevisions.Contains(S.Group.Id.ToLower()))NewGroups.Add(S.Group.Id.ToLower());if(GroupRevisions.Num()+NewGroups.Num()>256){Done.ExecuteIfBound(false,{},TEXT("CACHE_SCOPE_LIMIT"),TEXT("Session group revision scope is bounded"));return;}Adopt(S.Groups);if(S.bHasGroup)Remember(S.Group);Done.ExecuteIfBound(true,S,TEXT(""),TEXT(""));
+    if(!CheckSnapshot(U,S.Groups)||(S.bHasGroup&&!CheckGroup(S.Group))){Done.ExecuteIfBound(false,{},TEXT("STALE_RESPONSE"),TEXT("Older mutation snapshot"));return;}Adopt(S.Groups);if(S.bHasGroup)Remember(S.Group);Done.ExecuteIfBound(true,S,TEXT(""),TEXT(""));
 }
 void UHorizonGroupsManager::Metadata(const FString& U,const FString& G,int64 Expected,const FHorizonGroupMetadata& M,bool Create,FOnGroupMutationComplete Done)
 {
     FHorizonGroupJsonData Validated;
-    if(!HorizonGroupsRequest::Revision(Expected)||(!Create&&!HorizonGroupsRequest::Uuid(G))||M.Name.TrimStartAndEnd().IsEmpty()||FTCHARToUTF8(*M.Name,M.Name.Len()).Length()>120||FTCHARToUTF8(*M.Description,M.Description.Len()).Length()>1024||(M.JoinMode!=TEXT("open")&&M.JoinMode!=TEXT("request")&&M.JoinMode!=TEXT("invite"))||!FHorizonGroupJsonData::TryFromJson(M.Data.GetJson(),Validated)) {Done.ExecuteIfBound(false,{},TEXT("INVALID_REQUEST"),TEXT("Explicit revision and valid group metadata required"));return;}
+    if(!HorizonGroupsRequest::Revision(Expected)||(!Create&&!HorizonGroupsRequest::Uuid(G))||M.Name.TrimStartAndEnd().IsEmpty()||(M.JoinMode!=TEXT("open")&&M.JoinMode!=TEXT("request")&&M.JoinMode!=TEXT("invite"))||!FHorizonGroupJsonData::TryFromJson(M.Data.GetJson(),Validated)) {Done.ExecuteIfBound(false,{},TEXT("INVALID_REQUEST"),TEXT("Explicit revision and valid group metadata required"));return;}
     auto B=HorizonGroupsRequest::Body(U,Expected,Create?TEXT("expectedPlayerRevision"):TEXT("expectedRevision"));B->SetStringField(TEXT("name"),M.Name);B->SetStringField(TEXT("description"),M.Description);B->SetStringField(TEXT("joinMode"),M.JoinMode);B->SetField(TEXT("data"),MakeShared<FHorizonGroupRawJsonValue>(Validated.GetJson()));
     Call(U,HorizonGroupsRequest::Base(G),B,FOnHttpResponse::CreateWeakLambda(this,[this,U,G,Done](const FHorizonNetworkResponse& R){ReceiveMutation(U,G,R,Done);}),!Create);
 }

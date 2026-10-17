@@ -36,15 +36,16 @@ bool Display(const TSharedPtr<FJsonValue>& Value,FHorizonFriendDisplay& Out)
     }
     return true;
 }
+bool OptionalTime(const TSharedPtr<FJsonObject>& J,const TCHAR* Key,FString& Out,bool& Has){auto V=J?J->TryGetField(Key):nullptr;Has=V&&!V->IsNull();return !Has||(String(J,Key,Out,40)&&Time(Out));}
 bool Requests(const TSharedPtr<FJsonObject>& Json,const TCHAR* Field,const FString& Actor,TArray<FHorizonFriendRequest>& Out)
 {
     const TArray<TSharedPtr<FJsonValue>>* Rows; TSet<FString> Peers;
-    if (!Json->TryGetArrayField(Field,Rows) || Rows->Num()>20) return false;
+    if (!Json->TryGetArrayField(Field,Rows)) return false;
     for (const auto& V:*Rows)
     {
         FHorizonFriendRequest R;
         if (!V || V->Type!=EJson::Object || !String(V->AsObject(),TEXT("userId"),R.UserId,36) || !Uuid(R.UserId) || R.UserId.Equals(Actor,ESearchCase::IgnoreCase) || Peers.Contains(R.UserId.ToLower()) ||
-            !String(V->AsObject(),TEXT("requestId"),R.RequestId,36) || !Uuid(R.RequestId) || !String(V->AsObject(),TEXT("createdAt"),R.CreatedAt,40) || !Time(R.CreatedAt) || !Display(V->AsObject()->TryGetField(TEXT("display")),R.Display)) return false;
+            !String(V->AsObject(),TEXT("requestId"),R.RequestId,36) || !Uuid(R.RequestId) || !OptionalTime(V->AsObject(),TEXT("createdAt"),R.CreatedAt,R.bHasCreatedAt) || !Display(V->AsObject()->TryGetField(TEXT("display")),R.Display)) return false;
         Peers.Add(R.UserId.ToLower()); Out.Add(R);
     }
     return true;
@@ -79,22 +80,22 @@ bool FHorizonFriendsSnapshot::TryFromJson(const TSharedPtr<FJsonObject>& Json,FH
     FHorizonFriendsSnapshot S; const TSharedPtr<FJsonObject>* Limits; const TArray<TSharedPtr<FJsonValue>>* Rows;
     if (!String(Json,TEXT("userId"),S.UserId,36) || !Uuid(S.UserId) || !Number(Json,TEXT("revision"),S.Revision) ||
         !String(Json,TEXT("friendCode"),S.FriendCode,24) || S.FriendCode!=FHorizonFriendLookup::FriendCodeFor(S.UserId) || !String(Json,TEXT("serverTime"),S.ServerTime,40) || !Time(S.ServerTime) ||
-        !Json->TryGetObjectField(TEXT("limits"),Limits) || !Small(*Limits,TEXT("maxFriends"),S.Limits.MaxFriends,200) ||
-        !Small(*Limits,TEXT("maxIncomingRequests"),S.Limits.MaxIncomingRequests,20) || !Small(*Limits,TEXT("maxOutgoingRequests"),S.Limits.MaxOutgoingRequests,20) || !Small(*Limits,TEXT("maxBlocked"),S.Limits.MaxBlocked,100) ||
-        !Requests(Json,TEXT("incoming"),S.UserId,S.Incoming) || !Requests(Json,TEXT("outgoing"),S.UserId,S.Outgoing) || !Json->TryGetArrayField(TEXT("friends"),Rows) || Rows->Num()>200) return false;
+        !Json->TryGetObjectField(TEXT("limits"),Limits) || !Small(*Limits,TEXT("maxFriends"),S.Limits.MaxFriends,MAX_int32) ||
+        !Small(*Limits,TEXT("maxIncomingRequests"),S.Limits.MaxIncomingRequests,MAX_int32) || !Small(*Limits,TEXT("maxOutgoingRequests"),S.Limits.MaxOutgoingRequests,MAX_int32) || !Small(*Limits,TEXT("maxBlocked"),S.Limits.MaxBlocked,MAX_int32) ||
+        !Requests(Json,TEXT("incoming"),S.UserId,S.Incoming) || !Requests(Json,TEXT("outgoing"),S.UserId,S.Outgoing) || !Json->TryGetArrayField(TEXT("friends"),Rows)) return false;
     TSet<FString> Peers;
     for (const auto& V:*Rows)
     {
         FHorizonFriend F;
         if (!V || V->Type!=EJson::Object || !String(V->AsObject(),TEXT("userId"),F.UserId,36) || !Uuid(F.UserId) || F.UserId.Equals(S.UserId,ESearchCase::IgnoreCase) || Peers.Contains(F.UserId.ToLower()) ||
-            !String(V->AsObject(),TEXT("since"),F.Since,40) || !Time(F.Since) || !Optional(V->AsObject(),TEXT("lastActiveAt"),F.LastActiveAt,40) ||
+            !OptionalTime(V->AsObject(),TEXT("since"),F.Since,F.bHasSince) || !Optional(V->AsObject(),TEXT("lastActiveAt"),F.LastActiveAt,40) ||
             (!F.LastActiveAt.IsEmpty() && !Time(F.LastActiveAt)) || !HorizonFriendsJson::Display(V->AsObject()->TryGetField(TEXT("display")),F.Display)) return false;
         const auto Login=V->AsObject()->TryGetField(TEXT("lastActiveAt"));
         F.bHasLastActiveAt=Login && !Login->IsNull();
         if (F.bHasLastActiveAt && !Time(F.LastActiveAt)) return false;
         Peers.Add(F.UserId.ToLower()); S.Friends.Add(F);
     }
-    if (!Json->TryGetArrayField(TEXT("blocked"),Rows) || Rows->Num()>100) return false;
+    if (!Json->TryGetArrayField(TEXT("blocked"),Rows)) return false;
     Peers.Empty();
     for (const auto& V:*Rows)
     {

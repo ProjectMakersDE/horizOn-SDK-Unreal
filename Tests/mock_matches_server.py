@@ -6,7 +6,7 @@ from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
 from urllib.parse import urlparse,parse_qs
 A='00000000-0000-4000-8000-000000001013';B='00000000-0000-4000-8000-000000002013';C='00000000-0000-4000-8000-000000003013'
 ID='10000000-0000-4000-8000-000000001013';OTHER='10000000-0000-4000-8000-000000002013';RUN='30000000-0000-4000-8000-000000001013'
-ROOT='/api/v1/app/matches';TIME='2026-10-16T00:00:30Z';LIMITS=dict(activeMatches=2,stateBytes=1024,retainedMatches=20,pendingInvites=20)
+ROOT='/api/v1/app/matches';TIME='2026-10-16T00:00:30Z';LIMITS=dict(activeMatches=2,stateBytes=1024,retainedMatches=20,pendingInvites=20,settlementMatches=100,historyRetentionSeconds=604800,rankedSettlementSeconds=604800)
 NAME='a\0雪';ORIGINAL=None
 CURSOR=base64.b64encode(b'opaque:strength:1').decode()
 def summary(rev=1,status='lobby',participants=None,invited=None,current=None,final=None,**kw):
@@ -17,7 +17,7 @@ def view(rev=1,status='lobby',participants=None,invited=None,current=None,final=
  return s
 def read(v,**kw):return dict(match=v,pollAfterSeconds=120,serverTime=TIME,**kw)
 def report(user,result='AP8=',winners=None):return dict(userId=user,finalStateRevision=6,resultBase64=result,winnerIds=[A] if winners is None else winners,reportedAt=TIME)
-def ledger(rev=0,active=None,recent=None):return dict(userId=A,revision=rev,active=active or [],invites=[],recent=recent or [],limits=LIMITS,pollAfterSeconds=120,serverTime=TIME)
+def ledger(rev=0,active=None,recent=None):return dict(userId=A,revision=rev,active=active or [],invites=[],recent=recent or [],pendingResults=[],limits=LIMITS,pollAfterSeconds=120,serverTime=TIME)
 def run(ticket='fixture-match-ticket-2',seconds=599):return dict(runId=RUN,ticket=ticket,seed=42,leaderboardKey=None,issuedAt=TIME,expiresAt='2026-10-16T00:10:30Z',expiresInSeconds=seconds)
 INPUT=dict(userId=A,name=NAME,capacity=2,visibility='private',strength=-9007199254740991,turnSeconds=60,timeoutPolicy='skip',ranked=True,dataBase64='AP8A',inviteeIds=[B])
 EXPECTED=[]

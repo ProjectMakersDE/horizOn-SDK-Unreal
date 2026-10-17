@@ -1,10 +1,11 @@
 #pragma once
 #include "Transport/HorizonItemsTransportContract.h"
 #include <cstdint>
+#include <limits>
 namespace HorizonSharedContract
 {
 constexpr long long MaxSafe=HorizonItemsContract::MaxSafe;
-constexpr size_t MaxObjectBytes=65536,MaxPageBytes=1048576;
+constexpr size_t MaxObjectBytes=1048576,MaxPageBytes=1048576;
 inline bool Cursor(const std::string& S){if(S.empty()||S.size()>2048)return false;for(char C:S)if(!(C>='a'&&C<='z')&&!(C>='A'&&C<='Z')&&!(C>='0'&&C<='9')&&C!='_'&&C!='-')return false;return true;}
 inline bool DecodeString(const std::string& S,std::string& Out)
 {
@@ -32,7 +33,7 @@ inline bool Search(const std::string& Raw,std::vector<SearchValue>& Out,std::str
 inline int Digit(char C){if(C>='A'&&C<='Z')return C-'A';if(C>='a'&&C<='z')return C-'a'+26;if(C>='0'&&C<='9')return C-'0'+52;return C=='+'?62:C=='/'?63:-1;}
 inline bool DecodeBase64(const std::string& S,std::vector<uint8_t>& Out,size_t Maximum=MaxObjectBytes)
 {
-    if(Maximum>MaxObjectBytes||S.size()%4||S.size()>((Maximum+2)/3)*4)return false;std::vector<uint8_t> Bytes;Bytes.reserve(S.size()/4*3);
+    if(Maximum>std::numeric_limits<size_t>::max()/4*3-2||S.size()%4||S.size()>((Maximum+2)/3)*4)return false;std::vector<uint8_t> Bytes;Bytes.reserve(S.size()/4*3);
     for(size_t I=0;I<S.size();I+=4)
     {
         int A=Digit(S[I]),B=Digit(S[I+1]),C=Digit(S[I+2]),D=Digit(S[I+3]);const bool Last=I+4==S.size();

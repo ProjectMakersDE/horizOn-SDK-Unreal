@@ -10,7 +10,7 @@ int main()
  assert(Search("{\"x\":\""+std::string(96,'a')+"\"}",V,S));assert(!Search("{\"x\":\""+std::string(97,'a')+"\"}",V,S));
  std::vector<uint8_t> Bytes;assert(DecodeBase64("",Bytes)&&Bytes.empty());assert(DecodeBase64("AP8A",Bytes)&&Bytes==std::vector<uint8_t>({0,255,0}));assert(DecodeBase64("/w==",Bytes)&&Bytes==std::vector<uint8_t>({255}));
  for(const std::string& Bad:{"A","AA=","AA==\n","AB==","AAF=","AA=A","====","AA__","éé","AAAA===="})assert(!DecodeBase64(Bad,Bytes));
- const std::string Max=std::string(87380,'A')+"AA==";assert(DecodeBase64(Max,Bytes)&&Bytes.size()==65536);assert(!DecodeBase64(Max+"AAAA",Bytes));assert(!DecodeBase64("AA==",Bytes,0));
+ const std::string Max=std::string(1398100,'A')+"AA==";assert(DecodeBase64(Max,Bytes)&&Bytes.size()==1048576);assert(!DecodeBase64(Max+"AAAA",Bytes));assert(!DecodeBase64("AA==",Bytes,0));
  assert(Cursor("aZ09_-")&&!Cursor("")&&!Cursor("a=")&&!Cursor(std::string(2049,'a')));
  std::cout<<"Shared Objects canonical Base64, bounded opaque bytes, safe search integers, Unicode/NUL and strict cursors passed\n";
 }

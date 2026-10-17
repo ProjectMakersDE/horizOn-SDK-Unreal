@@ -75,6 +75,10 @@ private:
     FString Identity,Scope,AdoptedRunId,AdoptedMatchId;
     int64 AdoptedFinalRevision=-1;
     FHorizonValidatedRun AdoptedOriginalRun;
+    TMap<FString,FString> SourceRuns;
+    TArray<FString> SourceOrder;
+    bool SourceMatches(const FString& MatchId,int64 FinalRevision,const FString& RunId) const;
+    void RememberSource(const FString& MatchId,int64 FinalRevision,const FString& RunId);
     uint64 Context=0,Epoch=0,Ticket=0;
     bool Busy=false;
     int64 RevisionFloor=-1,ServerMillis=-1;

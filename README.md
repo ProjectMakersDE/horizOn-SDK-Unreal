@@ -1039,6 +1039,16 @@ The sample runs once per actor, gates auth re-entry, keeps original pending stat
 Groups: `Groups` manager, typed views, explicit revision/request IDs, one-attempt writes and
 lossless JSON metadata. See [the plugin quickstart](Plugins/HorizonSDK/Docs/QUICKSTART.md#groups-task-1010)
 and `AHorizonGroupsExample`; no automatic signup, polling or replacement intent is performed.
+All eleven Group limits are positive Int32 operator configuration: members, memberships,
+group invitations/requests, player invitations/requests, data/name/description bytes,
+member page size and data depth. Optional legacy pending `CreatedAt` remains unknown via
+`bHasCreatedAt`; Friends uses the same rule for request time and `bHasSince`.
+Complete retained lists remain readable after lowering. Group JSON preserves original
+number lexemes up to the explicit technical 32 MiB frame and depth1024; policy defaults
+of2KiB/depth16/name120/description1024 are not client ceilings. Metadata writes keep the
+same original through server policy rejection. Group revision floors stay for the current
+auth context, including group257 and later; auth changes clear them. Several responses
+can grow this local revision map beyond one frame, independently of database storage.
 
 Items: `Items` exposes five typed inventory/catalog methods and Blueprint async
 nodes. Property integers, Unicode/NUL strings, purchase item rewards and retained
@@ -1060,6 +1070,10 @@ strict search scalars, explicit original If-Match and Blueprint async nodes.
 switches and reconciles uncertain creates through owner reads. See
 [the quickstart](Plugins/HorizonSDK/Docs/QUICKSTART.md#shared-objects-task-1012)
 for world-map queries and the separate existing Validated Actions defense recipe.
+Collection/owner counts are positive Int32 operator values and storage bytes are exact
+safe Int64 values; former100/2GiB defaults do not cap retained reads. The physical opaque
+object bound is1MiB decoded (1,398,104 Base64 characters), also for writes and saved
+originals. Query limits remain50 selected objects and1MiB total decoded payload.
 
 
 ### Asynchronous Matches
@@ -1080,7 +1094,13 @@ makes exactly one transport attempt. An uncertain response requires an explicit
 read/reconciliation; the SDK never substitutes a newer revision or move.
 
 State and result payloads are `TArray<uint8>`, with strict canonical Base64 on
-the wire. `bHasData` distinguishes invite-only metadata (`null`) from accepted
+the wire. Match state accepts the server physical14,648KiB bound for reads, writes
+and durable originals; result bytes retain their separate256-byte protocol bound.
+All seven current limits are retained, including `SettlementMatches`,
+`HistoryRetentionSeconds` (zero allowed), `RankedSettlementSeconds` and
+`RetainedMatches` (zero allowed). Complete retained lists are not trimmed to current
+quotas. The technical32MiB response frame does not promise that every possible unpaged
+operator-sized ledger fits; projected ledger records contain no full state bytes. `bHasData` distinguishes invite-only metadata (`null`) from accepted
 empty state. Safe integer revisions and strength, false, nullable deadlines,
 Unicode and embedded NUL names are preserved. Snapshots retained after a
 subscription downgrade remain readable up to the server's maximum shape.
@@ -1107,6 +1127,13 @@ longer references it and the original point read authoritatively returns
 `MATCH_NOT_FOUND`. A genuinely unknown
 create with no discoverable match remains blocked and requires reconciliation;
 absence in a response cannot prove that an older request will never commit.
+
+`MyMatches.PendingResults` exposes only MatchId, positive FinalStateRevision,
+optional OwnRankedRunId and ExpiresAt. `StartRankedFromPendingResult(id)` explicitly
+saves that original before POST even after historical match detail is gone. Known
+source run IDs bind the returned original; a replacement run cannot be adopted.
+There is no historical result/item reconstruction. Completed UE originals already
+use exact SaveGame deletion rather than a permanent acknowledged archive.
 
 The separate ranked recipe adopts the original confirmed-match run into
 `ValidatedActions`; it does not prove honest gameplay or automatically grant a
@@ -1291,3 +1318,12 @@ retained open offers plus 151 history references after lowering, original retrie
 UI destruction, GET-only known recovery and original Inbox escrow claim/replay.
 Run the normal transport source suite as well. Local fixtures are not hosted
 backend or deployment evidence.
+
+`Tests/run_native_configured_limits_test.py` exercises actual manager HTTP against
+an isolated current-contract fixture:201 Friends/21pending/101blocked with unknown
+dates,257Groups retained after lowering plus stale group257,51member page,9MiB
+lossless GroupJSON,1MiB Shared reads/writes, maximum Match bytes through durable
+uncertain create/restart,201minimal sources/original ranked retries, and Chat
+operator quotas0/high/Int32. Existing portable and per-feature native gates remain.
+Chat's configurable channel/send/report counters are0..Int32; its20/15 message
+retention,500characters/2000UTF8bytes and30second private protocol stay unchanged.

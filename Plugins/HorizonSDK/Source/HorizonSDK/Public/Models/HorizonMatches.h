@@ -11,6 +11,9 @@ struct HORIZONSDK_API FHorizonMatchLimits
     UPROPERTY(BlueprintReadOnly,Category="horizOn|Matches") int32 StateBytes=0;
     UPROPERTY(BlueprintReadOnly,Category="horizOn|Matches") int32 RetainedMatches=0;
     UPROPERTY(BlueprintReadOnly,Category="horizOn|Matches") int32 PendingInvites=0;
+    UPROPERTY(BlueprintReadOnly,Category="horizOn|Matches") int32 SettlementMatches=0;
+    UPROPERTY(BlueprintReadOnly,Category="horizOn|Matches") int32 HistoryRetentionSeconds=0;
+    UPROPERTY(BlueprintReadOnly,Category="horizOn|Matches") int32 RankedSettlementSeconds=0;
 };
 USTRUCT(BlueprintType)
 struct HORIZONSDK_API FHorizonMatchCapabilities
@@ -91,6 +94,17 @@ struct HORIZONSDK_API FHorizonMatchView : public FHorizonMatchSummary
     UPROPERTY(BlueprintReadOnly,Category="horizOn|Matches") FString OwnRankedRunId;
     UPROPERTY(BlueprintReadOnly,Category="horizOn|Matches") bool bNotificationPending=false;
 };
+/** Minimal immutable settlement source; never reconstructs a purged match or its rewards. */
+USTRUCT(BlueprintType)
+struct HORIZONSDK_API FHorizonMatchPendingResult
+{
+    GENERATED_BODY()
+    UPROPERTY(BlueprintReadOnly,Category="horizOn|Matches") FString MatchId;
+    UPROPERTY(BlueprintReadOnly,Category="horizOn|Matches") int64 FinalStateRevision=0;
+    UPROPERTY(BlueprintReadOnly,Category="horizOn|Matches") bool bHasOwnRankedRunId=false;
+    UPROPERTY(BlueprintReadOnly,Category="horizOn|Matches") FString OwnRankedRunId;
+    UPROPERTY(BlueprintReadOnly,Category="horizOn|Matches") FString ExpiresAt;
+};
 USTRUCT(BlueprintType)
 struct HORIZONSDK_API FHorizonMyMatches
 {
@@ -101,6 +115,7 @@ struct HORIZONSDK_API FHorizonMyMatches
     UPROPERTY(BlueprintReadOnly,Category="horizOn|Matches") TArray<FHorizonMatchSummary> Active;
     UPROPERTY(BlueprintReadOnly,Category="horizOn|Matches") TArray<FHorizonMatchSummary> Invites;
     UPROPERTY(BlueprintReadOnly,Category="horizOn|Matches") TArray<FHorizonMatchSummary> Recent;
+    UPROPERTY(BlueprintReadOnly,Category="horizOn|Matches") TArray<FHorizonMatchPendingResult> PendingResults;
     UPROPERTY(BlueprintReadOnly,Category="horizOn|Matches") FHorizonMatchLimits Limits;
     UPROPERTY(BlueprintReadOnly,Category="horizOn|Matches") int32 PollAfterSeconds=0;
     UPROPERTY(BlueprintReadOnly,Category="horizOn|Matches") FString ServerTime;

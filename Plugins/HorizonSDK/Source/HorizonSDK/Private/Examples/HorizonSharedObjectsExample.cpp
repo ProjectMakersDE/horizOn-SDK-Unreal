@@ -43,7 +43,7 @@ FString OriginalHash(const UHorizonSharedOriginal* P)
 FString Signature(const UHorizonSharedOriginal* P){return P?Hash(OriginalHash(P)+TEXT("|")+P->OriginalHash+TEXT("|")+LexToString(P->SendSerial)+TEXT("|")+LexToString(P->Confirmed)+TEXT("|")+P->ResolvedObjectId):FString();}
 bool InputValid(const FHorizonSharedObjectInput& I)
 {
-    if(I.Data.Num()>65536||I.Search.Num()>3)return false;auto Safe=[](int64 N){return N>= -HorizonSharedContract::MaxSafe&&N<=HorizonSharedContract::MaxSafe;};if(I.bHasPosition&&(!Safe(I.Position.X)||!Safe(I.Position.Y)))return false;
+    if(I.Data.Num()>int32(HorizonSharedContract::MaxObjectBytes)||I.Search.Num()>3)return false;auto Safe=[](int64 N){return N>= -HorizonSharedContract::MaxSafe&&N<=HorizonSharedContract::MaxSafe;};if(I.bHasPosition&&(!Safe(I.Position.X)||!Safe(I.Position.Y)))return false;
     TSet<FString> Keys;for(const auto& V:I.Search){if(!Key(V.Key)||Keys.Contains(V.Key))return false;Keys.Add(V.Key);if(V.Value.Type==EHorizonSharedScalarType::Integer){if(!Safe(V.Value.IntegerValue))return false;}else if(V.Value.Type==EHorizonSharedScalarType::String){for(int32 N=0;N<V.Value.StringValue.Len();++N){uint16 C=V.Value.StringValue[N];if(C>=0xd800&&C<=0xdbff){if(++N>=V.Value.StringValue.Len()||V.Value.StringValue[N]<0xdc00||V.Value.StringValue[N]>0xdfff)return false;}else if(C>=0xdc00&&C<=0xdfff)return false;}if(FTCHARToUTF8(*V.Value.StringValue,V.Value.StringValue.Len()+1).Length()>96)return false;}else return false;}return true;
 }
 TArray<uint8> MarkerPrefix(const FString& Intent){const FString S=TEXT("horizon-marker:")+Intent+TEXT("\n");const FTCHARToUTF8 B(*S,S.Len()+1);TArray<uint8> Bytes;Bytes.Append(reinterpret_cast<const uint8*>(B.Get()),B.Length());return Bytes;}

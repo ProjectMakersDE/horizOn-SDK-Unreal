@@ -71,8 +71,8 @@ bool Ids(const TArray<FString>& Values,int32 Max,bool Sorted=false)
 bool Contains(const TArray<FString>& V,const FString& Id){return V.ContainsByPredicate([&](const FString& S){return S.Equals(Id,ESearchCase::IgnoreCase);});}
 bool Valid(const UHorizonMatchOriginal* P,const FString& Project,const FString& User)
 {
-    if(!P||P->Project!=Project||P->UserId!=User||!Uuid(P->IntentId)||!HorizonMatchesContract::Revision(P->ExpectedRevision)||P->SendSerial<0||P->SendSerial>=HorizonMatchesContract::MaxSafe||P->OriginalHash!=OriginalHash(P)||P->Data.Num()>8192||!Ids(P->Ids,8)||(!P->ResolvedMatchId.IsEmpty()&&!Uuid(P->ResolvedMatchId)))return false;
-    const auto& I=P->Create;if(!HorizonMatchesWire::TextValue(I.Name,120)||I.Capacity<2||I.Capacity>8||(I.Visibility!=TEXT("private")&&I.Visibility!=TEXT("open"))||!HorizonMatchesContract::Safe(I.Strength)||I.TurnSeconds<60||I.TurnSeconds>604800||(I.TimeoutPolicy!=TEXT("skip")&&I.TimeoutPolicy!=TEXT("forfeit"))||I.Data.Num()>8192||!Ids(I.InviteeIds,7)||I.InviteeIds.Num()>=I.Capacity||Contains(I.InviteeIds,User))return false;
+    if(!P||P->Project!=Project||P->UserId!=User||!Uuid(P->IntentId)||!HorizonMatchesContract::Revision(P->ExpectedRevision)||P->SendSerial<0||P->SendSerial>=HorizonMatchesContract::MaxSafe||P->OriginalHash!=OriginalHash(P)||P->Data.Num()>int32(HorizonMatchesContract::MaxStateBytes)||!Ids(P->Ids,8)||(!P->ResolvedMatchId.IsEmpty()&&!Uuid(P->ResolvedMatchId)))return false;
+    const auto& I=P->Create;if(!HorizonMatchesWire::TextValue(I.Name,120)||I.Capacity<2||I.Capacity>8||(I.Visibility!=TEXT("private")&&I.Visibility!=TEXT("open"))||!HorizonMatchesContract::Safe(I.Strength)||I.TurnSeconds<60||I.TurnSeconds>604800||(I.TimeoutPolicy!=TEXT("skip")&&I.TimeoutPolicy!=TEXT("forfeit"))||I.Data.Num()>int32(HorizonMatchesContract::MaxStateBytes)||!Ids(I.InviteeIds,7)||I.InviteeIds.Num()>=I.Capacity||Contains(I.InviteeIds,User))return false;
     if(P->Action==TEXT("create")){if(!P->MatchId.IsEmpty()||P->SendSerial>1||!I.Name.StartsWith(Prefix(P->IntentId),ESearchCase::CaseSensitive)||(P->bConfirmed?!Uuid(P->ResolvedMatchId):!P->ResolvedMatchId.IsEmpty()))return false;}
     else if(!Uuid(P->MatchId)||(P->Action!=TEXT("join")&&P->Action!=TEXT("decline")&&P->Action!=TEXT("start")&&P->Action!=TEXT("turn")&&P->Action!=TEXT("timeout")&&P->Action!=TEXT("leave")&&P->Action!=TEXT("cancel")&&P->Action!=TEXT("result")&&P->Action!=TEXT("ranked")))return false;
     if(P->Action==TEXT("result")&&(P->ExpectedRevision==0||P->Data.Num()>256||!Ids(P->Ids,8,true)))return false;if(P->Action==TEXT("start")&&P->Ids.Num()<2)return false;if(P->Action==TEXT("ranked")&&P->ExpectedRevision==0)return false;
@@ -128,6 +128,13 @@ UHorizonMatchOriginal* AHorizonMatchesExample::Prepare(const FString& Action,con
     if(!HorizonMatchStorage::Valid(Original,P,U)||!HorizonMatchStorage::Save(Original,Slot))return nullptr;return Original;
 }
 void AHorizonMatchesExample::CreateLobby(const FHorizonMatchCreateInput& Input){auto* P=Prepare(TEXT("create"),TEXT(""),GetMatches().Revision,Input,{},{},false);if(P)Send(P,HorizonMatchStorage::Slot(P->Project,P->UserId));}
+void AHorizonMatchesExample::StartRankedFromPendingResult(const FString& Id)
+{
+    auto* S=Session();if(!S||Busy||!Fresh()||!MyMatches.bPresent)return;const auto* Source=MyMatches.PendingResults.FindByPredicate([&](const FHorizonMatchPendingResult& P){return P.MatchId.Equals(Id,ESearchCase::IgnoreCase);});if(!Source||!Source->bHasOwnRankedRunId)return;
+    const FString U=S->Auth->GetCurrentUser().UserId,P=HorizonMatchStorage::Project(S),Slot=HorizonMatchStorage::Slot(P,U);if(HorizonMatchStorage::Exists(Slot))return;
+    auto* Original=NewObject<UHorizonMatchOriginal>();Original->Project=P;Original->UserId=U;Original->IntentId=FGuid::NewGuid().ToString(EGuidFormats::DigitsWithHyphens);Original->Action=TEXT("ranked");Original->MatchId=Source->MatchId;Original->ExpectedRevision=Source->FinalStateRevision;Original->OriginalHash=HorizonMatchStorage::OriginalHash(Original);
+    if(HorizonMatchStorage::Valid(Original,P,U)&&HorizonMatchStorage::Save(Original,Slot))Send(Original,Slot);
+}
 void AHorizonMatchesExample::StartAction(const FString& Action,const FString& Id,int64 Revision,const TArray<uint8>& Data,const TArray<FString>& Ids,bool Finish){auto* P=Prepare(Action,Id,Revision,{},Data,Ids,Finish);if(P)Send(P,HorizonMatchStorage::Slot(P->Project,P->UserId));}
 void AHorizonMatchesExample::Send(UHorizonMatchOriginal* P,const FString& Slot)
 {

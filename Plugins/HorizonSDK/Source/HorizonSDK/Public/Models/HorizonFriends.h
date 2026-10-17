@@ -23,6 +23,7 @@ struct HORIZONSDK_API FHorizonFriend
     GENERATED_BODY()
     UPROPERTY(BlueprintReadOnly,Category="horizOn|Friends") FString UserId;
     UPROPERTY(BlueprintReadOnly,Category="horizOn|Friends") FString Since;
+    UPROPERTY(BlueprintReadOnly,Category="horizOn|Friends") bool bHasSince=false;
     UPROPERTY(BlueprintReadOnly,Category="horizOn|Friends") FHorizonFriendDisplay Display;
     /** Retained latest login, never an online/offline signal. False means unknown. */
     UPROPERTY(BlueprintReadOnly,Category="horizOn|Friends") bool bHasLastActiveAt=false;
@@ -35,6 +36,7 @@ struct HORIZONSDK_API FHorizonFriendRequest
     UPROPERTY(BlueprintReadOnly,Category="horizOn|Friends") FString UserId;
     UPROPERTY(BlueprintReadOnly,Category="horizOn|Friends") FString RequestId;
     UPROPERTY(BlueprintReadOnly,Category="horizOn|Friends") FString CreatedAt;
+    UPROPERTY(BlueprintReadOnly,Category="horizOn|Friends") bool bHasCreatedAt=false;
     UPROPERTY(BlueprintReadOnly,Category="horizOn|Friends") FHorizonFriendDisplay Display;
 };
 USTRUCT(BlueprintType)

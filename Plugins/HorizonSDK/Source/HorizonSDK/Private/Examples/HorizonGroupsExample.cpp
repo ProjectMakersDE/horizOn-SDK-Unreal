@@ -18,7 +18,7 @@ bool Valid(const UHorizonGroupPendingAction* P,const FString& Project,const FStr
     const bool Target=A==TEXT("invite")||A==TEXT("cancel-invite")||A==TEXT("accept-request")||A==TEXT("decline-request")||A==TEXT("remove")||A==TEXT("role")||A==TEXT("transfer");
     const bool Request=A==TEXT("accept-invite")||A==TEXT("decline-invite")||A==TEXT("cancel-invite")||A==TEXT("accept-request")||A==TEXT("decline-request")||A==TEXT("cancel-request");
     if((Create?!P->GroupId.IsEmpty():!Uuid(P->GroupId))||(Target?(!Uuid(P->TargetUserId)||P->TargetUserId==User):!P->TargetUserId.IsEmpty())||(Request?!Uuid(P->RequestId):!P->RequestId.IsEmpty())||(A==TEXT("role")?(P->Role!=TEXT("officer")&&P->Role!=TEXT("member")):!P->Role.IsEmpty()))return false;
-    if(Meta){FHorizonGroupJsonData D;return !P->Metadata.Name.TrimStartAndEnd().IsEmpty()&&FTCHARToUTF8(*P->Metadata.Name,P->Metadata.Name.Len()).Length()<=120&&FTCHARToUTF8(*P->Metadata.Description,P->Metadata.Description.Len()).Length()<=1024&&(P->Metadata.JoinMode==TEXT("open")||P->Metadata.JoinMode==TEXT("request")||P->Metadata.JoinMode==TEXT("invite"))&&FHorizonGroupJsonData::TryFromJson(P->Metadata.Data.GetJson(),D);}
+    if(Meta){FHorizonGroupJsonData D;return !P->Metadata.Name.TrimStartAndEnd().IsEmpty()&&(P->Metadata.JoinMode==TEXT("open")||P->Metadata.JoinMode==TEXT("request")||P->Metadata.JoinMode==TEXT("invite"))&&FHorizonGroupJsonData::TryFromJson(P->Metadata.Data.GetJson(),D);}
     return Target||Request||A==TEXT("join")||A==TEXT("request")||A==TEXT("leave")||A==TEXT("delete");
 }
 FString Signature(const UHorizonGroupPendingAction* P)

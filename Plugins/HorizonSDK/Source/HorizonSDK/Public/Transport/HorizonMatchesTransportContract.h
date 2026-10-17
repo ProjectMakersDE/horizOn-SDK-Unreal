@@ -4,7 +4,7 @@
 namespace HorizonMatchesContract
 {
 constexpr long long MaxSafe=HorizonSharedContract::MaxSafe;
-constexpr size_t MaxStateBytes=8192,MaxResultBytes=256;
+constexpr size_t MaxStateBytes=14648*1024,MaxResultBytes=256;
 inline bool Safe(long long N){return N>=-MaxSafe&&N<=MaxSafe;}
 inline bool Revision(long long N){return N>=0&&N<=MaxSafe;}
 inline bool Cursor(const std::string& S)

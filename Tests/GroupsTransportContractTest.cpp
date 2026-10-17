@@ -16,5 +16,11 @@ int main()
     assert(HorizonGroupsContract::JsonObject(Body).MaskObjects("opaque-",Raw,Masked));
     assert(Raw.size()==1 && Raw[0]==Data && Masked=="{\"group\":{\"data\":\"opaque-0\"}}");
     assert(HorizonGroupsContract::CompactObject("{\"\\u0061\":\"\\/\"}",Out) && Out=="{\"a\":\"/\"}");
+    const std::string Large="{\"x\":\""+std::string(9*1024*1024,'x')+"\",\"n\":9007199254740993}";
+    assert(HorizonGroupsContract::CompactObject(Large,Out,1024)&&Out==Large);
+    std::string Deep="0";for(int I=0;I<31;++I)Deep="["+Deep+"]";
+    assert(HorizonGroupsContract::CompactObject("{\"x\":"+Deep+"}",Out,1024));
+    std::string Rows="{\"inventory\":[";for(int I=0;I<2051;++I){if(I)Rows+=",";Rows+="{\"properties\":{\"n\":9007199254740993}}";}Rows+="]}";
+    std::vector<std::string> Inventory;assert(HorizonGroupsContract::JsonObject(Rows).MaskObjects("opaque-",Inventory,Masked,{"properties"})&&Inventory.size()==2051);
     std::cout<<"Groups strict UTF-8 JSON grammar, depth and lossless number tokens passed\n";
 }
