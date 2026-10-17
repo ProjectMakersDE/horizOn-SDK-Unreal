@@ -43,7 +43,7 @@ struct FHorizonMatchesNative : TSharedFromThis<FHorizonMatchesNative>
 {
     FAutomationTestBase* Test;UGameInstance *GA,*GB;UHorizonSubsystem *SA,*SB;AHorizonMatchesExample *A,*B;TArray<FString> OldHosts;FString OldKey,HostA,HostB,SlotA,SlotB;int32 OldRetries;float OldDelay;
     TArray<TPair<FString,TFunction<void()>>> Steps;TFunction<bool()> Ready;int32 Stage=0,Race=0;bool Waiting=false,NewCompleted=false;double Deadline=FPlatformTime::Seconds()+120;
-    const FString User=HorizonMatchesTest::A,Peer=HorizonMatchesTest::B,Id=HorizonMatchesTest::Id,Other=TEXT("10000000-0000-4000-8000-000000002013"),Cursor=TEXT("b3BhcXVlOnN0cmVuZ3RoOjE=");FHorizonMatchCreateInput Input;
+    const FString User=HorizonMatchesTest::A,Peer=HorizonMatchesTest::B,Id=HorizonMatchesTest::Id,Other=TEXT("10000000-0000-4000-8000-000000002013"),InviteId=TEXT("10000000-0000-4000-8000-000000003013"),PurgeId=TEXT("10000000-0000-4000-8000-000000004013"),Cursor=TEXT("b3BhcXVlOnN0cmVuZ3RoOjE=");FHorizonMatchCreateInput Input;
     FHorizonMatchesNative(FAutomationTestBase* T,const FString& H,const FString& H2):Test(T),HostA(H),HostB(H2)
     {
         auto* C=GetMutableDefault<UHorizonConfig>();OldHosts=C->Hosts;OldKey=C->ApiKey;OldRetries=C->MaxRetryAttempts;OldDelay=C->RetryDelaySeconds;C->Hosts={H};C->ApiKey=TEXT("fixture-key-1013");C->MaxRetryAttempts=2;C->RetryDelaySeconds=.05f;
@@ -124,16 +124,16 @@ struct FHorizonMatchesNative : TSharedFromThis<FHorizonMatchesNative>
         Add(TEXT("rejected original requires fresh reconciliation"),[this]{Test->TestTrue(TEXT("Definitive first rejection preserved"),Saved(SlotA)&&Saved(SlotA)->RejectionCode==TEXT("ACTIVE_MATCH_LIMIT_REACHED"));Test->TestFalse(TEXT("No stale acknowledgement"),A->AcknowledgeAfterRefresh());Read(A);});
         Add(TEXT("explicit rejected-create acknowledgement"),[this]{Test->TestTrue(TEXT("Fresh definitive rejection can be acknowledged"),A->AcknowledgeAfterRefresh());Test->TestFalse(TEXT("Both resolved storage generations removed"),HorizonMatchStorage::Exists(SlotA));Next();});
         Add(TEXT("B reviews pending invitation ledger"),[this]{Read(B);});
-        Add(TEXT("B reviews departure original match"),[this]{Read(B,Other);});
-        Add(TEXT("B departure response lost"),[this]{B->StartAction(TEXT("decline"),Other,1,{},{});Wait(B);});
+        Add(TEXT("B reviews departure original match"),[this]{Read(B,InviteId);});
+        Add(TEXT("B departure response lost"),[this]{B->StartAction(TEXT("decline"),InviteId,1,{},{});Wait(B);});
         Add(TEXT("B departure original retry is not found"),[this]{B->RetryOriginal();Wait(B);});
         Add(TEXT("B ledger no longer references departed match"),[this]{Read(B);});
-        Add(TEXT("B point404 confirms departure without payload access"),[this]{Read(B,Other);});
+        Add(TEXT("B point404 confirms departure without payload access"),[this]{Read(B,InviteId);});
         Add(TEXT("B explicit departure reconciliation"),[this]{Test->TestTrue(TEXT("Lost departure can be explicitly acknowledged"),B->AcknowledgeAfterRefresh());Test->TestFalse(TEXT("Departing original removed without new revision or action"),HorizonMatchStorage::Exists(SlotB));Next();});
-        Add(TEXT("review lobby for later purge reconciliation"),[this]{Read(A,Other);});
-        Add(TEXT("cancel response lost then retention purged"),[this]{A->StartAction(TEXT("cancel"),Other,1,{},{});Wait(A);});
+        Add(TEXT("review lobby for later purge reconciliation"),[this]{Read(A,PurgeId);});
+        Add(TEXT("cancel response lost then retention purged"),[this]{A->StartAction(TEXT("cancel"),PurgeId,1,{},{});Wait(A);});
         Add(TEXT("fresh ledger after known-match purge"),[this]{Read(A);});
-        Add(TEXT("purged known-match point404"),[this]{Read(A,Other);});
+        Add(TEXT("purged known-match point404"),[this]{Read(A,PurgeId);});
         Add(TEXT("explicit known-match purge acknowledgement"),[this]{Test->TestTrue(TEXT("Purged known-match original does not strand future actions"),A->AcknowledgeAfterRefresh());Next();});
         Add(TEXT("ranked match reviewed before config removal"),[this]{Read(A,Id);});
         Add(TEXT("first ranked start definitively unconfigured"),[this]{A->StartAction(TEXT("ranked"),Id,6,{},{});Wait(A);});
