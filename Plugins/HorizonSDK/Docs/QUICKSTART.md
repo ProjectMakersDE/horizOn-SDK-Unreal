@@ -125,7 +125,9 @@ FHorizonGroupJsonData::TryFromJson(TEXT(R"({"motd":"Welcome","large":90071992547
 ```
 
 `FHorizonGroupJsonData` is immutable. `TryFromJson(Raw, Out)` validates an object,
-finite numbers, depth 16 and 2048 compact UTF-8 bytes. `GetJson()` preserves number
+finite numbers with a separate depth 1024 technical parser bound. Name/description/data bytes
+and data depth are current Admin System Config policy; depth 16 / 2048 bytes are defaults, not
+reader ceilings. Aggregate responses are parsed against their actual received UTF-8 budget. `GetJson()` preserves number
 lexemes, empty/dot/dollar keys, Unicode and null; use this original text when editing data.
 Do not round-trip it through a `double` map. Blueprint uses `ParseGroupData` / `GroupDataJson`.
 
@@ -133,11 +135,13 @@ All 16 writes send one transport attempt. Revision/request identity is mandatory
 there is no operation receipt. After a timeout retain the original tuple, explicitly
 refresh and reconcile, and only explicitly retry that same tuple. Never substitute the
 new revision or a new invitation ID. Feature codes are returned unchanged. `GetMembers`
-returns one page (1–50); callers explicitly request the next cursor and check revision
+returns one page (1..current `limits.memberPageSize`, default 50); callers explicitly request
+the next cursor and check revision
 changes between pages. No automatic full-list fetch or polling runs. Private snapshots
 are cleared on session/project/host/cache invalidation and authorization failure.
-Revision/time watermarks survive `ClearCache`; tracking is bounded to 256 distinct group
-IDs per connection/session context (additional scopes require a new context).
+Revision/time watermarks survive `ClearCache` for every observed group in the current
+authentication context. There is no 256-group admission ceiling; an authentication change
+resets these floors.
 
 `AHorizonGroupsExample` is a runnable two-player workflow helper: use separate authenticated
 clients, explicitly `Refresh(GroupId)`, then `StartAction(...)` for create/update/join/request/
@@ -285,8 +289,9 @@ Search is at most three unique `FHorizonSharedSearchValue {Key,Value}` entries.
 `Value.Type` selects `EHorizonSharedScalarType::Integer` or `String`; values use
 `.IntegerValue` or `.StringValue`. Strings are at most96 UTF-8 bytes. Positions
 use `.bHasPosition` and `.Position.X/Y`, bounded by +/-9007199254740991.
-Metadata parsers enforce permanent hard ceilings and retain definitions above a
-current downgraded plan's smaller limits.
+Collection/owner counts use positive Int32 operator values; storage bytes remain exact
+safe integers. The object bound is 1 MiB decoded. Retained definitions remain readable after
+current policy is lowered; former tariff defaults are not parser ceilings.
 
 `FHorizonSharedQuery.Mode` is List, Owner, Field, Rectangle or Random. Owner mode
 requires `.OwnerId`; `.GroupId` selects the explicit group partition. Field mode
