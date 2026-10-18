@@ -336,11 +336,11 @@ Horizon->Achievements->DeliverRewards(UserId, PendingKeys,
 
 Callbacks use native delegates (`CreateLambda` / `CreateUObject`, not `BindDynamic`). GetAchievements's optional third argument is the opaque `DefinitionVersion`; it otherwise uses the current player's cache version. Wire `definitions:null` retains only matching materialized metadata; `[]` replaces it. A missing materialization causes at most one explicit full GET, never a POST retry or periodic poll. ClearCache retains revision/server-time watermarks. Session, host/project generations and cache epochs fence late replies; only one operation is active per context, with `REQUEST_IN_PROGRESS` for overlapping callers.
 
-`Progress[].PendingReward.{IssuedAt,Values}` contains the original accepted rewards even if `Definitions[].Rewards.Values` changes. Per-key delivery states are `none`, `pending` and `delivered`; `INBOX_FULL` remains pending. No achievement operation credits player values locally. Delivered `InboxEntryId` links to Inbox; its explicit protected claim adopts the complete balance. Manual unlock retries keep the same key; delivery retries keep one to eight unique original keys. The server owns source identity, with no new client UUID or client reward amounts.
+Fresh achievements atomically grant rewards with the durable unlock. Compact progress uses wire `rewardState:"complete"` and `unlockedAt:null` (an empty `UnlockedAt` string in the Unreal DTO); it creates no new pending reward or Inbox entry. `DeliverRewards` is a compatibility/status call for one to eight original keys, not a second grant. Retained legacy `pendingReward`/`inboxEntryId` fields describe old accepted rewards only; unresolved originals require explicit source migration (`MIGRATION_REQUIRED`), never reconstruction from current definitions or automatic regrant. Repeat an uncertain manual unlock with the same key, and read current Player Values instead of adding reward deltas locally.
 
 Blueprints expose RequestAchievements, UnlockAchievement and DeliverAchievementRewards with typed result events. `GetCurrentAchievements()` returns the scoped materialized snapshot. Optional hosted realtime accepts `achievements:<userId>`; HTTP supplies content after invalidation/reconnect. REST also works on simpleServer, where realtime is NOT_SUPPORTED.
 
-`AHorizonAchievementsExample` requires an existing restored session. Its Load/Unlock/Deliver methods are explicit UI actions; RefreshAfterStatistics performs one refresh only for a matching successful, non-replayed statistics snapshot with NewlyUnlocked. The sample persists project/player original delivery keys before sending, retains partial/uncertain outcomes across regions/restarts and never replaces unreadable/conflicting pending records. Display original PendingReward values, then load Inbox and bind AHorizonInboxExample's explicit protected Claim to player action. No signup, startup unlock, polling or automatic claim is introduced.
+`AHorizonAchievementsExample` requires an existing restored session. Load/Unlock/Deliver are explicit UI actions; RefreshAfterStatistics refreshes only after a matching successful non-replayed statistics snapshot with NewlyUnlocked. Retained delivery-key and Inbox claim helpers apply only to old accepted rewards and preserve their original identity. New unlocks grant atomically and create no claim. No signup, startup unlock, polling or automatic claim is introduced.
 
 ### Player Profile
 
@@ -1044,7 +1044,8 @@ group invitations/requests, player invitations/requests, data/name/description b
 member page size and data depth. Optional legacy pending `CreatedAt` remains unknown via
 `bHasCreatedAt`; Friends uses the same rule for request time and `bHasSince`.
 Complete retained lists remain readable after lowering. Group JSON preserves original
-number lexemes up to the explicit technical 32 MiB frame and depth1024; policy defaults
+number lexemes within the actual received UTF-8 body budget and depth1024; aggregate Groups
+responses are not capped at 32 MiB. Policy defaults
 of2KiB/depth16/name120/description1024 are not client ceilings. Metadata writes keep the
 same original through server policy rejection. Group revision floors stay for the current
 auth context, including group257 and later; auth changes clear them. Several responses
