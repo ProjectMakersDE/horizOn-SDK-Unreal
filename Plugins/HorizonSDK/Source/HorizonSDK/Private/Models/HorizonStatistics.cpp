@@ -20,7 +20,7 @@ namespace
 		if (!Value.IsValid() || Value->Type != EJson::String) return false;
 		Out = Value->AsString(); return true;
 	}
-	bool Boolean(const TSharedPtr<FJsonObject>& Json, const TCHAR* Field, bool& Out)
+	bool ReadBoolean(const TSharedPtr<FJsonObject>& Json, const TCHAR* Field, bool& Out)
 	{
 		const auto Value = Json.IsValid() ? Json->TryGetField(Field) : nullptr;
 		if (!Value.IsValid() || Value->Type != EJson::Boolean) return false;
@@ -69,7 +69,7 @@ FHorizonStatisticsSnapshot FHorizonStatisticsSnapshot::FromJson(const TSharedPtr
 		if (!Value.IsValid() || Value->Type != EJson::Object) return Result;
 		const auto JsonValue = Value->AsObject(); FHorizonStatisticValue Entry;
 		if (!String(JsonValue, TEXT("key"), Entry.Key) || !HorizonTransportContract::IsStatisticKey(TCHAR_TO_UTF8(*Entry.Key)) || Keys.Contains(Entry.Key)
-			|| !Integer(JsonValue, TEXT("value"), Entry.Value) || !Boolean(JsonValue, TEXT("hasValue"), Entry.bHasValue)) return Result;
+			|| !Integer(JsonValue, TEXT("value"), Entry.Value) || !ReadBoolean(JsonValue, TEXT("hasValue"), Entry.bHasValue)) return Result;
 		const auto Period = JsonValue->TryGetField(TEXT("period"));
 		if (!Period.IsValid() || (Period->Type != EJson::Null && !String(JsonValue, TEXT("period"), Entry.Period))) return Result;
 		Keys.Add(Entry.Key); Result.Values.Add(Entry);
@@ -84,7 +84,7 @@ FHorizonStatisticsSnapshot FHorizonStatisticsSnapshot::FromJson(const TSharedPtr
 	const auto Operation = Json->TryGetField(TEXT("operationId"));
 	if (Operation.IsValid() && Operation->Type != EJson::Null && !String(Json, TEXT("operationId"), Result.OperationId)) return Result;
 	const auto Replay = Json->TryGetField(TEXT("replayed"));
-	if (Replay.IsValid() && !Boolean(Json, TEXT("replayed"), Result.bReplayed)) return Result;
+	if (Replay.IsValid() && !ReadBoolean(Json, TEXT("replayed"), Result.bReplayed)) return Result;
 	const auto Unlocked = Json->TryGetField(TEXT("newlyUnlocked"));
 	if (Unlocked.IsValid())
 	{
