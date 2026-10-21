@@ -125,7 +125,7 @@ case 75:{Test->TestFalse(TEXT("Authorization loss clears private cache"),Groups-
 case 76:{Groups->UpdateGroup(User,Group,40,Metadata,Mutation());break;}
 case 77:{Test->TestFalse(TEXT("Mixed-revision mutation cannot repopulate cache"),Groups->GetCurrentGroups().bPresent);Groups->GetGroups(User,Own());break;}
 case 78:{Groups->GetMembers(User,Group,Members());break;}
-case 79:{Test->TestFalse(TEXT("Newer partial group revision invalidates older full private snapshot"),Groups->GetCurrentGroups().bPresent);Cleanup();return true;break;} default:Test->AddError(TEXT("Unknown stage"));Cleanup();return true;}return false;
+case 79:{Test->TestFalse(TEXT("Newer partial group revision invalidates older full private snapshot"),Groups->GetCurrentGroups().bPresent);Cleanup();return true;} default:Test->AddError(TEXT("Unknown stage"));Cleanup();return true;}return false;
     }
 };
 DEFINE_LATENT_AUTOMATION_COMMAND_ONE_PARAMETER(FWaitForHorizonGroups,TSharedPtr<FHorizonGroupsNative>,State);
