@@ -1,6 +1,8 @@
+#include "Transport/HorizonGiftCodeTransportContract.h"
 // Runs actual manager methods, with only the UE and network/storage boundaries replaced.
 #include "Transport/HorizonLeaderboardTransportContract.h"
 #include "Transport/HorizonCloudSaveTransportContract.h"
+#include "Transport/HorizonRetryContract.h"
 
 #include <cstring>
 #include <cstdarg>
@@ -19,21 +21,28 @@
 #define UTF8_TO_TCHAR(Value) Value
 enum class ESPMode { ThreadSafe };
 using uint8 = unsigned char;
+using int32 = int;
 using int64 = long long;
+using uint64 = unsigned long long;
 using TCHAR = char;
+using ANSICHAR = char;
 struct FString : std::string
 {
     using std::string::string;
     FString(const std::string& Value) : std::string(Value) {}
+    FString(int Length, const char* Value) : std::string(Value, Length) {}
     bool IsEmpty() const { return empty(); }
+    int Len() const { return size(); }
     void Empty() { clear(); }
     const char* operator*() const { return c_str(); }
     FString operator/(const FString& Other) const { return *this + "/" + Other; }
-    static FString Printf(const char* Format, const char* Value)
-    { char Buffer[512]; std::snprintf(Buffer, sizeof(Buffer), Format, Value); return Buffer; }
+    template <typename... Args> static FString Printf(const char* Format, Args... Values)
+    { char Buffer[512]; std::snprintf(Buffer, sizeof(Buffer), Format, Values...); return Buffer; }
 };
 template <typename T> struct TArray : std::vector<T>
 { using std::vector<T>::vector; int Num() const { return this->size(); }
+  void Add(const T& Value) { this->push_back(Value); }
+  const T* GetData() const { return this->data(); }
   void Append(const T* Data, int Length) { this->insert(this->end(), Data, Data + Length); } };
 template <typename K, typename V> struct TMap
 {
@@ -60,19 +69,25 @@ template <typename T> struct TWeakObjectPtr
     bool IsValid() const { return Value != nullptr; }
 };
 enum class EJson { None, Null, String, Number, Boolean, Array, Object };
+struct FJsonObject;
 struct FJsonValue
 {
     EJson Type = EJson::None;
     bool Bool = false;
     FString String;
+    TSharedPtr<FJsonObject> Object;
     bool AsBool() const { return Bool; }
     FString AsString() const { return String; }
+    TSharedPtr<FJsonObject> AsObject() const { return Object; }
 };
 struct FJsonObject
 {
     std::map<FString, FString> Strings;
     std::map<FString, bool> Bools;
     std::map<FString, double> Numbers;
+    std::map<FString, TArray<TSharedPtr<FJsonValue>>> Arrays;
+    bool TryGetArrayField(const FString& Key, const TArray<TSharedPtr<FJsonValue>>*& Out) const
+    { auto It = Arrays.find(Key); if (It == Arrays.end()) return false; Out = &It->second; return true; }
     void SetStringField(const FString& Key, const FString& Value) { Strings[Key] = Value; }
     void SetBoolField(const FString& Key, bool Value) { Bools[Key] = Value; }
     void SetNumberField(const FString& Key, double Value) { Numbers[Key] = Value; }
@@ -108,6 +123,12 @@ struct FJsonObject
     bool HasField(const FString& Key) const { return Strings.count(Key) || Bools.count(Key) || Numbers.count(Key); }
 };
 template <typename T = void> struct TJsonWriter { FString* Output; };
+template <typename T = void> struct TJsonReader { FString Input; };
+template <typename T = void> struct TJsonReaderFactory
+{
+    static TSharedRef<TJsonReader<T>> Create(const FString& Input)
+    { auto Reader = MakeShared<TJsonReader<T>>(); Reader->Input = Input; return Reader; }
+};
 template <typename T = void> struct TJsonWriterFactory
 {
     static TSharedRef<TJsonWriter<T>> Create(FString* Output)
@@ -116,6 +137,11 @@ template <typename T = void> struct TJsonWriterFactory
 struct FJsonSerializer
 {
     static inline TSharedRef<FJsonObject> SerializedBody;
+    // UE's JSON parser is a boundary: these fixtures assert which original body
+    // the production manager passes to it, not Unreal's JSON implementation.
+    static inline std::map<FString, TArray<TSharedPtr<FJsonValue>>> ArrayBodies;
+    static bool Deserialize(const TSharedRef<TJsonReader<>>& Reader, TArray<TSharedPtr<FJsonValue>>& Out)
+    { auto It = ArrayBodies.find(Reader->Input); if (It == ArrayBodies.end()) return false; Out = It->second; return true; }
     static void Serialize(const TSharedRef<FJsonObject>& Body, const TSharedRef<TJsonWriter<>>& Writer)
     {
         SerializedBody = Body;
@@ -136,11 +162,24 @@ struct IHttpRequest
     void SetHeader(const FString& Key, const FString& Value) { Headers[Key] = Value; }
     FString GetVerb() const { return Verb; }
 };
+struct FUTF8ToTCHAR
+{
+    const char* Data;
+    int Size;
+    FUTF8ToTCHAR(const char* Value, int Length) : Data(Value), Size(Length) {}
+    const char* Get() const { return Data; }
+    int Length() const { return Size; }
+};
+struct FMath
+{ template <typename T> static T Clamp(T Value, T Minimum, T Maximum)
+  { return Value < Minimum ? Minimum : Value > Maximum ? Maximum : Value; } };
+struct FPlatformTime { static inline double Now = 100.0; static double Seconds() { return Now; } };
 struct FHorizonNetworkResponse
 {
     bool bSuccess = true;
     int StatusCode = 200;
     FString ErrorMessage;
+    FString RawJsonBody;
     TSharedPtr<FJsonObject> JsonData = MakeShared<FJsonObject>();
     TArray<uint8> BinaryData;
     TArray<FString> Headers;
@@ -179,6 +218,12 @@ using FOnRequestComplete = Delegate<bool, const FString&>;
 using FOnHttpResponse = Delegate<const FHorizonNetworkResponse&>;
 using FOnCloudSaveSnapshotComplete = Delegate<const FHorizonCloudSaveSnapshot&>;
 using FOnCloudSaveWriteComplete = Delegate<const FHorizonCloudSaveWriteResult&>;
+struct FHorizonNewsEntry
+{
+    FString Id, Title, Message, ReleaseDate, LanguageCode;
+    static FHorizonNewsEntry FromJson(const TSharedPtr<FJsonObject>&);
+};
+using FOnNewsComplete = Delegate<bool, const TArray<FHorizonNewsEntry>&>;
 struct FGuid { static FGuid NewGuid() { return {}; } FString ToString(int) const { return "client-generated-token"; } };
 struct EGuidFormats { static constexpr int DigitsLower = 0; };
 enum class EHorizonAuthType { Anonymous, Email, Google, Apple };
@@ -188,6 +233,12 @@ struct FHorizonUserData
     bool bIsAnonymous = false, bIsEmailVerified = false, bIsPrivateRelayEmail = false;
     EHorizonAuthType AuthType = EHorizonAuthType::Anonymous;
     void UpdateFromAuthResponse(const TSharedPtr<FJsonObject>& JsonObject);
+};
+struct FOnAnonymousIdentityIssued
+{
+    std::function<bool(const FString&,const FHorizonUserData&)> Function;
+    bool IsBound() const { return bool(Function); }
+    bool Execute(const FString& P,const FHorizonUserData& U) const { return Function(P,U); }
 };
 struct UHorizonSessionSave
 {
@@ -199,11 +250,13 @@ struct UHorizonSessionSave
 };
 struct UHorizonHttpClient
 {
-    struct Request { FString Method, Endpoint; TSharedRef<FJsonObject> Body; bool UseSession; FString ContentType, Payload; };
+    struct Request { FString Method, Endpoint; TSharedRef<FJsonObject> Body; bool UseSession; FString ContentType, Payload; bool RetryAllowed = true; };
     std::vector<Request> Requests;
     std::function<FHorizonNetworkResponse(const Request&)> Server;
     FString SessionToken, ApiKey = "project-key-892", ActiveHost = "http://loopback.invalid";
     std::map<FString, FString> LastHeaders;
+    FString GetApiKey() const { return ApiKey; }
+    uint64 GetRequestContextEpoch() const { return 0; }
     void SetSessionToken(const FString& Value) { SessionToken = Value; }
     void ClearSessionToken() { SessionToken.Empty(); }
     void Send(const Request& Request, FOnHttpResponse Callback)
@@ -217,15 +270,17 @@ struct UHorizonHttpClient
                       const TMap<FString, FString>& = TMap<FString, FString>()) const;
     void SendRequest(const FString& Verb, const FString& Url, const FString& ContentType,
                      const TArray<uint8>& Payload, bool Session, int, FOnHttpResponse Callback, const FString& Accept = "",
-                     const TMap<FString, FString>& ExtraHeaders = TMap<FString, FString>())
+                     const TMap<FString, FString>& ExtraHeaders = TMap<FString, FString>(), bool bAllowRetry = true)
     {
         auto Request = MakeShared<IHttpRequest>(); Request->Verb = Verb;
         ApplyHeaders(Request, ContentType, Session, Accept, ExtraHeaders); LastHeaders = Request->Headers;
         const bool Json = ContentType == "application/json";
         Send({Verb, Url.substr(ActiveHost.size() + 1), Json ? FJsonSerializer::SerializedBody : MakeShared<FJsonObject>(),
-              Session, ContentType, FString(std::string(Payload.begin(), Payload.end()))}, Callback);
+              Session, ContentType, FString(std::string(Payload.begin(), Payload.end())), bAllowRetry}, Callback);
     }
     void GetBinary(const FString& Endpoint, bool Session, FOnHttpResponse Callback)
+    { Send({"GET", Endpoint, MakeShared<FJsonObject>(), Session}, Callback); }
+    void Get(const FString& Endpoint, bool Session, FOnHttpResponse Callback)
     { Send({"GET", Endpoint, MakeShared<FJsonObject>(), Session}, Callback); }
 };
 struct UHorizonAuthManager
@@ -236,7 +291,7 @@ struct UHorizonAuthManager
     bool ValidCachedSession = false;
     bool IsSignedIn() const { return !CurrentUser.UserId.IsEmpty() && !CurrentUser.AccessToken.IsEmpty(); }
     FHorizonUserData GetCurrentUser() const { return CurrentUser; }
-    void SignUpAnonymous(const FString&, FOnAuthComplete, const FString& = "");
+    void SignUpAnonymous(const FString&, FOnAuthComplete, const FString& = "", FOnAnonymousIdentityIssued = {});
     void SignInAnonymous(const FString&, FOnAuthComplete);
     void RestoreAnonymousSession(FOnAuthComplete);
     void HandleAuthResponse(const FHorizonNetworkResponse&, FOnAuthComplete);
@@ -255,6 +310,14 @@ struct UHorizonCloudSaveManager
     void SaveBytes(const TArray<uint8>&, int64, FOnCloudSaveWriteComplete);
     void Save(const FString&, FOnRequestComplete);
     void SaveBytes(const TArray<uint8>&, FOnRequestComplete);
+};
+struct UHorizonNewsManager
+{
+    UHorizonHttpClient* HttpClient;
+    TArray<FHorizonNewsEntry> CachedNews;
+    double CacheTimestamp = 0.0;
+    static constexpr double CacheTTLSeconds = 300.0;
+    void LoadNews(int32, const FString&, bool, FOnNewsComplete);
 };
 #include "ManagerMethods.inc"
 
@@ -300,6 +363,7 @@ int main()
             if (Request.Endpoint == "api/v1/app/user-management/signup")
             {
                 Require(!Request.Body->HasField("anonymousToken"), "anonymous signup sent a client token");
+                Require(!Request.RetryAllowed, "non-idempotent signup must have exactly one transport attempt");
                 if (!MissingIssuedToken) Response.JsonData->SetStringField("anonymousToken", Issued);
                 if (SignupHasSession) Response.JsonData->SetStringField("accessToken", "signup-session");
                 Response.JsonData->SetBoolField("isAnonymous", true);
@@ -604,7 +668,73 @@ int main()
         Require(Write.ErrorMessage.find("ExpectedRevision") == 0, "an invalid revision must be reported before the missing sign-in");
         Require(Http.Requests.size() == RequestCount && Snapshots == 17 && Writes == 19,
                 "unsigned revision calls must not send a request");
-        std::cout << "Unreal production anonymous auth and Cloud Save manager methods (incl. revisions) passed\n";
+        // HorizonHttpClient::ParseResponse stores application/json root arrays in
+        // RawJsonBody, not JsonData or BinaryData (inspected 2026-10-22).
+        const FString NewsBody = R"([{"id":"news-892","title":"Release","message":"Hello players","releaseDate":"2026-10-22T00:00:00Z","languageCode":"EN"}])";
+        auto NewsObject = MakeShared<FJsonObject>();
+        NewsObject->SetStringField("id", "news-892");
+        NewsObject->SetStringField("title", "Release");
+        NewsObject->SetStringField("message", "Hello players");
+        NewsObject->SetStringField("releaseDate", "2026-10-22T00:00:00Z");
+        NewsObject->SetStringField("languageCode", "EN");
+        auto NewsValue = MakeShared<FJsonValue>();
+        NewsValue->Type = EJson::Object;
+        NewsValue->Object = NewsObject;
+        FJsonSerializer::ArrayBodies[NewsBody] = {NewsValue};
+        FJsonSerializer::ArrayBodies["[]"] = {};
+        FHorizonNetworkResponse NewsResponse;
+        NewsResponse.JsonData = {};
+        NewsResponse.RawJsonBody = NewsBody;
+        UHorizonHttpClient NewsHttp;
+        NewsHttp.Server = [&](const auto& Request) {
+            Require(Request.Method == "GET" && !Request.UseSession, "News must remain an API-key-only GET");
+            return NewsResponse;
+        };
+        UHorizonNewsManager News{&NewsHttp};
+        int NewsCompletions = 0;
+        bool NewsSuccess = false;
+        TArray<FHorizonNewsEntry> NewsEntries;
+        auto OnNews = FOnNewsComplete::CreateLambda([&](bool Value, const TArray<FHorizonNewsEntry>& Entries) {
+            ++NewsCompletions; NewsSuccess = Value; NewsEntries = Entries;
+        });
+        News.LoadNews(1000, "EN", false, OnNews);
+        Require(NewsSuccess && NewsEntries.Num() == 1 && NewsCompletions == 1,
+                "application/json root array must return its News entry from RawJsonBody");
+        Require(NewsEntries[0].Id == "news-892" && NewsEntries[0].Title == "Release" &&
+                NewsEntries[0].Message == "Hello players" && NewsEntries[0].LanguageCode == "EN" &&
+                NewsEntries[0].ReleaseDate == "2026-10-22T00:00:00Z", "News entry fields must survive parsing");
+        Require(NewsHttp.Requests[0].Endpoint == "api/v1/app/news?limit=100&languageCode=EN",
+                "News endpoint must retain limit clamping and language");
+        News.LoadNews(100, "EN", true, OnNews);
+        Require(NewsSuccess && NewsEntries.Num() == 1 && NewsCompletions == 2 && NewsHttp.Requests.size() == 1,
+                "parsed News must populate the existing cache without an extra request");
+        FPlatformTime::Now += 301.0;
+        NewsResponse.RawJsonBody = "[]";
+        News.LoadNews(0, "DE", true, OnNews);
+        Require(NewsSuccess && NewsEntries.empty() && NewsCompletions == 3 && NewsHttp.Requests.size() == 2 &&
+                NewsHttp.Requests.back().Endpoint == "api/v1/app/news?limit=1&languageCode=DE",
+                "expired cache must accept an empty News array and retain minimum limit");
+        NewsResponse.RawJsonBody.Empty();
+        NewsResponse.BinaryData.Append(reinterpret_cast<const uint8*>(NewsBody.data()), NewsBody.Len());
+        News.LoadNews(10, "EN", false, OnNews);
+        Require(NewsSuccess && NewsEntries.Num() == 1 && NewsCompletions == 4,
+                "legacy binary JSON array fallback must still work");
+        NewsResponse.RawJsonBody = "[]";
+        News.LoadNews(10, "EN", false, OnNews);
+        Require(NewsSuccess && NewsEntries.empty() && NewsCompletions == 5,
+                "original JSON body must take precedence over binary fallback");
+        NewsResponse.JsonData = MakeShared<FJsonObject>();
+        auto NonObject = MakeShared<FJsonValue>();
+        NonObject->Type = EJson::String;
+        NewsResponse.JsonData->Arrays["items"] = {{}, NonObject, NewsValue};
+        News.LoadNews(10, "EN", false, OnNews);
+        Require(NewsSuccess && NewsEntries.Num() == 1 && NewsCompletions == 6,
+                "legacy wrapped News must retain valid objects and ignore other values");
+        NewsResponse.bSuccess = false;
+        News.LoadNews(10, "EN", false, OnNews);
+        Require(!NewsSuccess && NewsEntries.empty() && NewsCompletions == 7,
+                "failed News response must complete once without returning cached entries");
+        std::cout << "Unreal production anonymous auth, Cloud Save and News manager methods passed\n";
     }
     catch (const std::exception& Error)
     { std::cerr << Error.what() << '\n'; return 1; }

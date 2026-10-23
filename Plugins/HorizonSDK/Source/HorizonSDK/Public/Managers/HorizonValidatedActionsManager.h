@@ -1,4 +1,4 @@
-// Copyright (c) 2025-2026 horizOn. All rights reserved.
+// Copyright (c) 2026 ProjectMakers. Licensed under the MIT License.
 
 #pragma once
 
@@ -107,6 +107,8 @@ UCLASS(BlueprintType)
 class HORIZONSDK_API UHorizonValidatedActionsManager : public UObject
 {
 	GENERATED_BODY()
+    friend class UHorizonMatchesManager;
+    friend struct FHorizonRunStartLease;
 
 public:
 	/** Initialize with HTTP client and auth manager references. */
@@ -262,6 +264,12 @@ public:
 	bool bAutoUploadEvidence = true;
 
 private:
+    /** Internal match adapter only; binds an original server-issued run to the exact request context. */
+    bool AdoptMatchRun(const FString& UserId,const FHorizonValidatedRun& Run,uint64 RequestContext,uint64 Lease);
+    uint64 AcquireRunStart();
+    void ReleaseRunStart(uint64 Lease);
+    uint64 RunStartSerial=0,ActiveRunStart=0;
+    FString MatchBoundRunId;
 	UPROPERTY()
 	UHorizonHttpClient* HttpClient = nullptr;
 

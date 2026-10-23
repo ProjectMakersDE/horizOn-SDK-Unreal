@@ -1,4 +1,4 @@
-// Copyright (c) 2025-2026 horizOn. All rights reserved.
+// Copyright (c) 2026 ProjectMakers. Licensed under the MIT License.
 
 #include "Managers/HorizonLocalizationManager.h"
 #include "HorizonSDKModule.h"
@@ -141,7 +141,7 @@ void UHorizonLocalizationManager::GetAllLocalizations(const FString& Lang, FOnAl
 							FString Value;
 							if (Pair.Value.IsValid() && Pair.Value->TryGetString(Value))
 							{
-								Translations.Add(Pair.Key, Value);
+				Translations.Add(FString(*Pair.Key), Value);
 							}
 						}
 					}

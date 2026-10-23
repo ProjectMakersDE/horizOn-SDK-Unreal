@@ -1,6 +1,7 @@
-// Copyright (c) 2025-2026 horizOn. All rights reserved.
+// Copyright (c) 2026 ProjectMakers. Licensed under the MIT License.
 
 #include "Managers/HorizonValidatedActionsManager.h"
+#include "Managers/HorizonRunStartLease.h"
 #include "HorizonSDKModule.h"
 #include "Managers/HorizonLeaderboardManager.h"
 #include "Transport/HorizonValidatedActionsTransportContract.h"
@@ -105,20 +106,25 @@ void UHorizonValidatedActionsManager::StartRun(const FString& LeaderboardKey, co
 		return;
 	}
 
+    if(CurrentRun.IsValid()&&CurrentRun.RunId==MatchBoundRunId){LastErrorCode=TEXT("RUN_IN_PROGRESS");OnComplete.ExecuteIfBound(false,{},TEXT("RUN_IN_PROGRESS"),TEXT("Resolve or explicitly discard the original match-bound run"));return;}
+    const auto Lease=FHorizonRunStartLease::Acquire(this);if(!Lease){LastErrorCode=TEXT("RUN_IN_PROGRESS");OnComplete.ExecuteIfBound(false,{},TEXT("RUN_IN_PROGRESS"),TEXT("Another run start is in flight"));return;}
+    const uint64 RequestContext=HttpClient->GetRequestContextEpoch();
 	TWeakObjectPtr<UHorizonValidatedActionsManager> WeakSelf(this);
 	FOnValidatedRunStarted CapturedOnComplete = OnComplete;
 	const FString Endpoint = UTF8_TO_TCHAR(Plan.Endpoint.c_str());
 
 	HttpClient->PostJson(ParsedBody.ToSharedRef(), Endpoint, Plan.bUseSessionToken,
 		FOnHttpResponse::CreateLambda(
-			[WeakSelf, CapturedOnComplete, UserId](const FHorizonNetworkResponse& Response)
+			[WeakSelf, CapturedOnComplete, UserId,Lease,RequestContext](const FHorizonNetworkResponse& Response)
 			{
 				UHorizonValidatedActionsManager* Self = WeakSelf.Get();
 				if (!Self)
 				{
 					return;
 				}
-				Self->HandleStartRunResponse(Response, UserId, CapturedOnComplete);
+                if(!Self->HttpClient||Self->HttpClient->GetRequestContextEpoch()!=RequestContext||Self->ActiveRunStart!=Lease->Id){CapturedOnComplete.ExecuteIfBound(false,{},TEXT("STALE_RESPONSE"),TEXT("Original run-start context changed"));Lease->Release();return;}
+                Self->HandleStartRunResponse(Response, UserId, CapturedOnComplete);
+                Lease->Release();
 			}
 		));
 }
@@ -575,6 +581,7 @@ void UHorizonValidatedActionsManager::DiscardRun()
 {
 	CurrentRun = FHorizonValidatedRun();
 	CurrentRunUserId.Empty();
+    MatchBoundRunId.Reset();
 }
 
 void UHorizonValidatedActionsManager::HandleUserSignedIn()
@@ -610,3 +617,13 @@ FString UHorizonValidatedActionsManager::MapErrorCode(const FHorizonNetworkRespo
 		TCHAR_TO_UTF8(*Response.GetErrorCodeString()));
 	return UTF8_TO_TCHAR(Code.c_str());
 }
+
+
+bool UHorizonValidatedActionsManager::AdoptMatchRun(const FString& UserId,const FHorizonValidatedRun& Run,uint64 RequestContext,uint64 Lease)
+{
+    if(!HttpClient||!AuthManager||!AuthManager->IsSignedIn()||AuthManager->GetCurrentUser().UserId!=UserId||HttpClient->GetRequestContextEpoch()!=RequestContext||!Run.IsValid()||!Lease||ActiveRunStart!=Lease)return false;
+    CurrentRun=Run;CurrentRunUserId=UserId;MatchBoundRunId=Run.RunId;LastErrorCode.Reset();return true;
+}
+
+uint64 UHorizonValidatedActionsManager::AcquireRunStart(){if(ActiveRunStart||RunStartSerial==MAX_uint64)return 0;ActiveRunStart=++RunStartSerial;return ActiveRunStart;}
+void UHorizonValidatedActionsManager::ReleaseRunStart(uint64 Lease){if(Lease&&ActiveRunStart==Lease)ActiveRunStart=0;}

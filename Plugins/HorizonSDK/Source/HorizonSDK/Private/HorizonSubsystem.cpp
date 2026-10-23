@@ -1,6 +1,17 @@
-// Copyright (c) 2025-2026 horizOn. All rights reserved.
+// Copyright (c) 2026 ProjectMakers. Licensed under the MIT License.
 
 #include "HorizonSubsystem.h"
+#include "Managers/HorizonRealtimeManager.h"
+#include "Managers/HorizonInboxManager.h"
+#include "Managers/HorizonAchievementsManager.h"
+#include "Managers/HorizonFriendsManager.h"
+#include "Managers/HorizonGroupsManager.h"
+#include "Managers/HorizonItemsManager.h"
+#include "Managers/HorizonMarketplaceManager.h"
+#include "Managers/HorizonSharedObjectsManager.h"
+#include "Managers/HorizonMatchesManager.h"
+#include "Managers/HorizonChatManager.h"
+#include "Managers/HorizonPlayerValuesManager.h"
 #include "HorizonSDKModule.h"
 #include "Http/HorizonHttpClient.h"
 #include "Managers/HorizonAuthManager.h"
@@ -16,6 +27,7 @@
 #include "Managers/HorizonEmailSendingManager.h"
 #include "Managers/HorizonPlayerProfileManager.h"
 #include "Managers/HorizonValidatedActionsManager.h"
+#include "Managers/HorizonStatisticsManager.h"
 
 // ============================================================
 // Subsystem lifecycle
@@ -32,6 +44,24 @@ void UHorizonSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 	// Create the Auth manager
 	Auth = NewObject<UHorizonAuthManager>(this);
 	Auth->Initialize(HttpClient);
+
+	Realtime = NewObject<UHorizonRealtimeManager>(this);
+	Realtime->Initialize(HttpClient, Auth);
+    Chat=NewObject<UHorizonChatManager>(this);Chat->Initialize(HttpClient,Auth,Realtime);
+	PlayerValues = NewObject<UHorizonPlayerValuesManager>(this);
+	PlayerValues->Initialize(HttpClient, Auth);
+    Inbox = NewObject<UHorizonInboxManager>(this);
+    Inbox->Initialize(HttpClient, Auth, PlayerValues);
+    Achievements = NewObject<UHorizonAchievementsManager>(this);
+    Achievements->Initialize(HttpClient, Auth, PlayerValues);
+    Friends = NewObject<UHorizonFriendsManager>(this);
+    Friends->Initialize(HttpClient, Auth);
+    Groups = NewObject<UHorizonGroupsManager>(this);
+    Groups->Initialize(HttpClient, Auth);
+    Items = NewObject<UHorizonItemsManager>(this);
+    Items->Initialize(HttpClient, Auth);
+    Marketplace=NewObject<UHorizonMarketplaceManager>(this);Marketplace->Initialize(HttpClient,Auth);
+    SharedObjects=NewObject<UHorizonSharedObjectsManager>(this);SharedObjects->Initialize(HttpClient,Auth);
 
 	// Create all managers
 	CloudSave = NewObject<UHorizonCloudSaveManager>(this);
@@ -69,9 +99,14 @@ void UHorizonSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 
 	// A gift code redeem that grants unlocks clears the cached player profile.
 	GiftCodes->SetPlayerProfileManager(PlayerProfile);
+	GiftCodes->SetPlayerValuesManager(PlayerValues);
 
 	ValidatedActions = NewObject<UHorizonValidatedActionsManager>(this);
 	ValidatedActions->Initialize(HttpClient, Auth);
+    Matches=NewObject<UHorizonMatchesManager>(this);Matches->Initialize(HttpClient,Auth,ValidatedActions);Matches->SetRealtime(Realtime);
+
+	Statistics = NewObject<UHorizonStatisticsManager>(this);
+	Statistics->Initialize(HttpClient, Auth, PlayerValues, Achievements);
 
 	// An accepted validated run with a board clears the leaderboard cache (like SubmitScore).
 	ValidatedActions->SetLeaderboardManager(Leaderboard);
@@ -87,6 +122,7 @@ void UHorizonSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 
 void UHorizonSubsystem::Deinitialize()
 {
+	if (Realtime) Realtime->Close();
 	if (Crashes)
 	{
 		Crashes->StopCapture();

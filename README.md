@@ -19,12 +19,16 @@ Official Unreal Engine SDK for **horizOn** Backend-as-a-Service by [ProjectMaker
 | 🔐 **Authentication** | `UHorizonAuthManager` | Anonymous, email, Google, and Apple sign-up / sign-in with session caching |
 | 🏆 **Leaderboards** | `UHorizonLeaderboardManager` | Submit scores, retrieve top entries, rank, and surrounding entries |
 | ☁️ **Cloud Save** | `UHorizonCloudSaveManager` | Save and load player data in JSON or binary format |
+| 🔄 **Realtime** | `UHorizonRealtimeManager` | Optional Cloud invalidations for inbox, matches and chat; HTTP content reload |
 | ⚙️ **Remote Config** | `UHorizonRemoteConfigManager` | Typed key-value retrieval (string, int, float, bool) with caching |
 | 🌐 **Localization** | `UHorizonLocalizationManager` | Translated strings in 15 languages with an active language and caching |
 | 📰 **News** | `UHorizonNewsManager` | In-game news feed with language filtering and TTL cache |
-| 🎁 **Gift Codes** | `UHorizonGiftCodeManager` | Validate and redeem promotional codes, cosmetic unlocks via `grants` |
+| 🎁 **Gift Codes** | `UHorizonGiftCodeManager` | Validate and redeem codes, cosmetic unlocks and replay-safe player values |
 | 🧑‍🎤 **Player Profile** | `UHorizonPlayerProfileManager` | Avatar, frame and badges per player, cosmetic unlocks, shown in leaderboards |
 | ✅ **Validated Actions** | `UHorizonValidatedActionsManager` | Server-checked runs: ticket with seed, validated submit with input log hash, rule codes, server-owned currency and loot, input log upload as evidence |
+| 📬 **Inbox** | `UHorizonInboxManager` | Explicit snapshots, read/remove actions and entry-bound reward claims with full balance snapshots |
+| 👥 **Friends** | `UHorizonFriendsManager` | Explicit revision-bound social snapshots, exact public lookup and original request IDs |
+| 📊 **Statistics** | `UHorizonStatisticsManager` | Explicit atomic session batches with sum/max/min/last counters, optional UTC resets and safe retries |
 | 💬 **Feedback** | `UHorizonFeedbackManager` | Submit bug reports, feature requests, and general feedback |
 | 📊 **User Logs** | `UHorizonUserLogManager` | Server-side structured logging for analytics and debugging |
 | 💥 **Crash Reporting** | `UHorizonCrashManager` | Crash capture, exception tracking, breadcrumbs |
@@ -42,6 +46,24 @@ Official Unreal Engine SDK for **horizOn** Backend-as-a-Service by [ProjectMaker
 3. Open your project in Unreal Editor.
 4. Go to **Edit > Plugins**, search for "horizOn SDK", and enable it.
 5. Restart the editor when prompted.
+
+### Fab submission packages
+
+The GitHub ZIP contains the source plugin with its baseline engine descriptor.
+Fab requires a separate ZIP for each advertised engine version, including the
+matching `EngineVersion` and module platform lists. After testing a released
+plugin with Unreal's `RunUAT.sh BuildPlugin`, create its Fab source package:
+
+```bash
+python3 Scripts/package_fab.py --engine 5.8 --platform Mac \
+  --product-id <publisher-portal-product-id> --output <submission.zip>
+```
+
+Use only engine versions and platforms verified for that submission. Omitting
+`--product-id` creates a preparation ZIP with an empty `FabURL`, which must be
+filled before submission. The script preserves the release-managed SDK version
+and excludes local build output. Fab builds the distributed binaries itself.
+See the [Fab technical requirements](https://www.fab.com/o/technical-requirements).
 
 ## Quick Start
 
@@ -97,7 +119,9 @@ Horizon->Disconnect();
 
 ### Authentication
 
-Anonymous signup omits client tokens and stores the token issued by the server. It signs in with that token when signup returns no session. The deprecated token argument is ignored. Use `SignInAnonymous` for an existing account. `RestoreAnonymousSession` reuses the cached token if its session has expired.
+Anonymous signup omits client tokens and stores the token issued by the server. It signs in with that token when signup returns no session. The deprecated token argument is ignored. Signup makes exactly one transport attempt: a lost response or HTTP error must be reconciled before any new identity is created. Use `SignInAnonymous` for an existing account. `RestoreAnonymousSession` reuses the cached token if its session has expired.
+
+`SignInWithApple` implements the native Apple sheet on iOS. On other platforms it reports `false` without opening a browser. Supply your own Apple authorization, redirect handling and identity-token integration, then call `SignInApple` or `SignUpApple`. Real Apple provider and iOS device acceptance remain separate from the SDK's automated checks.
 
 ```cpp
 // Anonymous sign-up
@@ -112,7 +136,7 @@ Horizon->Auth->SignUpEmail(TEXT("user@example.com"), TEXT("password"), TEXT("Dis
 Horizon->Auth->SignInEmail(TEXT("user@example.com"), TEXT("password"),
     FOnAuthComplete::CreateLambda([](bool bSuccess) { }));
 
-// Apple sign-in (drop-in: native sheet on iOS, system browser elsewhere)
+// Apple sign-in through the native iOS sheet
 Horizon->Auth->SignInWithApple(FOnAuthComplete::CreateLambda([](bool bSuccess)
 {
     // On success: Horizon->Auth->GetCurrentUser() returns FHorizonUserData with
@@ -281,31 +305,62 @@ Horizon->News->LoadNews(20, TEXT("en"), true,
 
 ### Gift Codes
 
-`Redeem` needs a signed-in player and sends the player session (`Authorization: Bearer`). The server only redeems codes for the player who owns that session.
+Use `PrepareRedemption(Code, callback)` (Blueprint: `PrepareRedemptionCode` / `OnPrepared`) to read a V2 intent. Persist the complete `FHorizonGiftCodeIntent` in a SaveGame before `RedeemPrepared(Intent, callback)` (Blueprint: `RedeemPreparedCode` / `OnRedeemResult`). The feature example includes explicit redeem/retry actions and verified scoped storage. A timeout or restart reuses the exact stored tuple; never prepare or advance automatically.
+
+Campaign UUID, expected count and config revision define the operation; counts/revisions are canonical Int64 decimal strings. Replay returns current Player Values, `bAlreadyApplied/bReplayed=true`, empty grants and no original giftData. Replace balances, never add grants. V1 `Redeem` and arbitrary-ID methods return `UPGRADE_REQUIRED`. `MIGRATION_REQUIRED`, `COUNT_AHEAD`, `CAMPAIGN_CHANGED`, `COUNTER_EXHAUSTED` and other domain errors require reconciliation. Player/project changes fence responses and cannot retarget persisted intents; reusing a visible code cannot redirect the immutable campaign UUID.
+
+
+### Friends (Develop, TASK-1009)
 
 ```cpp
-// Validate
-Horizon->GiftCodes->Validate(TEXT("ABCD-1234"),
-    FOnGiftCodeValidateComplete::CreateLambda([](bool bRequestSuccess, bool bValid) { }));
-
-// Redeem
-Horizon->GiftCodes->Redeem(TEXT("ABCD-1234"),
-    FOnGiftCodeRedeemComplete::CreateLambda([Horizon](bool bSuccess, const FString& GiftData, const FString& Message)
-    {
-        if (bSuccess)
-        {
-            // Parse GiftData for rewards.
-            // Cosmetics from the code's "grants" are unlocked on the server:
-            const TArray<FString>& Unlocked = Horizon->GiftCodes->GetLastGrantedUnlocks();
-            // The cached player profile was cleared; GetProfile now shows the unlocks.
-        }
-    }));
+#include "Managers/HorizonFriendsManager.h"
+#include "Models/HorizonFriends.h"
+Horizon->Friends->GetFriends(UserId,
+    FOnFriendsComplete::CreateLambda([](bool Ok, const FHorizonFriendsSnapshot& Snapshot,
+        const FString& Code, const FString& Message) { /* Replace the social UI from Snapshot. */ }));
+Horizon->Friends->FindPlayer(UserId, ExactUuidOrHCode,
+    FOnFriendLookupComplete::CreateLambda([](bool Ok, const FHorizonFriendLookup& Player,
+        const FString& Code, const FString& Message) { /* Exact public identity only. */ }));
+// Explicit player action after reviewing the current incoming row. Persist this tuple first.
+Horizon->Friends->AcceptRequest(UserId, TargetUserId, ReviewedRevision, OriginalRequestId,
+    FOnFriendsComplete::CreateLambda([](bool Ok, const FHorizonFriendsSnapshot& Snapshot,
+        const FString& Code, const FString& Message) { /* Conflict: explicitly refresh and reconcile. */ }));
 ```
 
-A code whose `giftData` contains `grants` (for example `{"grants": ["badge.supporter"]}`)
-unlocks those cosmetics for the player. `GetLastGrantedUnlocks()` returns them after a
-successful redeem (empty when the code had no grants); in Blueprints use
-**"Get Horizon Last Granted Unlocks"**.
+`SendRequest`, `RemoveFriend`, `BlockPlayer` and `UnblockPlayer` take `(UserId, TargetUserId, ExpectedRevision, FOnFriendsComplete)`. `AcceptRequest`, `DeclineRequest` and `CancelRequest` additionally require the original RequestId immediately before the callback. Revisions are explicit safe integers, never defaults. Native delegates use CreateLambda/CreateUObject, not BindDynamic. Blueprint entry points are RequestFriends, FindFriendPlayer, SendFriendRequest, AcceptFriendRequest, DeclineFriendRequest, CancelFriendRequest, RemoveFriendPlayer, BlockFriendPlayer and UnblockFriendPlayer, with typed OnFriendsResult/OnLookupResult events.
+
+`FHorizonFriendsSnapshot` contains UserId, Revision, FriendCode, Friends, Incoming, Outgoing, Blocked, Limits and ServerTime. Requests expose UserId, RequestId, CreatedAt and Display. Public Display contains Name and Profile.AvatarId/FrameId/Badges; unavailable cosmetics/name become empty placeholders. Friends expose Since, LastActiveAt and bHasLastActiveAt. A null last login remains unknown; it is never online presence. Blocked rows expose no profile/activity. Exact lookup accepts a full UUID or canonical H-code, never name/email searches. Above-tier retained friendships stay visible and removable after downgrade.
+
+`GetCurrentFriends()` returns only the current host/project/player/session context. Cache clears retain accepted revision and server-time floors. HTTP generations and cache epochs fence late responses, including host/project/session A→B→A changes. One operation is active per context; overlapping callers get REQUEST_IN_PROGRESS. Feature errors preserve their codes; authorization loss clears private state. Optional hosted realtime accepts friends:<userId>; HTTP reloads the content. simpleServer supports the REST contract and reports NOT_SUPPORTED for realtime.
+
+`AHorizonFriendsExample` requires an existing restored session and performs no startup mutation, signup, polling or automatic relationship repair. Explicit StartAction persists the project/player/action/target/revision/request-ID tuple before HTTP, validates a new action against the current authorized row or exact lookup, and blocks conflicting pending work. RetrySavedAction sends that same tuple without replacing its revision or request ID. A lost response or conflict requires an explicit LoadFriends and player reconciliation. AcknowledgePendingAfterRefresh only records that user decision; it cannot cancel an older in-flight server action or guarantee its outcome. A later action still needs its own reviewed current revision and request ID. Unblock never restores a friendship/request. Acknowledgement is bound to the exact local intent ID and persisted send serial that were present when refresh began; another actor or later retry invalidates it. Success callbacks also match that fence before deleting a save. The sample never manufactures a fresh revision or accepts a replacement request automatically.
+
+`Tests/run_native_friends_test.py` runs Horizon.Friends.NativeTransport and StrictModels against the strict artificial fixture on 127.0.0.1:18815 after a native plugin build. The fixture checks unchanged original tuples after a lost response and a new incoming request, all seven actions, public lookup privacy, null login, downgrade retention, safe integer tokens and cache/session/project races and two real sample Actor instances sharing one durable intent. It is SDK wiring evidence; live Develop, standalone game recipes and release acceptance are separate gates.
+
+### Achievements (Develop, TASK-1008)
+
+```cpp
+#include "Managers/HorizonAchievementsManager.h"
+#include "Models/HorizonAchievements.h"
+Horizon->Achievements->GetAchievements(UserId,
+    FOnAchievementsComplete::CreateLambda([](bool Ok, const FHorizonAchievementsSnapshot& Snapshot,
+        const FString& Code, const FString& Message) { /* render Definitions + Progress */ }));
+Horizon->Achievements->Unlock(UserId, TEXT("first_win"),
+    FOnAchievementUnlockComplete::CreateLambda([](bool Ok, const FHorizonAchievementUnlockResponse& Result,
+        const FString& Code, const FString& Message) { /* Result.Achievements/NewlyUnlocked/bReplayed/DeliveryResults */ }));
+// Explicit player action; retain/retry these SAME pending keys after an uncertain response.
+Horizon->Achievements->DeliverRewards(UserId, PendingKeys,
+    FOnAchievementDeliveryComplete::CreateLambda([](bool Ok, const FHorizonAchievementDeliveryResponse& Result,
+        const FString& Code, const FString& Message) { /* inspect each Result.Results key/state/code */ }));
+```
+
+Callbacks use native delegates (`CreateLambda` / `CreateUObject`, not `BindDynamic`). GetAchievements's optional third argument is the opaque `DefinitionVersion`; it otherwise uses the current player's cache version. Wire `definitions:null` retains only matching materialized metadata; `[]` replaces it. A missing materialization causes at most one explicit full GET, never a POST retry or periodic poll. ClearCache retains revision/server-time watermarks. Session, host/project generations and cache epochs fence late replies; only one operation is active per context, with `REQUEST_IN_PROGRESS` for overlapping callers.
+
+Fresh achievements atomically grant rewards with the durable unlock. Compact progress uses wire `rewardState:"complete"` and `unlockedAt:null` (an empty `UnlockedAt` string in the Unreal DTO); it creates no new pending reward or Inbox entry. `DeliverRewards` is a compatibility/status call for one to eight original keys, not a second grant. Retained legacy `pendingReward`/`inboxEntryId` fields describe old accepted rewards only; unresolved originals require explicit source migration (`MIGRATION_REQUIRED`), never reconstruction from current definitions or automatic regrant. Repeat an uncertain manual unlock with the same key, and read current Player Values instead of adding reward deltas locally.
+
+Blueprints expose RequestAchievements, UnlockAchievement and DeliverAchievementRewards with typed result events. `GetCurrentAchievements()` returns the scoped materialized snapshot. Optional hosted realtime accepts `achievements:<userId>`; HTTP supplies content after invalidation/reconnect. REST also works on simpleServer, where realtime is NOT_SUPPORTED.
+
+`AHorizonAchievementsExample` requires an existing restored session. Load/Unlock/Deliver are explicit UI actions; RefreshAfterStatistics refreshes only after a matching successful non-replayed statistics snapshot with NewlyUnlocked. Retained delivery-key and Inbox claim helpers apply only to old accepted rewards and preserve their original identity. New unlocks grant atomically and create no claim. No signup, startup unlock, polling or automatic claim is introduced.
 
 ### Player Profile
 
@@ -798,7 +853,7 @@ Alternatively, use **Tools > horizOn > Import Config...** to import a JSON confi
 
 ## Rate Limiting
 
-**Limit**: 10 requests per minute per client. Requests exceeding this limit receive an HTTP 429 response and are automatically retried after the cooldown period.
+**Limit**: counted per account, shared by all players of all your games. On the Free plan the soft limit is 10 and the hard limit 100 requests per minute. Paid plans have higher limits, see [horizon.pm/pricing](https://horizon.pm/pricing). Requests above the hard limit receive HTTP 429 and are automatically retried after the cooldown period.
 
 | Do | Don't |
 |----|-------|
@@ -839,7 +894,15 @@ Horizon->Auth->SignInEmail(TEXT("user@example.com"), TEXT("password"),
 | 400 | Bad Request | Check parameters |
 | 401 | Unauthorized | Re-authenticate |
 | 403 | Forbidden | Check tier/permissions |
-| 429 | Rate Limited | Wait and retry (automatic) |
+| 429 | Rate Limited | Code-free global limits retry after the server wait plus 0–20% jitter; feature codes return immediately |
+
+### Retry policy
+
+All JSON, binary-upload and JSON-to-binary response paths share one dispatcher. A 429 with any nonempty string `code` is a feature decision and reaches the caller immediately, including unknown future codes. Missing, null or empty codes use the global policy: wait at least `Retry-After` seconds (minimum one second), then add random delay up to 20%, bounded by `MaxRetryAttempts`. Native timers reject NaN/infinite waits and avoid float overflow. Status, machine-readable code, response body and headers remain available after the final attempt.
+
+Requests capture their original JSON/bytes, extra headers and host/project/session context. Host/project lifecycle changes cancel old responses and scheduled retries with `SESSION_CHANGED`, including A→B→A changes. Session-bound calls additionally fence token-generation changes; session-independent calls remain valid during token changes. Backoff uses monotone wall time, so accelerated or paused game time cannot move a retry before the server minimum. Signup always has one transport attempt. Gift V2 retries preserve the original immutable campaign/count/revision tuple. V1 arbitrary-ID calls are closed and never authorize a replacement operation.
+
+`Horizon.Transport.RateLimit.NativeHTTP` uses the strict artificial `Tests/mock_rate_limit_server.py` on `127.0.0.1:18817`. `Tests/run_native_rate_limit_test.py --engine /path/to/UE_5.8 --host-project /path/to/HostProject.uproject --report /path/to/report` runs the native test after building the plugin. It verifies all three data paths, minimum waits, feature-code passthrough, retry exhaustion, immutable payloads/headers, single-attempt legacy/signup and a session change during backoff.
 
 ## Self-Hosted Option
 
@@ -888,7 +951,7 @@ Run `bash Tests/run_transport_test.sh` from the repository root. The standalone 
 ## Support
 
 - 📖 **Documentation**: [horizon.pm/quickstart](https://horizon.pm/quickstart)
-- 💬 **Discord**: [discord.gg/horizOn](https://discord.gg/JFmaXtguku)
+- 💬 **Discord**: [discord.gg/JFmaXtguku](https://discord.gg/JFmaXtguku)
 - 🐛 **Issues**: [GitHub Issues](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/issues)
 
 ## License
@@ -896,3 +959,402 @@ Run `bash Tests/run_transport_test.sh` from the repository root. The standalone 
 MIT License - Copyright (c) [ProjectMakers](https://projectmakers.de)
 
 See [LICENSE](LICENSE) for details.
+
+## Realtime invalidations (Cloud)
+
+After sign-in, use the subsystem's `Realtime->Subscribe("inbox:" + Subsystem->Auth->GetCurrentUser().UserId)`. Blueprint exposes the same manager, subscription methods and `OnResyncRequired`, `OnEvent`, `OnPollingRequired`, `OnConnectionError` delegates. Reload authorized content through the feature HTTP API after events and resync signals. Respect `PollAfterSeconds` during HTTP fallback; chat never polls. Unsubscribe when no longer needed.
+
+Native WebSockets reconnect with jitter and reauthorize topics; events contain IDs and revisions only. Sign-out clears subscriptions, same-user token refresh reconnects. simpleServer reports `NOT_SUPPORTED`; realtime is Cloud only. The local native automation test `Horizon.Realtime.NativeTransport` runs against the Server repository's artificial SDK fixture when `HORIZON_REALTIME_FIXTURE_URL` is set to loopback.
+
+## Player values
+
+`UHorizonSubsystem::PlayerValues` exposes `GetState(UserId, FOnPlayerValuesComplete)`, `GetOffers(UserId, FOnPlayerValuesOffersComplete)`, `Purchase(UserId,OfferKey,OperationId,Delegate)`, `Adjust(UserId,Key,int64Amount,Reason,OperationId,Delegate)` and `CreateOperationId()`. Include `Managers/HorizonPlayerValuesManager.h`; it includes the reflected models in `Models/HorizonPlayerValues.h`. Completion delegates return `(bool bSuccess, const StateOrOffers&, const FString& ErrorCode, const FString& ErrorMessage)`. `FHorizonPlayerValuesState.bPresent` indicates whether current balances accompanied a success or business failure. Values/costs/applied deltas use int64. Nullable caps and offer day limits use explicit `bHasDailyCap`/`bHasPurchasesPerDay` flags, so zero stays distinct from null.
+
+Catalog and balance lists follow the server's current configuration; the SDK does not impose the old tariff counts. A lowered daily cap does not erase an existing balance or earned-today value. Removed/omitted offer day quotas leave `bHasPurchasesPerDay=false`.
+
+A fresh purchase may return immediate `Operation.Applied` and `Operation.Items`. A compact replay returns the current full state, `Operation.bReplayed=true` and empty deltas/item references. Replace displayed balances and refresh Inventory when needed; never add replay grants or reconstruct discarded items locally.
+
+Blueprints use `RequestState`, `RequestOffers`, `PurchaseOffer`, `AdjustValue` and receive `OnValuesResult`/`OnOffersResult`. `CreateOperationId`, `GetCurrentState`, `GetCurrentOffers`, `HasServerClock`, `ClearCache` are reflected. State is bound to the matching signed-in session/project/host; stale responses cannot repopulate a cleared cache. Revision/server-clock watermarks survive catalogue invalidation.
+
+Load state/offers before creating an operation ID to learn server time. IDs then advance using monotonic elapsed time; local UTC is the visible fallback (`HasServerClock()==false`). Persist one operation ID and immutable payload per logical action and retain it after a timeout. Never create a replacement automatically after `OPERATION_EXPIRED`; refresh and reconcile first. Integers are bounded to +/-9,007,199,254,740,991. Realtime remains optional and does not replace HTTP state refresh after validated runs or another balance mutation. No automatic purchase/poll loop exists.
+
+## Inbox
+
+```cpp
+#include "HorizonSubsystem.h"
+#include "Managers/HorizonInboxManager.h"
+#include "Models/HorizonInbox.h"
+
+// Use an already restored player session. Loading never claims attachments.
+const FString UserId = Horizon->Auth->GetCurrentUser().UserId;
+Horizon->Inbox->GetInbox(UserId,
+    FOnInboxComplete::CreateLambda([](bool Ok, const FHorizonInboxSnapshot& Inbox,
+                                     const FString& Code, const FString& Message)
+    {
+        if (Ok) { /* Render Entries, Counts and Limits. Retain Cursor for a conditional refresh. */ }
+    }));
+// Only on an explicit player action, using the original persisted entry ID:
+Horizon->Inbox->Claim(UserId, OriginalEntryId,
+    FOnInboxClaimComplete::CreateLambda([](bool Ok, const FHorizonInboxClaim& Claim,
+                                          const FString& Code, const FString& Message)
+    {
+        if (Ok) { /* Replace UI with Claim.Inbox; PlayerValues already adopted Claim.PlayerValues. */ }
+        // An uncertain result retains OriginalEntryId for the next explicit retry.
+    }));
+```
+
+`MarkRead(UserId, EntryId, FOnInboxComplete)` and `Remove(...)` return full snapshots.
+`GetInbox(UserId, Callback, Since)` accepts an opaque cursor; an unchanged reply is materialized from the matching cache or triggers one full reload. Concurrent refresh bursts are coalesced into one active request and one queued request. Cache clears preserve revision and server-time watermarks; session, project, region and epoch changes fence late replies. Claims also capture the PlayerValues cache epoch. Balances are replaced from the full authorized server state, never credited locally.
+
+`Limits` exposes configurable `Targeted`, `Broadcasts`, `FreeTexts`, `FreeTextBytes` (UTF-8) and `FreeTextRetentionDays`. These govern new writes; retained entries remain readable after limits are lowered. Safe integer revisions may jump. Keep entry IDs opaque: a later event from the same source has a distinct identity, and actions keep the selected original ID.
+
+`Entry.TryGetSource(Source)` exposes typed Friends, Groups, Match and Market navigation references; current source state and actions stay with the source feature API. `Entry.TryGetFreeText(Text)` identifies plain free text. Render it with rich text disabled; other entries use localization `TextKey` and `Parameters`. The Blueprint library exposes `GetInboxSource`, `GetInboxFreeText` and `CanClaimInboxEntry`. Unknown custom/legacy message fields remain available.
+
+`Attachment.ItemReturn` contains `ListingId`, `InstanceId`, `ItemKey` and `bPresent`. `Entry.CanClaim()` includes item-only returns with empty `Values`. Claim `Items` contains authoritative item references; refresh inventory explicitly after a return, because these descriptors are not complete items. Unsupported valuable fields and malformed identities/numbers reject a response before either cache is updated. The client SDK provides no trusted publication route.
+
+Blueprint entry points are `RequestInbox`, `MarkEntryRead`, `RemoveEntry` and `ClaimEntry`; their result events expose the same typed models. The explicit `AHorizonInboxExample` actor preserves a pending claim before HTTP, scoped to the project and player, and blocks a different entry until the original is reconciled. New claims require an unclaimed valuable entry in the current authorized snapshot. `GetPendingClaimEntryId` recovers the original entry after a restart; `GetCurrentInbox` always reads the manager cache, so logout never leaves a second actor snapshot. It performs no automatic signup, polling or claims.
+
+Realtime is optional and Cloud-only. Subscribe to `inbox:<userId>` and, when its ID is supplied by your project setup, `inbox:project.<apiKeyId>`; the API-key ID is distinct from the secret API-key value. Invalidation/resync events trigger a coalesced HTTP refresh. Respect `PollAfterSeconds` for a scheduled fallback; chat has no polling fallback. Inbox REST also works with simpleServer; its realtime channel returns `NOT_SUPPORTED`.
+
+Native `Horizon.Inbox.NativeTransport` uses `Tests/mock_inbox_server.py` with `HORIZON_INBOX_FIXTURE_URL=http://127.0.0.1:18816`. Its 24 exact fixture requests check original-entry and item-return replay, 552 retained entries after lower limits, 512-byte plain text, full balance adoption, bounded refresh bursts, stale cache/session responses and exactly one signup request after HTTP 503 or a dropped connection. `Horizon.Inbox.StrictModels` checks typed sources, configurable limits, safe integer tokens and malformed rewards/snapshots.
+
+## Player statistics
+
+Configure `kills` with mode `sum` and `best_score` with mode `max` in the project's statistics catalog. Modes are `sum`, `max`, `min` and `last`; optional resets use UTC days or ISO weeks. Each player has one state document. Initialization and sign-in never load statistics automatically.
+
+```cpp
+#include "Managers/HorizonStatisticsManager.h"
+
+Horizon->Statistics->GetStatistics(FOnStatisticsLoaded::CreateLambda(
+    [Horizon](bool Success, const FHorizonStatisticsSnapshot& Snapshot, const FString& Code, const FString& Message)
+    {
+        if (!Success) return;
+        FHorizonStatisticUpdate Kills; Kills.Key = TEXT("kills"); Kills.Value = 3;
+        const FString OperationId = Horizon->Statistics->CreateOperationId();
+        // Persist OperationId + the original batch before sending; keep them after a timeout.
+        Horizon->Statistics->UpdateStatistics({Kills}, OperationId, FOnStatisticsLoaded::CreateLambda(
+            [](bool Applied, const FHorizonStatisticsSnapshot& Result, const FString& ErrorCode, const FString& ErrorMessage) {}));
+    }));
+```
+
+`GetDefinitions` loads the catalog explicitly. Snapshots cache definitions by `definitionVersion`, including conditional responses, and carry `Revision`, `Values`, `OperationWindow`, `OperationId`, `bReplayed` and reserved `NewlyUnlocked`. `GetCurrentStatistics`, `GetCurrentDefinitions` and `ClearCache` manage the local cache. Session/host/project changes clear it; late responses cannot restore old data. Revision and server-time fences survive a catalog refresh, preventing older counters or UTC projections from replacing newer state.
+
+Blueprint provides **Get Statistics**, **Get Statistics Definitions**, **Update Statistics** async nodes and **Create Operation Id** on the manager. Updates use Blueprint `int64`, bounded to ±9,007,199,254,740,991. Empty batches, duplicate or malformed keys, unsafe values and missing `<13-digit Unix milliseconds>:<UUID>` IDs fail locally. The server validates per-update bounds and rejects a whole batch on overflow.
+
+An uncertain request must use its original ID and unchanged payload on retry; the SDK never generates a replacement ID. The server replays a retained receipt first, rejects changed payloads with `OPERATION_CONFLICT`, and rejects expired/evicted unknown IDs with `OPERATION_EXPIRED`. Only eight receipts are retained; the persisted eviction floor can reject out-of-order delayed IDs before the 24-hour window ends. Snapshot/server operation time helps create new IDs within the allowed 30-second clock skew. Never create a fresh ID to retry an unknown outcome.
+
+C++ delegates and Blueprint failure pins expose server error codes. Other stable codes include `SESSION_REQUIRED`, `SESSION_CHANGED`, `STATE_CONFLICT`, `INVALID_REQUEST`, `INVALID_RESPONSE` and the HTTP transport's `CONNECTION_FAILED`/`RATE_LIMITED`. Cloud and simpleServer use the same statistics REST contract; realtime is optional and unrelated to these explicit batches.
+
+`AHorizonStatisticsExample` restores an anonymous player, explicitly loads a snapshot and persists a project/player-scoped pending batch before posting it. It keeps the original intent on errors or an uncertain timeout. Add it to a level to try the flow. Native fixture test `Horizon.SDK.Statistics.NativeTransport` uses `Tests/mock_statistics_server.py` at the fixed loopback URL in `HORIZON_STATISTICS_FIXTURE_URL`; `bash Tests/run_transport_test.sh` checks the shared C++ contract without Unreal.
+
+
+### Example identity recovery
+
+`AHorizonStatisticsExample` uses `UHorizonExampleIdentity` for its example-only local recovery. Before signup it saves a project-bound uncertainty marker; an unknown result never triggers another signup on recreation. Unvalidated legacy caches stay unbound until successful authentication. An explicit guest restore selects that project's protected guest ahead of a cached email account. Previously authenticated foreign-project credentials are backed up before a new project signs up.
+
+Games reusing this helper pass the optional fourth `SignUpAnonymous` argument `FOnAnonymousIdentityIssued`. It receives the immutable issuing API key and actual server-issued `FHorizonUserData` before follow-up sign-in; return false if durable preservation fails. Existing calls and the deprecated third argument remain compatible. The SDK retains its issued credential cache even when this observer rejects continuation. A changed shared disk cache is never evidence that a signup issued those credentials. `ClearSession` clears in-memory authentication and retains the disk cache.
+
+The sample runs once per actor, gates auth re-entry, keeps original pending statistics on failure, validates a saved batch before replay, and removes only the saved batch matching its successful response. `Tests/run_native_identity_test.py` runs `Horizon.Identity.NativeRecovery` against its strict artificial loopback fixture on port 18812. This is a local engine/HTTP proof, without real accounts or Cloud deployment.
+
+Groups: `Groups` manager, typed views, explicit revision/request IDs, one-attempt writes and
+lossless JSON metadata. See [the plugin quickstart](Plugins/HorizonSDK/Docs/QUICKSTART.md#groups-task-1010)
+and `AHorizonGroupsExample`; no automatic signup, polling or replacement intent is performed.
+All eleven Group limits are positive Int32 operator configuration: members, memberships,
+group invitations/requests, player invitations/requests, data/name/description bytes,
+member page size and data depth. Optional legacy pending `CreatedAt` remains unknown via
+`bHasCreatedAt`; Friends uses the same rule for request time and `bHasSince`.
+Complete retained lists remain readable after lowering. Group JSON preserves original
+number lexemes within the actual received UTF-8 body budget and depth1024; aggregate Groups
+responses are not capped at 32 MiB. Policy defaults
+of2KiB/depth16/name120/description1024 are not client ceilings. Metadata writes keep the
+same original through server policy rejection. Group revision floors stay for the current
+auth context, including group257 and later; auth changes clear them. Several responses
+can grow this local revision map beyond one frame, independently of database storage.
+
+Items: `Items` exposes five typed inventory/catalog methods and Blueprint async
+nodes. Property integers, Unicode/NUL strings, purchase item rewards and retained
+instance data stay lossless. `AHorizonItemsExample` persists original actions
+and never replaces an uncertain purchase ID. See [the quickstart](Plugins/HorizonSDK/Docs/QUICKSTART.md#items-task-1011)
+for single-attempt CAS writes, explicit receipt recovery and the remaining GET-to-POST price window.
+
+Item limits are current positive Int32 operator configuration, with no old 5000/150/50 tariff
+clamps. A lower current limit does not hide retained inventory or catalog totals. Catalog total
+has the storage-format ceiling of 65,536 permanent UInt16 template slots; individual pages remain
+at most 50 definitions. Compact storage preserves the public instance properties, CAS revisions
+and original property deltas. Replayed purchases return current state with empty applied/item
+references; the sample refreshes inventory without synthesizing a new instance or operation ID.
+
+
+Shared Objects: `SharedObjects` exposes seven typed methods, opaque byte payloads,
+strict search scalars, explicit original If-Match and Blueprint async nodes.
+`AHorizonSharedObjectsExample` durably preserves original intents across regional
+switches and reconciles uncertain creates through owner reads. See
+[the quickstart](Plugins/HorizonSDK/Docs/QUICKSTART.md#shared-objects-task-1012)
+for world-map queries and the separate existing Validated Actions defense recipe.
+Collection/owner counts are positive Int32 operator values and storage bytes are exact
+safe Int64 values; former100/2GiB defaults do not cap retained reads. The physical opaque
+object bound is1MiB decoded (1,398,104 Base64 characters), also for writes and saved
+originals. Query limits remain50 selected objects and1MiB total decoded payload.
+
+
+### Asynchronous Matches
+
+`UHorizonSubsystem::Matches` exposes all14 app routes through the typed
+`UHorizonMatchesManager`. Include `Managers/HorizonMatchesManager.h` and
+`Models/HorizonMatches.h`; native callbacks use four parameters
+`(bool, const ResultType&, const FString& ErrorCode, const FString& ErrorMessage)`
+and `CreateUObject`/`BindUObject`. Blueprint async nodes in
+`AsyncActions/HorizonAsync_Matches.h` freeze the current world/session context.
+
+Read with `GetMatches`, `GetLimits`, `FindOpenMatches` (one opaque cursor page),
+and `GetMatch`. `CreateMatch` takes the original player-ledger revision;
+`JoinMatch`, `DeclineInvite`, `StartMatch`, `SubmitTurn`, `AdvanceTimeout`,
+`LeaveMatch` and `CancelMatch` take the original match revision. `ReportResult`
+and `StartRankedRun` take the frozen final-state revision. Every Matches mutation
+makes exactly one transport attempt. An uncertain response requires an explicit
+read/reconciliation; the SDK never substitutes a newer revision or move.
+
+State and result payloads are `TArray<uint8>`, with strict canonical Base64 on
+the wire. Match state accepts the server physical14,648KiB bound for reads, writes
+and durable originals; result bytes retain their separate256-byte protocol bound.
+All seven current limits are retained, including `SettlementMatches`,
+`HistoryRetentionSeconds` (zero allowed), `RankedSettlementSeconds` and
+`RetainedMatches` (zero allowed). Complete retained lists are not trimmed to current
+quotas. The technical32MiB response frame does not promise that every possible unpaged
+operator-sized ledger fits; projected ledger records contain no full state bytes. `bHasData` distinguishes invite-only metadata (`null`) from accepted
+empty state. Safe integer revisions and strength, false, nullable deadlines,
+Unicode and embedded NUL names are preserved. Snapshots retained after a
+subscription downgrade remain readable up to the server's maximum shape.
+Realtime `matches:<UUID>` events only invalidate caches. There is no background
+polling, automatic cursor traversal, turn advancement or inferred game winner.
+
+`AHorizonMatchesExample` is an executable Actor for each of two existing signed-in
+clients. It has no automatic auth or Tick work. Call `Refresh()` for the ledger,
+`Refresh(id)` for the selected match, and explicit `StartAction` calls for lobby,
+turn, timeout, result and ranked actions. Poll intervals apply to refresh;
+`FindOpen` permits explicit cursor continuation. The game determines its own
+combat and must explicitly confirm the same final bytes/winner IDs.
+
+The Actor persists one immutable original under project+player identity. Hosts
+and sessions only fence requests, so switching region cannot create another
+pending slot. Two validated SaveGame generations preserve the last complete
+original if an interrupted write damages the other generation. Create names
+carry a unique sample recovery nonce; the supplied opaque state is unchanged.
+After a lost create, `RetryOriginal` reads the ledger, then the player explicitly
+reads and calls `ConfirmRecoveredCreate(id)`. A definitely rejected first create
+can be deliberately acknowledged after a fresh ledger. A lost departure or
+known match purged after retention can be acknowledged after a fresh ledger no
+longer references it and the original point read authoritatively returns
+`MATCH_NOT_FOUND`. A genuinely unknown
+create with no discoverable match remains blocked and requires reconciliation;
+absence in a response cannot prove that an older request will never commit.
+
+`MyMatches.PendingResults` exposes only MatchId, positive FinalStateRevision,
+optional OwnRankedRunId and ExpiresAt. `StartRankedFromPendingResult(id)` explicitly
+saves that original before POST even after historical match detail is gone. Known
+source run IDs bind the returned original; a replacement run cannot be adopted.
+There is no historical result/item reconstruction. Completed UE originals already
+use exact SaveGame deletion rather than a permanent acknowledged archive.
+
+The separate ranked recipe adopts the original confirmed-match run into
+`ValidatedActions`; it does not prove honest gameplay or automatically grant a
+match reward. The sample freezes score/input before `SubmitRankedResult`, keeps
+uncertain submissions across restarts, and validates the accepted run/board
+receipt before clearing them. Expired/consumed runs never mint replacement runs.
+`simpleServer` ordinary Matches REST remains usable; ranked is explicitly
+`FEATURE_NOT_SUPPORTED` and no cloud validation is simulated.
+
+`Tests/run_native_matches_test.py` runs `Horizon.Matches.StrictModels` and
+`Horizon.Matches.NativeTransport` against artificial loopback origins18820/18821.
+The strict fixture checks exact requests for two independent players, all14
+routes, original revisions/bytes, lost responses, region change, ranked recovery,
+Blueprint context, cache/realtime invalidation and one-attempt failures. Its
+simulated turn timeline advances only the test Actor's refresh clock instead
+of waiting120 real seconds per move. Native Editor/Development/Shipping builds
+are separate evidence from live Develop, standalone games and Hello integration.
+
+
+Generic `ValidatedActions.StartRun` and Matches ranked starts share one exclusive
+in-flight start lease. A competing start returns local `RUN_IN_PROGRESS` before
+HTTP. Cache clearing, signout and region/session changes do not release another
+pending request's lease. Release follows the original completion callback;
+late context responses cannot adopt a run. An active unrelated run blocks a
+match start, while the same original match/final-state run can be recovered.
+An already adopted active match run is protected from a generic replacement
+until submit or the player's explicit `DiscardRun` action.
+
+
+### Hosted Chat (TASK-1014)
+
+`UHorizonSubsystem::Chat` exposes typed `GetLimits`, `OpenChannel`, `SyncChannel`,
+`SendMessage`, `GetOperation`, and `ReportMessage`. Include
+`Managers/HorizonChatManager.h` and `Models/HorizonChat.h`. Native callbacks have
+four arguments `(bool, const FHorizonChat…&, const FString& code, const FString& message)`;
+use `BindUObject`/`CreateLambda`. Blueprint actions and result delegates expose the
+same six envelopes. Optional dates use explicit `bHas…` flags; integers are parsed
+from their original lexemes. Text is plain Unicode (500 scalars/2000 UTF-8 bytes),
+with LF/TAB allowed and other ISO controls rejected. No markup interpretation.
+
+All six methods reach REST, including an explicit `SyncChannel` without realtime.
+An unwatched/disconnected explicit read requests a full snapshot and does not expose
+a managed feed. simpleServer `501 NOT_SUPPORTED` and structured server errors are
+returned unchanged. `GetLastResponseMetadata()` exposes status, structured code and
+original headers inside the completion callback, without retaining message payloads.
+Open, send and report each have one transport attempt; sync is
+a bounded read-only POST with frozen JSON. A rate response never schedules a send.
+
+For an active feed call `WatchChannel(userId, channelId)`. The existing realtime
+manager obtains an authorized subscription ACK before requesting content. Listen
+to `OnFeedChanged(channelId)` and render `GetFeed(channelId).Messages` only when
+`bPresent` is true. `IsChannelSubscribed` exposes subscription state. The cache
+atomically composes the full visible ID order using immutable cached/returned text;
+missing, changed, duplicate or cross-channel payloads cannot produce partial success.
+One request per channel plus a dirty bit coalesces event bursts. There is no HTTP
+polling or disconnected fallback. Disconnect, permission loss, local expiry and
+host/session/project ABA hide content; a fresh authorized subscription and sync are
+required. `UnwatchChannel` releases the selected feed. At most32 watches are retained.
+
+Drop `AHorizonChatExample` into a map with an existing player session and call
+`ShowUI()`. Its minimal UMG interface offers direct-friend/group/project selection,
+subscription status, a plain `UTextBlock` feed, explicit send/reconcile/retry, and
+report reason. The Actor never signs up a player or embeds admin credentials.
+
+The sample journals an exact original operation ID, millisecond UTC issued-at,
+channel and UTF-8 text **before** its first send. Namespace is project+player+chat;
+regional host/session are response fences only. A per-scope OS-exclusive lock protects
+read-modify-write, and two verified generations atomically retain pending and
+acknowledged originals across actor/process restarts. A bounded version/Base64/SHA256
+outer envelope is verified before Unreal deserializes any SaveGame bytes. Desktop uses Unreal's native
+system-wide lock; iOS/Android use POSIX file locking because their Unreal system-wide
+mutex stub is fatal. A damaged journal fails closed. Missing operation receipts do
+not prove a missing write: recovery first reads `GetOperation`, then an explicit
+retry may send only the identical saved original. An expired operation remains an
+explicit unresolved journal and blocks fresh IDs. Reports retain their original
+channel/message/reason. Server reports deduplicate only while the shared report exists. Acknowledged
+receipts remain in the bounded journal until a new explicitly prepared original
+replaces them. Save files contain no session token. Persisting a journal is local
+crash recovery, not a new server price/value guarantee.
+
+Verification: `bash Tests/run_transport_test.sh`; after building a dedicated local
+HostProject, run `python3 Tests/run_native_chat_test.py --engine <existing-UE-root>
+--host-project <HostProject.uproject> --report <isolated-report-directory>`. The latter
+starts only artificial loopback HTTP18822/18823 and WebSocket18824, requires readiness,
+and checks native automation plus the fixture's invariants. Do not run concurrently
+with another instance on these ports. Native fixture evidence is separate from real
+Develop/production or official game/Hello acceptance; mobile lock source support is
+separate from a mobile package build.
+
+
+### Device Chat history
+
+Hosted Chat is available in every tier, including Free. The server holds at most
+20 project/global messages for seven days, or 15 direct/group transport messages
+for 30 seconds. Private buffers do not promise offline delivery. `knownMessageIds`
+contains at most 20 IDs from the live window, never IDs from the device archive.
+A new operation must be later than the player's accepted issued-at floor and
+server time minus 30 seconds, with at most 60 seconds future tolerance. Operation
+lookup/replay uses the original message while it remains buffered. There is no
+personal server receipt history. Missing operations remain uncertain. No send is
+retried automatically, including after a local storage failure.
+
+`Chat->ReadLocalHistory(channelId, cursor, limit)` returns
+`FHorizonChatHistoryPage` with `bSuccess`, `Messages`, `NextCursor`, and `ErrorCode`.
+`ClearLocalHistory(channelId)` and `ClearAllLocalHistory()` erase only the current
+identity's device copies. Blueprint exposes the same methods, `OnLocalHistoryChanged`
+and `OnLocalHistoryFailed`. The UMG sample has separate live/device views and explicit
+read/older/clear controls, including a channel UUID input for offline reads.
+
+The archive stores received immutable text and confirmed original send input. Its
+scope hashes the API key and player, with one append-only UTF-8 JSONL log and one
+append-only ID/hash/offset index per channel. No key or session token is stored in
+plaintext. Only the small ID index is loaded on first use, then its appended tail.
+Text reads are bounded per record (16 KiB) and page (at most 100 messages). Byte
+cursors follow local delivery order, newest delivery first within every page.
+An interrupted complete log append can repair its missing final index entry.
+Damaged/locked/unwritable storage reports a local error and never resends a message.
+
+Server eviction, expiry, moderation, epoch changes and revoked membership retain
+already delivered device copies. The active feed still hides immediately. Same-identity
+authenticated offline reads are allowed. Logout and project/player changes remove
+access in memory. Captured request identity and persistent clear generations fence
+late replies. `ClearCache()` clears the live feed and pending reads; an already accepted
+send in the same authenticated context still completes and archives its original text.
+Clearing local history invalidates prior page cursors. A new device has no old archive,
+and the SDK neither uploads it nor uses Cloud Save. There is no implicit local cap.
+
+
+## Marketplace: typed current state and durable original escrow actions
+
+`UHorizonSubsystem::Marketplace` implements all ten authenticated App routes:
+`GetLimits`, `GetRules`, `GetMarketplace`, `QueryListings`, `GetListing`, prepared
+create/buy/cancel via `SubmitPrepared`, `GetOperation` and `RetryReturn`.
+`PrepareCreate`, `PrepareBuy`, `PrepareCancel` and `ValidOriginal` expose the
+validated `FHorizonMarketplaceIntent`. C++ receives `FOnMarketplaceComplete`;
+Blueprint `Read*`, `SubmitOriginal`, `LookupOriginal` and `RetryReturnDelivery`
+report typed `FHorizonMarketplaceResponse` through `OnResult`. The response's
+`Kind` selects its typed fields, with explicit `HasListing` / `HasItem` / `HasFeeBps`
+flags for nullable wire values. No feature method creates a player or polls.
+
+Rules and query pages are explicit (1–50 rows), preserving original catalog
+revision or opaque cursor. Five operator quotas are exact positive Int32 values,
+independent of old tariff defaults and of retained state after quota lowering.
+The Marketplace decoder has an 8 MiB UTF-8 / 64-level transport frame, without
+the Items parser's 256-property-object cap. These technical limits do not imply
+MongoDB storage sizes or new product quotas. Original item properties retain
+safe integers, Unicode/NUL, equipped state and creation time. Canonical lowercase
+UUIDs, exact UTC millisecond timestamps and decoded duplicate keys are checked
+before engine DOM normalization.
+
+Create `UHorizonMarketplaceExample` for the game's screen and explicitly
+`Bind(Session, StableProjectId)` to the existing authenticated subsystem. Read
+config/rules/inventory before `ReviewCreate`, or one point listing before
+`ReviewBuy` / `ReviewCancel`. Show `ReviewedPrice`, `ReviewedFee` and
+`ReviewedSellerNet`; only the player's explicit `ConfirmReviewedTrade` prepares
+an operation UUID/server-clock time and sends it. `UHorizonMarketplaceQuickstart`
+contains compiled Blueprint/C++ entry points for one listing read and a confirmed
+buy through this actual sample; it does not implement another journal.
+
+The sample flushes and verifies a single original project/player intent before
+HTTP. A system-wide exclusive lease spans the entire asynchronous operation and
+outlives the screen UObject. The complete original UTF-8 JSON is resent without
+normalization or an automatic write retry, including after 429/503. Known success
+stores only the listing identity before current Inventory, Player Values and
+Marketplace GETs; after all three succeed the one original is removed. Confirmed
+restarts perform only GETs. No copied financial/item results or completed-purchase
+history are retained locally or synthesized into inventory.
+
+Choose `RetryPending` or read-only `RecoverOriginalOperation` after uncertainty.
+404/expiry does not prove nonexecution. A replay may return today's later terminal
+listing (`HasItem == false`) or no retained listing. Neither triggers a replacement
+trade or re-creation of historical items. Partial/conflicting journal files remain
+blocked for recovery. Native desktop leases are OS-owned; mobile uses nonblocking
+POSIX locks. These native tests do not prove an exported browser/mobile game.
+
+`RetryReturnDelivery` retries the original listing source; `ClaimReturn` delegates
+the same stable entry to Inbox. Inbox/inventory capacity errors are recoverable.
+An already claimed reference after discard/resale does not mint inventory.
+`Tests/run_native_marketplace_test.py` runs actual engine models, manager and the
+Quickstart/sample against an artificial loopback fixture: ten routes, 2,051
+retained open offers plus 151 history references after lowering, original retries,
+UI destruction, GET-only known recovery and original Inbox escrow claim/replay.
+Run the normal transport source suite as well. Local fixtures are not hosted
+backend or deployment evidence.
+
+`Tests/run_native_configured_limits_test.py` exercises actual manager HTTP against
+an isolated current-contract fixture:201 Friends/21pending/101blocked with unknown
+dates,257Groups retained after lowering plus stale group257,51member page,9MiB
+lossless GroupJSON,1MiB Shared reads/writes, maximum Match bytes through durable
+uncertain create/restart,201minimal sources/original ranked retries, and Chat
+operator quotas0/high/Int32. Existing portable and per-feature native gates remain.
+Chat's configurable channel/send/report counters are0..Int32; its20/15 message
+retention,500characters/2000UTF8bytes and30second private protocol stay unchanged.
+
+Known minimal Match/final-revision→run-ID pairs remain for the authenticated
+context, including201 distinct pending sources. They cannot be evicted by an
+unrelated source read. Auth-context changes clear this local map. Like Group
+revision floors, repeated reads may grow it beyond one transport frame; it stores
+no result, item, reward or full state history and changes no server storage.
+
+Minimal Match revision watermarks remain across route/body changes and513 retained summaries; the context-wide server-time watermark remains monotone. Auth changes clear these small marks, while payload snapshots remain bounded.
+
+Groups responses aggregate independent BSON records and can duplicate a group in a mutation. A6MiB control-character name needs about36MiB JSON; the same mutation can exceed72MiB. Groups alone parses its already received body/fragments at their actual length, preserving strict field/grammar/depth checks. There is no derived32/96/192MiB aggregate product quota. Available engine/HTTP memory remains a technical client limit; a parse/transport failure must preserve the original for explicit recovery. Other feature frames and small payload caches are unchanged.

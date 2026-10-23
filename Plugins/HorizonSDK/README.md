@@ -134,3 +134,9 @@ See [Docs/QUICKSTART.md](Docs/QUICKSTART.md) for a 5-minute setup guide.
 ## License
 
 This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
+
+Groups are available through `UHorizonSubsystem::Groups`: typed membership, bounded member
+pages, invitations/requests, roles and leadership transfer. Every mutation keeps the explicit
+original revision/request identity and sends once. Free data uses immutable `FHorizonGroupJsonData`
+so large numbers and legal JSON keys survive unchanged. See `Docs/QUICKSTART.md` and the durable
+`AHorizonGroupsExample` for explicit two-player UI actions and uncertain-result reconciliation.

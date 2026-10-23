@@ -1,4 +1,4 @@
-// Copyright (c) 2025-2026 horizOn. All rights reserved.
+// Copyright (c) 2026 ProjectMakers. Licensed under the MIT License.
 
 #pragma once
 
@@ -79,6 +79,8 @@ protected:
 	UHorizonSubsystem* GetSubsystem() const;
 
 private:
+    bool bGiftV2Busy=false;
+    void DispatchGiftIntent(const struct FHorizonGiftCodeIntent& Intent,const FString& Slot);
 	// --- Self-constructed UI state ---
 	bool bDefaultUIBuilt = false;
 

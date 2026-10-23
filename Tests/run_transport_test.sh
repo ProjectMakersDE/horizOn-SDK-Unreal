@@ -40,3 +40,54 @@ c++ -std=c++17 \
 "$build_dir/validated-actions-model-test"
 
 python3 Tests/run_auth_cloud_save_runtime_test.py
+
+c++ -std=c++17 \
+  -I Plugins/HorizonSDK/Source/HorizonSDK/Public \
+  Tests/StatisticsTransportContractTest.cpp \
+  -o "$build_dir/statistics-transport-test"
+"$build_dir/statistics-transport-test"
+
+c++ -std=c++17 \
+  -I Plugins/HorizonSDK/Source/HorizonSDK/Public \
+  Tests/SignupRetryContractTest.cpp \
+  -o "$build_dir/signup-retry-contract-test"
+"$build_dir/signup-retry-contract-test"
+
+c++ -std=c++17 \
+  -I Plugins/HorizonSDK/Source/HorizonSDK/Public \
+  Tests/RetryContractTest.cpp \
+  -o "$build_dir/retry-contract-test"
+"$build_dir/retry-contract-test"
+
+c++ -std=c++17 \
+  -I Plugins/HorizonSDK/Source/HorizonSDK/Public \
+  Tests/GroupsTransportContractTest.cpp \
+  -o "$build_dir/groups-transport-test"
+"$build_dir/groups-transport-test"
+
+c++ -std=c++17 \
+  -I Plugins/HorizonSDK/Source/HorizonSDK/Public \
+  Tests/ItemsTransportContractTest.cpp \
+  -o "$build_dir/items-transport-test"
+"$build_dir/items-transport-test"
+
+c++ -std=c++17 \
+  -I Plugins/HorizonSDK/Source/HorizonSDK/Public \
+  Tests/SharedObjectsTransportContractTest.cpp \
+  -o "$build_dir/shared-objects-transport-test"
+"$build_dir/shared-objects-transport-test"
+
+# Async Matches metadata/cursor contract, independent of an engine installation.
+c++ -std=c++17 -I Plugins/HorizonSDK/Source/HorizonSDK/Public \
+    Tests/MatchesTransportContractTest.cpp -o "$build_dir/matches-transport-test"
+"$build_dir/matches-transport-test"
+
+# Strict scalar-counted chat text and immutable input bounds.
+c++ -std=c++17 -I Plugins/HorizonSDK/Source/HorizonSDK/Public \
+    Tests/ChatTransportContractTest.cpp -o "$build_dir/chat-transport-test"
+"$build_dir/chat-transport-test"
+
+# Marketplace lists are bounded by the transport frame, independently of operator quotas.
+c++ -std=c++17 -I Plugins/HorizonSDK/Source/HorizonSDK/Public \
+    Tests/MarketplaceTransportContractTest.cpp -o "$build_dir/marketplace-transport-test"
+"$build_dir/marketplace-transport-test"

@@ -1,4 +1,4 @@
-// Copyright (c) 2025-2026 horizOn. All rights reserved.
+// Copyright (c) 2026 ProjectMakers. Licensed under the MIT License.
 
 #pragma once
 
@@ -36,6 +36,9 @@ public:
 	// -- State queries --
 	bool IsConnected() const;
 	FString GetActiveHost() const;
+	FString GetApiKey() const { return ApiKey; }
+	/** For feature cache scopes that must distinguish leave-and-return identity changes. */
+	uint64 GetRequestContextEpoch() const { return TransportContextEpoch + SessionContextEpoch; }
 	EHorizonConnectionStatus GetConnectionStatus() const;
 
 	/** Set the session token used for authenticated requests. */
@@ -44,6 +47,14 @@ public:
 	FString GetSessionToken() const;
 
 	// -- HTTP convenience methods --
+    /** Explicit one-attempt JSON write, preserving length-aware keys and numeric lexemes. No implicit retries. */
+    void JsonOnce(const TSharedRef<FJsonObject>& Body,const FString& Endpoint,bool bPut,bool bUseSessionToken,FOnHttpResponse OnComplete);
+    /** Feature-validated immutable original UTF-8 JSON, one authenticated POST and no normalization/retry. */
+    void PostOriginalJsonOnce(const FString& OriginalJson,const FString& Endpoint,FOnHttpResponse Complete);
+    /** Opaque read-only POST; lossless JSON and existing bounded read retries. */
+    void PostJsonRead(const TSharedRef<FJsonObject>& Body,const FString& Endpoint,FOnHttpResponse Complete);
+    /** Only POST/PUT/DELETE with original safe If-Match and exactly one authenticated attempt. */
+    void RevisionJsonOnce(const TSharedPtr<FJsonObject>& Body,const FString& Endpoint,const FString& Verb,int64 OriginalRevision,FOnHttpResponse Complete);
 	void Get(const FString& Endpoint, bool bUseSessionToken, FOnHttpResponse OnComplete);
 	/** ExtraHeaders are sent on every attempt, for example If-Match for a conditional cloud save. */
 	void PostJson(const TSharedRef<FJsonObject>& Body, const FString& Endpoint, bool bUseSessionToken, FOnHttpResponse OnComplete,
@@ -60,6 +71,9 @@ private:
 	FString ActiveHost;
 	FString SessionToken;
 	FString ApiKey;
+	/** Monotone identity lifecycle, so A -> B -> A never revives an old request. */
+	uint64 TransportContextEpoch = 0;
+	uint64 SessionContextEpoch = 0;
 	EHorizonConnectionStatus ConnectionStatus = EHorizonConnectionStatus::Disconnected;
 	int32 MaxRetryAttempts = 3;
 	float RetryDelaySeconds = 1.0f;
@@ -75,7 +89,8 @@ private:
 		int32 RetryCount,
 		FOnHttpResponse OnComplete,
 		const FString& AcceptContentType = TEXT(""),
-		const TMap<FString, FString>& ExtraHeaders = TMap<FString, FString>()
+		const TMap<FString, FString>& ExtraHeaders = TMap<FString, FString>(),
+        bool bAllowRetry = true
 	);
 
 	/** Build and apply standard headers to a request. */

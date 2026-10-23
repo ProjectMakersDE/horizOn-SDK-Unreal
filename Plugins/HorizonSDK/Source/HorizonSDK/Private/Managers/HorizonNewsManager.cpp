@@ -1,4 +1,4 @@
-// Copyright (c) 2025-2026 horizOn. All rights reserved.
+// Copyright (c) 2026 ProjectMakers. Licensed under the MIT License.
 
 #include "Managers/HorizonNewsManager.h"
 #include "HorizonSDKModule.h"
@@ -84,12 +84,15 @@ void UHorizonNewsManager::LoadNews(int32 Limit, const FString& LanguageCode, boo
 					}
 				}
 
-				// If we got no entries from object parsing, try parsing BinaryData as a JSON array
-				if (Entries.Num() == 0 && Response.BinaryData.Num() > 0)
+				// JSON responses retain their original body. Keep the binary fallback for older transports.
+				if (Entries.Num() == 0 && (!Response.RawJsonBody.IsEmpty() || Response.BinaryData.Num() > 0))
 				{
-					FString RawBody;
-					const FUTF8ToTCHAR Converter(reinterpret_cast<const ANSICHAR*>(Response.BinaryData.GetData()), Response.BinaryData.Num());
-					RawBody = FString(Converter.Length(), Converter.Get());
+					FString RawBody = Response.RawJsonBody;
+					if (RawBody.IsEmpty())
+					{
+						const FUTF8ToTCHAR Converter(reinterpret_cast<const ANSICHAR*>(Response.BinaryData.GetData()), Response.BinaryData.Num());
+						RawBody = FString(Converter.Length(), Converter.Get());
+					}
 
 					TArray<TSharedPtr<FJsonValue>> JsonArray;
 					TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(RawBody);

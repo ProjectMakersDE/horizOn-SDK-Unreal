@@ -1,4 +1,4 @@
-// Copyright (c) 2025-2026 horizOn. All rights reserved.
+// Copyright (c) 2026 ProjectMakers. Licensed under the MIT License.
 
 #pragma once
 
@@ -8,7 +8,8 @@
 #include "HorizonRemoteConfigManager.generated.h"
 
 DECLARE_DELEGATE_TwoParams(FOnConfigComplete, bool /*bSuccess*/, const FString& /*Value*/);
-DECLARE_DELEGATE_TwoParams(FOnAllConfigsComplete, bool /*bSuccess*/, const TMap<FString, FString>& /*Configs*/);
+using FHorizonRemoteConfigValues = TMap<FString, FString>;
+DECLARE_DELEGATE_TwoParams(FOnAllConfigsComplete, bool /*bSuccess*/, const FHorizonRemoteConfigValues& /*Configs*/);
 DECLARE_DELEGATE_TwoParams(FOnConfigExistsComplete, bool /*bSuccess*/, bool /*bExists*/);
 
 /**

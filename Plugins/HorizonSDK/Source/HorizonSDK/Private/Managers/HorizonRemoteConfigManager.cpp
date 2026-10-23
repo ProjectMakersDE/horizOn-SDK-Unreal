@@ -1,4 +1,4 @@
-// Copyright (c) 2025-2026 horizOn. All rights reserved.
+// Copyright (c) 2026 ProjectMakers. Licensed under the MIT License.
 
 #include "Managers/HorizonRemoteConfigManager.h"
 #include "HorizonSDKModule.h"
@@ -129,7 +129,7 @@ void UHorizonRemoteConfigManager::GetAllConfigs(bool bUseCache, FOnAllConfigsCom
 							FString Value;
 							if (Pair.Value.IsValid() && Pair.Value->TryGetString(Value))
 							{
-								Configs.Add(Pair.Key, Value);
+				Configs.Add(FString(*Pair.Key), Value);
 							}
 						}
 					}

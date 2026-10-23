@@ -1,4 +1,4 @@
-// Copyright (c) 2025-2026 horizOn. All rights reserved.
+// Copyright (c) 2026 ProjectMakers. Licensed under the MIT License.
 
 #include "HorizonBlueprintLibrary.h"
 #include "HorizonSubsystem.h"
@@ -9,6 +9,13 @@
 #include "Managers/HorizonValidatedActionsManager.h"
 #include "Kismet/GameplayStatics.h"
 #include "Engine/GameInstance.h"
+
+FHorizonInboxSource UHorizonBlueprintLibrary::GetInboxSource(const FHorizonInboxEntry& Entry)
+{ FHorizonInboxSource Source; Entry.TryGetSource(Source); return Source; }
+bool UHorizonBlueprintLibrary::GetInboxFreeText(const FHorizonInboxEntry& Entry,FString& Text)
+{ Text.Reset(); return Entry.TryGetFreeText(Text); }
+bool UHorizonBlueprintLibrary::CanClaimInboxEntry(const FHorizonInboxEntry& Entry)
+{ return Entry.CanClaim(); }
 
 UHorizonSubsystem* UHorizonBlueprintLibrary::GetHorizonSubsystem(const UObject* WorldContextObject)
 {

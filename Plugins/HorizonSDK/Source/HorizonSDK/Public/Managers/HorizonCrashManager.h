@@ -1,4 +1,4 @@
-// Copyright (c) 2025-2026 horizOn. All rights reserved.
+// Copyright (c) 2026 ProjectMakers. Licensed under the MIT License.
 
 #pragma once
 
@@ -102,6 +102,7 @@ public:
 	FOnHorizonBreadcrumbRecorded OnBreadcrumbRecorded;
 
 private:
+    friend class UHorizonSubsystem;
 	// --- Dependencies ---
 
 	UPROPERTY()

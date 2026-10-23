@@ -1,4 +1,4 @@
-// Copyright (c) 2025-2026 horizOn. All rights reserved.
+// Copyright (c) 2026 ProjectMakers. Licensed under the MIT License.
 
 #pragma once
 
@@ -7,6 +7,17 @@
 #include "HorizonTypes.h"
 #include "HorizonSubsystem.generated.h"
 
+class UHorizonRealtimeManager;
+class UHorizonInboxManager;
+class UHorizonAchievementsManager;
+class UHorizonFriendsManager;
+class UHorizonGroupsManager;
+class UHorizonItemsManager;
+class UHorizonMarketplaceManager;
+class UHorizonSharedObjectsManager;
+class UHorizonMatchesManager;
+class UHorizonChatManager;
+class UHorizonPlayerValuesManager;
 class UHorizonHttpClient;
 class UHorizonAuthManager;
 class UHorizonCloudSaveManager;
@@ -21,6 +32,7 @@ class UHorizonCrashManager;
 class UHorizonEmailSendingManager;
 class UHorizonPlayerProfileManager;
 class UHorizonValidatedActionsManager;
+class UHorizonStatisticsManager;
 
 /**
  * Main entry point for the horizOn SDK.
@@ -84,6 +96,30 @@ public:
 	/** Server-checked runs: tickets with a seed, validated submit with rule codes (TASK-883). */
 	UPROPERTY(BlueprintReadOnly, Category = "horizOn")
 	UHorizonValidatedActionsManager* ValidatedActions = nullptr;
+
+	/** Explicit atomic session statistics; no automatic sign-in fetch. */
+	UPROPERTY(BlueprintReadOnly, Category = "horizOn")
+	UHorizonStatisticsManager* Statistics = nullptr;
+
+	UPROPERTY(BlueprintReadOnly, Category = "horizOn")
+	UHorizonRealtimeManager* Realtime = nullptr;
+	UPROPERTY(BlueprintReadOnly, Category = "horizOn")
+	UHorizonPlayerValuesManager* PlayerValues = nullptr;
+
+    UPROPERTY(BlueprintReadOnly, Category = "horizOn")
+    UHorizonInboxManager* Inbox = nullptr;
+    UPROPERTY(BlueprintReadOnly, Category = "horizOn")
+    UHorizonAchievementsManager* Achievements = nullptr;
+    UPROPERTY(BlueprintReadOnly, Category = "horizOn")
+    UHorizonFriendsManager* Friends = nullptr;
+    UPROPERTY(BlueprintReadOnly, Category="horizOn|Managers")
+    UHorizonGroupsManager* Groups = nullptr;
+    UPROPERTY(BlueprintReadOnly, Category="horizOn|Managers")
+    UHorizonItemsManager* Items = nullptr;
+    UPROPERTY(BlueprintReadOnly,Category="horizOn") UHorizonMarketplaceManager* Marketplace=nullptr;
+    UPROPERTY(BlueprintReadOnly,Category="horizOn") UHorizonSharedObjectsManager* SharedObjects=nullptr;
+    UPROPERTY(BlueprintReadOnly,Category="horizOn") UHorizonMatchesManager* Matches=nullptr;
+    UPROPERTY(BlueprintReadOnly,Category="horizOn") UHorizonChatManager* Chat=nullptr;
 
 	// --- Connection ---
 

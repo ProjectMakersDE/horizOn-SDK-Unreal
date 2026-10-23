@@ -1,4 +1,4 @@
-// Copyright (c) 2025-2026 horizOn. All rights reserved.
+// Copyright (c) 2026 ProjectMakers. Licensed under the MIT License.
 
 #pragma once
 
@@ -26,7 +26,7 @@ public:
 	FOnGiftCodeAsyncFailure OnFailure;
 
 	/** Redeem a gift code for the current user. */
-	UFUNCTION(BlueprintCallable, meta = (BlueprintInternalUseOnly = "true", WorldContext = "WorldContextObject", DisplayName = "Redeem Gift Code"), Category = "horizOn|GiftCode")
+	UFUNCTION(BlueprintCallable, meta = (BlueprintInternalUseOnly = "true", WorldContext = "WorldContextObject", DisplayName = "Redeem Gift Code (V1 Closed)", DeprecatedFunction, DeprecationMessage = "Use GiftCodes PrepareRedemptionCode, persist OnPrepared.Intent, then RedeemPreparedCode."), Category = "horizOn|GiftCode")
 	static UHorizonAsync_GiftCodeRedeem* RedeemGiftCode(const UObject* WorldContextObject, const FString& Code);
 
 	virtual void Activate() override;

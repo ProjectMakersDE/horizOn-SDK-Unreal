@@ -26,12 +26,26 @@
         {
             "Name": "HorizonSDK",
             "Type": "Runtime",
-            "LoadingPhase": "Default"
+            "LoadingPhase": "Default",
+            "PlatformAllowList": [
+                "Win64",
+                "Mac",
+                "Linux",
+                "Android",
+                "IOS"
+            ]
         },
         {
             "Name": "HorizonSDKEditor",
             "Type": "Editor",
-            "LoadingPhase": "Default"
+            "LoadingPhase": "Default",
+            "PlatformAllowList": [
+                "Win64",
+                "Mac",
+                "Linux",
+                "Android",
+                "IOS"
+            ]
         }
     ]
 }

@@ -1,4 +1,4 @@
-// Copyright (c) 2025-2026 horizOn. All rights reserved.
+// Copyright (c) 2026 ProjectMakers. Licensed under the MIT License.
 
 #pragma once
 
@@ -8,7 +8,8 @@
 #include "HorizonLocalizationManager.generated.h"
 
 DECLARE_DELEGATE_TwoParams(FOnLocalizationComplete, bool /*bSuccess*/, const FString& /*Value*/);
-DECLARE_DELEGATE_TwoParams(FOnAllLocalizationsComplete, bool /*bSuccess*/, const TMap<FString, FString>& /*Translations*/);
+using FHorizonLocalizationValues = TMap<FString, FString>;
+DECLARE_DELEGATE_TwoParams(FOnAllLocalizationsComplete, bool /*bSuccess*/, const FHorizonLocalizationValues& /*Translations*/);
 DECLARE_DELEGATE_TwoParams(FOnLanguagesComplete, bool /*bSuccess*/, const TArray<FString>& /*Languages*/);
 
 /**

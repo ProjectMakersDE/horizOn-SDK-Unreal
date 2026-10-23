@@ -1,3 +1,5 @@
+// Copyright (c) 2026 ProjectMakers. Licensed under the MIT License.
+
 #include "Models/HorizonLeaderboardEntry.h"
 #include "Dom/JsonObject.h"
 
