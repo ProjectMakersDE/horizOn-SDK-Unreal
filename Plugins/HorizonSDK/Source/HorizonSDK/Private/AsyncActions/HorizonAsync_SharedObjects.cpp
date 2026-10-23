@@ -1,3 +1,5 @@
+// Copyright (c) 2026 ProjectMakers. Licensed under the MIT License.
+
 #include "AsyncActions/HorizonAsync_SharedObjects.h"
 #include "HorizonBlueprintLibrary.h"
 #include "HorizonSubsystem.h"

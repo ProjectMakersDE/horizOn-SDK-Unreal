@@ -1,3 +1,5 @@
+// Copyright (c) 2026 ProjectMakers. Licensed under the MIT License.
+
 #pragma once
 #include "Models/HorizonSharedObjects.h"
 #include "Transport/HorizonSharedObjectsTransportContract.h"

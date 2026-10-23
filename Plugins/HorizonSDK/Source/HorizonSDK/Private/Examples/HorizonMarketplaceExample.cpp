@@ -1,3 +1,5 @@
+// Copyright (c) 2026 ProjectMakers. Licensed under the MIT License.
+
 #include "Examples/HorizonMarketplaceExample.h"
 #include "Examples/HorizonMarketplaceJournal.h"
 #include "HorizonSubsystem.h"

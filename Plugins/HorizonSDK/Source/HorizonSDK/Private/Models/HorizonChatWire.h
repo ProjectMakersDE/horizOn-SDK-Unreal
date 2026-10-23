@@ -1,3 +1,5 @@
+// Copyright (c) 2026 ProjectMakers. Licensed under the MIT License.
+
 #pragma once
 #include "Models/HorizonMatchesWire.h"
 #include "Transport/HorizonChatTransportContract.h"

@@ -1,3 +1,5 @@
+// Copyright (c) 2026 ProjectMakers. Licensed under the MIT License.
+
 #include "Managers/HorizonRealtimeManager.h"
 #include "Managers/HorizonAuthManager.h"
 #include "Http/HorizonHttpClient.h"

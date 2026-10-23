@@ -1,3 +1,5 @@
+// Copyright (c) 2026 ProjectMakers. Licensed under the MIT License.
+
 #pragma once
 #include "Managers/HorizonValidatedActionsManager.h"
 /** Shared across generic/match starts; invalidation never releases another in-flight owner. */

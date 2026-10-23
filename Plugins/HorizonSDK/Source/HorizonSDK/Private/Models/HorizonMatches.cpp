@@ -1,3 +1,5 @@
+// Copyright (c) 2026 ProjectMakers. Licensed under the MIT License.
+
 #include "Models/HorizonMatches.h"
 #include "Models/HorizonMatchesWire.h"
 #include "Dom/JsonValue.h"

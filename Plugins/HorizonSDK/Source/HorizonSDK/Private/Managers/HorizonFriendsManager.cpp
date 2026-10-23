@@ -1,3 +1,5 @@
+// Copyright (c) 2026 ProjectMakers. Licensed under the MIT License.
+
 #include "Managers/HorizonFriendsManager.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"

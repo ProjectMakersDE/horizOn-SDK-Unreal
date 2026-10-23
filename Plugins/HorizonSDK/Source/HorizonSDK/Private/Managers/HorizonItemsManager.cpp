@@ -1,3 +1,5 @@
+// Copyright (c) 2026 ProjectMakers. Licensed under the MIT License.
+
 #include "Managers/HorizonItemsManager.h"
 #include "Models/HorizonItemsWire.h"
 #include "Transport/HorizonItemsTransportContract.h"

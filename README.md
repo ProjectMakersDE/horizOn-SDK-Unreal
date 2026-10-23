@@ -47,6 +47,24 @@ Official Unreal Engine SDK for **horizOn** Backend-as-a-Service by [ProjectMaker
 4. Go to **Edit > Plugins**, search for "horizOn SDK", and enable it.
 5. Restart the editor when prompted.
 
+### Fab submission packages
+
+The GitHub ZIP contains the source plugin with its baseline engine descriptor.
+Fab requires a separate ZIP for each advertised engine version, including the
+matching `EngineVersion` and module platform lists. After testing a released
+plugin with Unreal's `RunUAT.sh BuildPlugin`, create its Fab source package:
+
+```bash
+python3 Scripts/package_fab.py --engine 5.8 --platform Mac \
+  --product-id <publisher-portal-product-id> --output <submission.zip>
+```
+
+Use only engine versions and platforms verified for that submission. Omitting
+`--product-id` creates a preparation ZIP with an empty `FabURL`, which must be
+filled before submission. The script preserves the release-managed SDK version
+and excludes local build output. Fab builds the distributed binaries itself.
+See the [Fab technical requirements](https://www.fab.com/o/technical-requirements).
+
 ## Quick Start
 
 > **[Quickstart Guide on horizon.pm](https://horizon.pm/quickstart#unreal)** - Interactive setup guide with step-by-step instructions.

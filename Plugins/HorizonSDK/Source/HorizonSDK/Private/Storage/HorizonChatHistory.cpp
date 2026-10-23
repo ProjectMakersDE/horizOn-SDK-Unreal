@@ -1,3 +1,5 @@
+// Copyright (c) 2026 ProjectMakers. Licensed under the MIT License.
+
 #include "Storage/HorizonChatHistory.h"
 #include "Models/HorizonChatWire.h"
 #include "Transport/HorizonValidatedActionsTransportContract.h"

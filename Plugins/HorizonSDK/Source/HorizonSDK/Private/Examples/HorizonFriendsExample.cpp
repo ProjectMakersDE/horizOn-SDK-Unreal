@@ -1,3 +1,5 @@
+// Copyright (c) 2026 ProjectMakers. Licensed under the MIT License.
+
 #include "Examples/HorizonFriendsExample.h"
 #include "HorizonSubsystem.h"
 #include "Managers/HorizonFriendsManager.h"

@@ -1,3 +1,5 @@
+// Copyright (c) 2026 ProjectMakers. Licensed under the MIT License.
+
 #include "Managers/HorizonChatManager.h"
 #include "Managers/HorizonRealtimeManager.h"
 #include "Models/HorizonChatWire.h"
