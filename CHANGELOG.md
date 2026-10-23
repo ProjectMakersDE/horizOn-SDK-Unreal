@@ -1,3 +1,10 @@
+## [1.10.1](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/compare/v1.10.0...v1.10.1) (2026-10-23)
+
+
+### Bug Fixes
+
+* include condensed JSON policy for game packaging ([#37](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/issues/37)) ([6d3dd1e](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/6d3dd1e0f0b83c2584d15f01e8d8de09bc38e12c))
+
 # [1.10.0](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/compare/v1.9.0...v1.10.0) (2026-10-23)
 
 
