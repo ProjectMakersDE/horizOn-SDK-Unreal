@@ -1,6 +1,7 @@
 // Copyright (c) 2026 ProjectMakers. Licensed under the MIT License.
 
 #include "Storage/HorizonChatHistory.h"
+#include "Policies/CondensedJsonPrintPolicy.h"
 #include "Models/HorizonChatWire.h"
 #include "Transport/HorizonValidatedActionsTransportContract.h"
 #include "HAL/FileManager.h"
