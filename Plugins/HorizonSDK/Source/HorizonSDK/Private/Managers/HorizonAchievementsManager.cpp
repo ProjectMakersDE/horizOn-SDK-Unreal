@@ -1,3 +1,5 @@
+// Copyright (c) 2026 ProjectMakers. Licensed under the MIT License.
+
 #include "Managers/HorizonAchievementsManager.h"
 #include "Dom/JsonObject.h"
 #include "Managers/HorizonPlayerValuesManager.h"

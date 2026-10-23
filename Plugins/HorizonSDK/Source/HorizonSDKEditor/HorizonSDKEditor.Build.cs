@@ -1,3 +1,5 @@
+// Copyright (c) 2026 ProjectMakers. Licensed under the MIT License.
+
 using UnrealBuildTool;
 
 public class HorizonSDKEditor : ModuleRules

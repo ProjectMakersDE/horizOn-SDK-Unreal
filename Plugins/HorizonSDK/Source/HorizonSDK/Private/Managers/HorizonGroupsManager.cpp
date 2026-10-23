@@ -1,3 +1,5 @@
+// Copyright (c) 2026 ProjectMakers. Licensed under the MIT License.
+
 #include "Managers/HorizonGroupsManager.h"
 #include "Models/HorizonGroupsWire.h"
 #include "Dom/JsonObject.h"

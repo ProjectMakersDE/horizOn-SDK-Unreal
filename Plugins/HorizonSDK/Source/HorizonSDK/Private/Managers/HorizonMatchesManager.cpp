@@ -1,3 +1,5 @@
+// Copyright (c) 2026 ProjectMakers. Licensed under the MIT License.
+
 #include "Managers/HorizonMatchesManager.h"
 #include "Managers/HorizonRunStartLease.h"
 #include "Models/HorizonMatchesWire.h"

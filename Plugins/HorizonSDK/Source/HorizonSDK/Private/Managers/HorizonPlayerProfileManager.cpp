@@ -1,4 +1,4 @@
-// Copyright (c) 2025-2026 horizOn. All rights reserved.
+// Copyright (c) 2026 ProjectMakers. Licensed under the MIT License.
 
 #include "Managers/HorizonPlayerProfileManager.h"
 #include "HorizonSDKModule.h"

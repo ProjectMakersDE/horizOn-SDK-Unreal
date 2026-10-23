@@ -1,4 +1,4 @@
-// Copyright (c) 2025-2026 horizOn. All rights reserved.
+// Copyright (c) 2026 ProjectMakers. Licensed under the MIT License.
 //
 // Objective-C++ implementation of the Apple Sign-In bridge for iOS.
 // Compiled only when PLATFORM_IOS is defined; HorizonSDK.Build.cs gates the .mm file

@@ -1,3 +1,5 @@
+// Copyright (c) 2026 ProjectMakers. Licensed under the MIT License.
+
 #pragma once
 #include "CoreMinimal.h"
 #include "Http/HorizonHttpClient.h"

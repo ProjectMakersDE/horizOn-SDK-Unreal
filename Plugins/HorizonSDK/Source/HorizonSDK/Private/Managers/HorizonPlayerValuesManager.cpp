@@ -1,3 +1,5 @@
+// Copyright (c) 2026 ProjectMakers. Licensed under the MIT License.
+
 #include "Managers/HorizonPlayerValuesManager.h"
 #include "GenericPlatform/GenericPlatformHttp.h"
 #include "String/LexFromString.h"

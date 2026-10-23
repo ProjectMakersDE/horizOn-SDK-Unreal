@@ -1,3 +1,5 @@
+// Copyright (c) 2026 ProjectMakers. Licensed under the MIT License.
+
 #include "Managers/HorizonMatchesManager.h"
 void UHorizonMatchesManager::RequestMatches(const FString& UserId){GetMatches(UserId,FOnMatchesComplete::CreateWeakLambda(this,[this](bool Ok,const FHorizonMyMatches& V,const FString& Code,const FString& Message){OnMatchesResult.Broadcast(Ok,V,Code,Message);}));}
 void UHorizonMatchesManager::RequestMatchLimits(const FString& UserId){GetLimits(UserId,FOnMatchLimitsComplete::CreateWeakLambda(this,[this](bool Ok,const FHorizonMatchLimitsView& V,const FString& Code,const FString& Message){OnMatchLimitsResult.Broadcast(Ok,V,Code,Message);}));}

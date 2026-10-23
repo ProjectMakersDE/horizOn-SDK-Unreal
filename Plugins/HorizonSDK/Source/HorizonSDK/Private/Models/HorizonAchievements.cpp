@@ -1,3 +1,5 @@
+// Copyright (c) 2026 ProjectMakers. Licensed under the MIT License.
+
 #include "Models/HorizonAchievements.h"
 #include "Models/HorizonInbox.h"
 #include "Dom/JsonObject.h"

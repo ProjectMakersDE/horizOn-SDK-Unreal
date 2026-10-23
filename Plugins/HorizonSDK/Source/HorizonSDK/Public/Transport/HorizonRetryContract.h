@@ -1,3 +1,5 @@
+// Copyright (c) 2026 ProjectMakers. Licensed under the MIT License.
+
 #pragma once
 #include "Transport/HorizonSignupRetryContract.h"
 #include <algorithm>

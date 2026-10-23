@@ -1,3 +1,5 @@
+// Copyright (c) 2026 ProjectMakers. Licensed under the MIT License.
+
 #include "Examples/HorizonChatExampleWidget.h"
 #include "Examples/HorizonChatExample.h"
 #include "Blueprint/WidgetTree.h"

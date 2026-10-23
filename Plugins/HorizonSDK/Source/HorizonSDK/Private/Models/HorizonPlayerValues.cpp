@@ -1,3 +1,5 @@
+// Copyright (c) 2026 ProjectMakers. Licensed under the MIT License.
+
 #include "Models/HorizonPlayerValues.h"
 #include "Dom/JsonObject.h"
 #include "String/LexFromString.h"

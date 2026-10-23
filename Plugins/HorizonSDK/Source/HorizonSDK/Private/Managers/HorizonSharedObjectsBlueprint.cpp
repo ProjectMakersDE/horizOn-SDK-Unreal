@@ -1,3 +1,5 @@
+// Copyright (c) 2026 ProjectMakers. Licensed under the MIT License.
+
 #include "Managers/HorizonSharedObjectsManager.h"
 void UHorizonSharedObjectsManager::RequestCollections(const FString& UserId,const FString& AfterKey,int32 Limit,int64 CatalogRevision){const auto D=FOnSharedCollectionsComplete::CreateWeakLambda(this,[this](bool Ok,const FHorizonSharedCollectionPage& R,const FString& Code,const FString& Message){OnCollectionsResult.Broadcast(Ok,R,Code,Message);});GetCollections(UserId,D,AfterKey,Limit,CatalogRevision);}
 void UHorizonSharedObjectsManager::RequestUsage(const FString& UserId,const FString& Collection){const auto D=FOnSharedUsageComplete::CreateWeakLambda(this,[this](bool Ok,const FHorizonSharedUsage& R,const FString& Code,const FString& Message){OnUsageResult.Broadcast(Ok,R,Code,Message);});GetUsage(UserId,Collection,D);}

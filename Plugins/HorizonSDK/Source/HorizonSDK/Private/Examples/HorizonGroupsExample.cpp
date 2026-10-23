@@ -1,3 +1,5 @@
+// Copyright (c) 2026 ProjectMakers. Licensed under the MIT License.
+
 #include "Examples/HorizonGroupsExample.h"
 #include "Examples/HorizonExampleIdentity.h"
 #include "HorizonSubsystem.h"

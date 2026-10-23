@@ -1,3 +1,5 @@
+// Copyright (c) 2026 ProjectMakers. Licensed under the MIT License.
+
 #include "HorizonSDKModule.h"
 
 DEFINE_LOG_CATEGORY(LogHorizonSDK);

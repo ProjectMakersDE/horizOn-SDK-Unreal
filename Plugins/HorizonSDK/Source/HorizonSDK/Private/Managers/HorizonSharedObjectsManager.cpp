@@ -1,3 +1,5 @@
+// Copyright (c) 2026 ProjectMakers. Licensed under the MIT License.
+
 #include "Managers/HorizonSharedObjectsManager.h"
 #include "Models/HorizonSharedObjectsWire.h"
 #include "Http/HorizonLosslessJson.h"
