@@ -1,3 +1,56 @@
+# [1.10.0](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/compare/v1.9.0...v1.10.0) (2026-10-23)
+
+
+### Bug Fixes
+
+* **chat:** preserve accepted sends while clearing the feed ([5cbdf37](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/5cbdf37727380d53dab1935f50bf2e1978cb8616))
+* compile native Unreal groups test with strict Clang warnings ([556b1aa](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/556b1aa3d2864c9fd43efa38b3bfc5c17133137d))
+* **docs:** align achievement and configurable group contracts ([967969a](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/967969af4e86ad45d1f31aee637e28d39aa48651))
+* **gift-codes:** keep public validation independent of player sessions ([9f74063](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/9f740632ab9535b7e8ea78629f7bb29d9bce32f5))
+* **gift-codes:** validate fresh sequence after typed redemption decode ([bee484d](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/bee484d02aac90905636d2b471e765b56a7c2c3e))
+* **inbox:** compile native source helpers and example ([5cdb20e](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/5cdb20e7ac654c5d91170380a108c99d3cb4b829))
+* **inbox:** retain legacy group acceptance references ([e450c77](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/e450c778d2ea8eec18495e21dec2fa220f18ce0a))
+* **items:** preserve configurable quotas and retained inventory ([#27](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/issues/27)) ([dc0e561](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/dc0e5618113ce6c8c2f3a940d04a28203f6c6edc))
+* **marketplace:** qualify native codec helpers and canonical wire choices ([20826cd](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/20826cdeeb501876b1e1d5012a49d8857d55e9f8))
+* **marketplace:** use canonical lowercase Unreal UUIDs on the wire ([c24aee8](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/c24aee885d5d69a9ef64a46c2d143d0cc0817454))
+* **news:** parse application/json array responses ([2de7c2f](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/2de7c2fd6740dd2f554bcf96438eac41d606ccb5))
+* **player-values:** use engine integer parsing header path ([1d08cbd](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/1d08cbd045c2a3351bf7cd67722ce6df61bc0f9b))
+* **player-values:** wait for native fixture requests through editor startup ([a8ce55c](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/a8ce55cab3ee679e90dea7585fa52bfcc991691b))
+* prepare engine-specific Fab plugin packages ([#35](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/issues/35)) ([7426051](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/74260513cc049c70d997ae7a59bdcaedbb744c66))
+* preserve configured limits and compact settlement originals ([3235079](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/32350792583ce08ee3cdbf88399a651583c94edb))
+* preserve example identities across uncertain authentication ([b374f39](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/b374f399cbdec396e927a8d802359cce5f5fe773))
+* **readme:** link the horizOn Discord with its real invite code (TASK-1046) ([26b52c9](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/26b52c9a377d2a7dd3b928aca53b6744862a0894))
+* retain ranked source bindings and separate shared byte boundaries ([42d181e](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/42d181e6391e29c39c6f76e39660fa3c9da1d1a5))
+* retain scoped match watermarks and parse received groups aggregates ([4927b31](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/4927b31dd902f3059979191bfca2abba841b9af3))
+* **sdk:** keep one project key accessor after feature integration ([2e440da](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/2e440da104f393348decedb736fd60a89b8f979e))
+* **sdk:** serialize generic and match-bound run starts ([7500879](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/7500879ca7d2f03d5facd8f43d41d4b80c4e1e23))
+* **statistics:** add native Unreal batch manager and Blueprint nodes (TASK-1005) ([856e582](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/856e582b53b9877fbe34ead8940256a978242ba4))
+* **statistics:** avoid macOS Boolean name collision ([e940b10](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/e940b10875b33cbdfe626cac7cd1e1bfc041c7a9))
+* **statistics:** honor server configured catalog limits ([4862427](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/486242724a0c74229f631138cf261eb553beae09))
+* support compact achievements and atomic reward invalidation ([0459fea](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/0459feaa6ccc508f5235a5d6e168adab29d80c9a))
+* **transport:** fence retries across identity leave-and-return ([61b5974](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/61b5974cfe3b97158987bcee46a53ff511f58d89))
+* **transport:** separate global rate retries from feature limits ([d040332](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/d040332d6e9a5d2cb9d2772f0579fbb4d92159df))
+* **unreal:** avoid Player Values names colliding in unity builds ([0042a48](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/0042a488d9739b0180fd08ba46ae44c653758f64))
+
+
+### Features
+
+* **achievements:** add scoped snapshots and pending reward delivery ([bf0d81e](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/bf0d81ed820629d85341700642483e246db73279))
+* add revisioned groups SDK and durable examples ([b0dad61](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/b0dad61162667a690852a21c7ff0f45f06007b75))
+* **chat:** add authorized realtime feeds and durable original sends ([e866f69](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/e866f6902d3a92473271fc8f173d9a5ef8d24716))
+* **chat:** persist device messages apart from live transport windows ([1ff70c8](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/1ff70c8650bef927020823f7e76de77a3c443ac9))
+* **friends:** add explicit revision-bound native client ([b052196](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/b052196f701567685a556e0f550792bc9d941681))
+* **gift-codes:** expose stable value redemption receipts ([3a9e687](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/3a9e6871eb4de06f49802c32039a400070761daa))
+* **gift-codes:** prepare and persist exact V2 redemption intents ([4036482](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/40364829587c6681d0c52325a24560472dc76593))
+* **inbox:** add typed Unreal inbox snapshots and safe claims ([4111ec7](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/4111ec78a048f41fd69114561fe52eb32a606333))
+* **inbox:** expose typed source views and item return claims ([59024a8](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/59024a87b083a6b7dac2a1c4bf6d625faab56d8a))
+* **items:** add typed Unreal inventory and durable action sample ([5203870](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/5203870f4592bc2399be06d173fb8ee318fa4b8b))
+* **marketplace:** add native typed routes and durable original escrow sample ([0be836e](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/0be836e4be7da458eb4e675d2ce3443a0ce236be))
+* **player-values:** add Unreal typed values and safe mutation handling ([b27bd00](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/b27bd00a9809e060205f571e3542337f27ed63cb))
+* **realtime:** add native Unreal subscriptions and transport test (TASK-995) ([9535424](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/9535424a44ec771ddc550e857a06e4c468bb493d))
+* **sdk:** add asynchronous matches and durable recovery ([c6ad688](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/c6ad6885aa84ae8d54e09e9a916994a3f617efd1))
+* **sdk:** add shared objects with durable original intents ([3738ee3](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/3738ee3dea5d410369f4bcc7e66bc19db3a171b5))
+
 # [1.9.0](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/compare/v1.8.0...v1.9.0) (2026-10-11)
 
 
