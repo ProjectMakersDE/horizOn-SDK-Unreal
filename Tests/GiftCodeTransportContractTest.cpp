@@ -10,5 +10,8 @@ int main()
  for(const auto Bad:{"","00","01","+1","-1","1.0","1e2","9223372036854775808"}) assert(!GiftCount(Bad));
  assert(GiftCount("0") && GiftCount("9223372036854775807"));
  assert(!BuildGiftPreparedPlan("user","","code","00000000-0000-4000-8000-000000001007","0","1").bShouldSend);
- std::cout<<"Unreal V2 Gift tuple exact strings, V1 closure, session gate and Int64 overflow passed\n";
+ auto V=BuildGiftValidatePlan("user","A\"B");
+ assert(V.bShouldSend && !V.bUseSessionToken && V.Endpoint=="/api/v1/app/gift-codes/validate" && V.BodyJson=="{\"code\":\"A\\\"B\",\"userId\":\"user\"}");
+ assert(!BuildGiftValidatePlan("","code").bShouldSend && !BuildGiftValidatePlan("user","").bShouldSend && !BuildGiftValidatePlan("user",std::string(51,'x')).bShouldSend);
+ std::cout<<"Unreal V2 Gift tuple exact strings, V1 closure, session gate, validate userId and Int64 overflow passed\n";
 }
