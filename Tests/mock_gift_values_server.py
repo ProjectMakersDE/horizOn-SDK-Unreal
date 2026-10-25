@@ -36,7 +36,7 @@ class Handler(BaseHTTPRequestHandler):
   if index>=len(EXPECTED):self.reject('Extra request or automatic prepare');return
   action,code=EXPECTED[index]
   if action=='public':
-   if body!={'code':'PUBLIC'} or self.path!='/api/v1/app/gift-codes/validate' or self.headers.get('X-API-Key')!='fixture-key-1007' or self.headers.get('Authorization') is not None:self.reject('Public read must be sessionless');return
+   if body!={'code':'PUBLIC','userId':USER} or self.path!='/api/v1/app/gift-codes/validate' or self.headers.get('X-API-Key')!='fixture-key-1007' or self.headers.get('Authorization') is not None:self.reject('Public read must be sessionless');return
    self.reply(200,{'valid':True});return
   if self.headers.get('X-API-Key')!='fixture-key-1007' or self.headers.get('Authorization')!='Bearer fixture-session-1007':self.reject('Wrong project or Bearer');return
   prepare=action in ['prepare','newcampaign','badprepare']

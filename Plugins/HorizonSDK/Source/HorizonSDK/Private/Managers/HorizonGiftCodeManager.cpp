@@ -1,5 +1,6 @@
 // Copyright (c) 2026 ProjectMakers. Licensed under the MIT License.
 #include "Managers/HorizonGiftCodeManager.h"
+#include "Transport/HorizonGiftCodeTransportContract.h"
 #include "Managers/HorizonPlayerProfileManager.h"
 #include "Managers/HorizonPlayerValuesManager.h"
 #include "HorizonSDKModule.h"
@@ -92,11 +93,16 @@ void UHorizonGiftCodeManager::RedeemPrepared(const FHorizonGiftCodeIntent& Origi
 
 void UHorizonGiftCodeManager::Validate(const FString& Code, FOnGiftCodeValidateComplete OnComplete)
 {
-    if (!HttpClient || Code.TrimStartAndEnd().IsEmpty() || Code.Len()>50)
-    { OnComplete.ExecuteIfBound(false,false); return; }
+    const FString User = AuthManager && AuthManager->IsSignedIn() ? AuthManager->GetCurrentUser().UserId : FString();
+    if (!HttpClient || Code.TrimStartAndEnd().IsEmpty() || !HorizonTransportContract::BuildGiftValidatePlan(TCHAR_TO_UTF8(*User), TCHAR_TO_UTF8(*Code)).bShouldSend)
+    {
+        if (User.IsEmpty()) UE_LOG(LogHorizonSDK, Warning, TEXT("GiftCode::Validate -- Sign in a player first."));
+        OnComplete.ExecuteIfBound(false,false); return;
+    }
 
 	TSharedRef<FJsonObject> Body = MakeShared<FJsonObject>();
 	Body->SetStringField(TEXT("code"), Code);
+	Body->SetStringField(TEXT("userId"), User);
 
 	TWeakObjectPtr<UHorizonGiftCodeManager> WeakSelf(this);
 	FOnGiftCodeValidateComplete CapturedOnComplete = OnComplete;

@@ -14,7 +14,6 @@
     "IsBetaVersion": false,
     "IsExperimentalVersion": false,
     "EnabledByDefault": false,
-    "EngineVersion": "5.5.0",
     "SupportedTargetPlatforms": [
         "Win64",
         "Mac",

@@ -49,7 +49,8 @@ Official Unreal Engine SDK for **horizOn** Backend-as-a-Service by [ProjectMaker
 
 ### Fab submission packages
 
-The GitHub ZIP contains the source plugin with its baseline engine descriptor.
+The GitHub ZIP contains the source plugin without an `EngineVersion`, so every
+supported Unreal 5 version loads it without the incompatible plugin prompt.
 Fab requires a separate ZIP for each advertised engine version, including the
 matching `EngineVersion` and module platform lists. After testing a released
 plugin with Unreal's `RunUAT.sh BuildPlugin`, create its Fab source package:

@@ -84,7 +84,7 @@ struct FHorizonGiftV2Native : TSharedFromThis<FHorizonGiftV2Native>
         if(FPlatformTime::Seconds()>Deadline) { Test->AddError(FString::Printf(TEXT("V2 timeout stage%d"),Stage)); Cleanup(); return true; }
         if(Pending) return false; Pending=true; const TWeakPtr<FHorizonGiftV2Native> Weak=AsShared();
         if(Stage==0) Http->ConnectToServer(FOnRequestComplete::CreateLambda([Weak](bool Ok,const FString&) { if(auto S=Weak.Pin()) { S->Test->TestTrue(TEXT("Connected"),Ok); S->Next(); } }));
-        else if(Stage==1 && !PublicChecked) Gifts->Validate(TEXT("PUBLIC"),FOnGiftCodeValidateComplete::CreateLambda([Weak](bool Ok,bool Valid) { if(auto S=Weak.Pin()) { S->Test->TestTrue(TEXT("Public validate needs no player session"),Ok && Valid); S->PublicChecked=true; S->Pending=false; } }));
+        else if(Stage==2 && !PublicChecked) Gifts->Validate(TEXT("PUBLIC"),FOnGiftCodeValidateComplete::CreateLambda([Weak](bool Ok,bool Valid) { if(auto S=Weak.Pin()) { S->Test->TestTrue(TEXT("Public validate sends the player but no session"),Ok && Valid); S->PublicChecked=true; S->Pending=false; } }));
         else if(Stage==1 || Stage==20) Auth->SignInAnonymous(TEXT("fixture-anonymous-1007"),FOnAuthComplete::CreateLambda([Weak](bool Ok) { if(auto S=Weak.Pin()) { S->Test->TestTrue(TEXT("Original player restored"),Ok); S->Next(); } }));
         else if(Stage==2 || Stage==3 || Stage==6) Prepare(TEXT("VALUES"));
         else if(Stage==4 || Stage==7) Redeem(Original);
