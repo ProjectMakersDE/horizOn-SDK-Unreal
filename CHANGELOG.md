@@ -1,3 +1,13 @@
+## [1.10.2](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/compare/v1.10.1...v1.10.2) (2026-10-25)
+
+
+### Bug Fixes
+
+* **auth:** keep the cached session when restore runs before host selection (TASK-910) ([6279bd9](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/6279bd91318d9820dd13523ce71e3d695ce4dddd))
+* **editor:** persist Import Config to DefaultGame.ini (TASK-910) ([6cac1a5](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/6cac1a53742759ffd5d3e00a31b99d93e7cea98c))
+* **gift-codes:** send the player ID when validating a code ([4d0616b](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/4d0616bfa746459d376e6133475ecba843f71865))
+* **plugin:** drop the baseline EngineVersion so UE 5.6+ loads without the incompatible prompt (TASK-910) ([945f543](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/945f54360afc77b632a04033d712bb5b6cc485a6))
+
 ## [1.10.1](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/compare/v1.10.0...v1.10.1) (2026-10-23)
 
 
