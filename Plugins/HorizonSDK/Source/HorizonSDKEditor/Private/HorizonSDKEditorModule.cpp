@@ -181,7 +181,14 @@ void FHorizonSDKEditorModule::ImportConfigFromFile()
 	UHorizonConfig* Config = GetMutableDefault<UHorizonConfig>();
 	Config->ApiKey = ApiKey;
 	Config->Hosts = Hosts;
-	Config->SaveConfig();
+	// A defaultconfig class must write DefaultGame.ini; SaveConfig() alone leaves the import lost after a restart.
+	if (!Config->TryUpdateDefaultConfigFile())
+	{
+		FNotificationInfo Info(LOCTEXT("ImportSaveFailed", "Could not write DefaultGame.ini. Check that the file is writable."));
+		Info.ExpireDuration = 5.0f;
+		FSlateNotificationManager::Get().AddNotification(Info);
+		return;
+	}
 
 	// Show confirmation with masked API key
 	FString MaskedKey = ApiKey.Len() > 10
