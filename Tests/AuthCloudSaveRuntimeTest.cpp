@@ -256,6 +256,7 @@ struct UHorizonHttpClient
     FString SessionToken, ApiKey = "project-key-892", ActiveHost = "http://loopback.invalid";
     std::map<FString, FString> LastHeaders;
     FString GetApiKey() const { return ApiKey; }
+    FString GetActiveHost() const { return ActiveHost; }
     uint64 GetRequestContextEpoch() const { return 0; }
     void SetSessionToken(const FString& Value) { SessionToken = Value; }
     void ClearSessionToken() { SessionToken.Empty(); }
@@ -390,6 +391,13 @@ int main()
         Require(!Http.LastHeaders.count("If-Match"), "requests without extra headers must not send If-Match");
         Require(UHorizonSessionSave::Stored->CachedAnonymousToken == Issued, "issued token was not persisted");
         Auth.ClearSession();
+        const size_t RequestsBeforeOffline = Http.Requests.size();
+        Http.ActiveHost.Empty();
+        Auth.RestoreAnonymousSession(Completion);
+        Require(!Success && !Auth.IsSignedIn() && Http.Requests.size() == RequestsBeforeOffline
+                && UHorizonSessionSave::Stored->CachedAnonymousToken == Issued,
+                "restore before host selection must fail without a request and keep the disk credential");
+        Http.ActiveHost = "http://loopback.invalid";
         Auth.RestoreAnonymousSession(Completion);
         Require(Success && SignIns == 2 && Auth.IsSignedIn(), "expired session must restore using the issued token");
         Auth.ClearSession();

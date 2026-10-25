@@ -314,6 +314,13 @@ void UHorizonAuthManager::RestoreAnonymousSession(FOnAuthComplete OnComplete)
 		OnComplete.ExecuteIfBound(false);
 		return;
 	}
+	// Without a selected host the check fails locally and would discard a valid cached session.
+	if (!HttpClient || HttpClient->GetActiveHost().IsEmpty())
+	{
+		UE_LOG(LogHorizonSDK, Warning, TEXT("RestoreAnonymousSession -- Not connected. Call ConnectToServer and wait for OnConnected first."));
+		OnComplete.ExecuteIfBound(false);
+		return;
+	}
 	if (Save->CachedUserId.IsEmpty() || Save->CachedAccessToken.IsEmpty())
 	{
 		if (!Save->CachedAnonymousToken.IsEmpty())

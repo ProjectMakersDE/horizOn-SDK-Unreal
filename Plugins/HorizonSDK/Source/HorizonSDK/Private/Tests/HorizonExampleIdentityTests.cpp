@@ -62,7 +62,16 @@ struct FHorizonIdentityNative : TSharedFromThis<FHorizonIdentityNative>
         if (FPlatformTime::Seconds()>Deadline) { Test->AddError(FString::Printf(TEXT("Identity timeout stage %d"),Stage)); Cleanup(); return true; }
         if (Waiting) { if (WaitUntil && FPlatformTime::Seconds()>WaitUntil) { WaitUntil=0; Next(); } return false; }
         Waiting=true; const TWeakPtr<FHorizonIdentityNative> Weak=AsShared();
-        if (Stage==0) SDK->GetHttpClient()->ConnectToServer(FOnRequestComplete::CreateLambda([Weak](bool Ok,const FString&) { if (auto Self=Weak.Pin()) { Self->Test->TestTrue(TEXT("Loopback connected"),Ok); Self->Next(); } }));
+        if (Stage==0)
+        {
+            // A restore before host selection must fail at once and keep the cached session for the real restore.
+            Cache(A,TEXT("cached-access"),TEXT("cached-token"),true); bool Called=false,Restored=true;
+            SDK->Auth->RestoreAnonymousSession(FOnAuthComplete::CreateLambda([&Called,&Restored](bool Ok) { Called=true; Restored=Ok; }));
+            Test->TestTrue(TEXT("Restore without a host fails immediately"),Called && !Restored); Test->TestFalse(TEXT("No provisional user without a host"),SDK->Auth->IsSignedIn());
+            auto* Kept=UHorizonSessionSave::LoadFromDisk(); Test->TestTrue(TEXT("Cached session survives a restore without a host"),Kept && Kept->CachedUserId==A && Kept->CachedAccessToken==TEXT("cached-access"));
+            UHorizonSessionSave::DeleteFromDisk();
+            SDK->GetHttpClient()->ConnectToServer(FOnRequestComplete::CreateLambda([Weak](bool Ok,const FString&) { if (auto Self=Weak.Pin()) { Self->Test->TestTrue(TEXT("Loopback connected"),Ok); Self->Next(); } }));
+        }
         else if (Stage==1)
         {
             Capture(); Test->TestTrue(TEXT("Uncertain signup marker persisted first"),UHorizonExampleIdentity::BeforeSignup(SDK,PA));
