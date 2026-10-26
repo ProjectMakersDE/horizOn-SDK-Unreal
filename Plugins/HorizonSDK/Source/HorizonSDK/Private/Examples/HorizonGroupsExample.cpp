@@ -6,6 +6,7 @@
 #include "Managers/HorizonGroupsManager.h"
 #include "Engine/GameInstance.h"
 #include "Kismet/GameplayStatics.h"
+#include "UObject/Package.h"
 #include "UObject/StrongObjectPtr.h"
 #include "Transport/HorizonValidatedActionsTransportContract.h"
 namespace HorizonGroupExampleStorage

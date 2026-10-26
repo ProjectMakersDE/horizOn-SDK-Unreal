@@ -7,6 +7,7 @@
 #include "Managers/HorizonPlayerValuesManager.h"
 #include "Engine/GameInstance.h"
 #include "Kismet/GameplayStatics.h"
+#include "UObject/Package.h"
 #include "UObject/StrongObjectPtr.h"
 #include "Transport/HorizonItemsTransportContract.h"
 #include "Transport/HorizonValidatedActionsTransportContract.h"
