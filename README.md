@@ -66,6 +66,16 @@ filled before submission. The script preserves the release-managed SDK version
 and excludes local build output. Fab builds the distributed binaries itself.
 See the [Fab technical requirements](https://www.fab.com/o/technical-requirements).
 
+The Fab package uses the license selected in the listing. Its ZIP omits the
+repository's MIT license file and README section, and keeps source copyright
+notices without the MIT licensing sentence, as requested by Fab's review.
+The source repository and ordinary GitHub release ZIP retain their MIT license.
+Repeat `--platform` for each platform that has passed a native Unreal build,
+for example `--platform Mac --platform Win64`. A portable transport test alone
+does not establish native Windows support. On Windows, use
+`RunUAT.bat BuildPlugin -Plugin=... -Package=... -TargetPlatforms=Win64 -Rocket`
+to verify the Editor and Development/Shipping game targets before advertising it.
+
 ## Quick Start
 
 > **[Quickstart Guide on horizon.pm](https://horizon.pm/quickstart#unreal)** - Interactive setup guide with step-by-step instructions.
