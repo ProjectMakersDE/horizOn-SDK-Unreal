@@ -1,3 +1,10 @@
+## [1.10.4](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/compare/v1.10.3...v1.10.4) (2026-10-30)
+
+
+### Bug Fixes
+
+* **fab:** omit repository license terms from submission packages ([46a7cfc](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/46a7cfc74074918fa9af42049126180290ebd50b))
+
 ## [1.10.3](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/compare/v1.10.2...v1.10.3) (2026-10-26)
 
 
