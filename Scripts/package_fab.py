@@ -43,10 +43,27 @@ def main():
             if path.is_dir():
                 archive.writestr("HorizonSDK/" + relative.as_posix() + "/", "")
             elif path.name not in {".DS_Store", ".gitkeep"}:
+                if relative == Path("LICENSE"):
+                    continue
                 name = "HorizonSDK/" + relative.as_posix()
                 if len(name) > 170:
                     raise ValueError("Fab plugin path exceeds 170 characters: " + name)
                 data = (json.dumps(descriptor, indent=4) + "\n").encode() if path.name == "HorizonSDK.uplugin" else path.read_bytes()
+                # Fab distributes our own code under the listing's selected license.
+                # Keep copyright attribution, without imposing the repository's MIT terms.
+                if relative.parts[0] == "Source" and path.suffix in {".h", ".cpp", ".cs", ".mm"}:
+                    data = data.replace(
+                        b"// Copyright (c) 2026 ProjectMakers. Licensed under the MIT License.",
+                        b"// Copyright (c) 2026 ProjectMakers.",
+                        1,
+                    )
+                elif relative == Path("README.md"):
+                    data = data.replace(
+                        b"## License\n\nThis project is licensed under the MIT License. See [LICENSE](LICENSE) for details.\n",
+                        b"",
+                    )
+                elif relative == Path("Config/FilterPlugin.ini"):
+                    data = data.replace(b"/LICENSE\n", b"")
                 archive.writestr(name, data)
     print(args.output)
     if not args.product_id:
