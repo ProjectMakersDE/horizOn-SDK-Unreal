@@ -140,6 +140,9 @@ bool FHorizonItemsModelsTest::RunTest(const FString&)
  auto ParseCatalog=[](const FString& Text){TSharedPtr<FJsonObject> J;FHorizonItemCatalogPage V;return HorizonItemsWire::Parse(Text,J)&&FHorizonItemCatalogPage::TryFromJson(J,V);};
  TestTrue(TEXT("Physical UInt16 slot capacity is independent of operator quotas"),ParseCatalog(Catalog));
  TestFalse(TEXT("One past physical slot capacity is invalid"),ParseCatalog(Catalog.Replace(TEXT("65536"),TEXT("65537"))));
+ const FString Definition=Catalog.Replace(TEXT("\"definitions\":[]"),TEXT(R"DEF("definitions":[{"key":"sword","name":"Sword","type":"weapon","rarity":"common","active":true,"baseProperties":{},"propertyRules":[]}])DEF"));
+ TestTrue(TEXT("Definition with empty property rules accepted"),ParseCatalog(Definition));
+ for(const FString& Bad:{Definition.Replace(TEXT(",\"propertyRules\":[]"),TEXT("")),Definition.Replace(TEXT("\"propertyRules\":[]"),TEXT("\"propertyRules\":null")),Definition.Replace(TEXT("\"propertyRules\":[]"),TEXT("\"propertyRules\":{}"))})TestFalse(TEXT("Missing or non-array property rules rejected"),ParseCatalog(Bad));
  for(const FString& Bad:{FString(TEXT("0")),FString(TEXT("2147483648")),FString(TEXT("1.0")),FString(TEXT("1e3")),FString(TEXT("9007199254740992"))})TestFalse(TEXT("Configured quota remains exact positive Int32"),Parse(Raw.Replace(TEXT("\"catalog\":20"),*(FString(TEXT("\"catalog\":"))+Bad))));
  return true;
 }

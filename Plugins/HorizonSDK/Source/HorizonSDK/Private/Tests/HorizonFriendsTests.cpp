@@ -248,6 +248,7 @@ bool FHorizonFriendsModelTest::RunTest(const FString&)
     for (const FString& Number:{FString(TEXT("9007199254740991")),FString(TEXT("9007199254740992")),FString(TEXT("9007199254740991.1")),FString(TEXT("1e3")),FString(TEXT("-1"))})
     { FHorizonFriendsSnapshot S; const bool Expected=Number==TEXT("9007199254740991"); TestEqual(TEXT("Original safe revision lexeme"),Parse(Template.Replace(TEXT("%s"),*Number),S),Expected); if (Expected) TestEqual(TEXT("Safe maximum kept exactly"),S.Revision,int64(9007199254740991LL)); }
     const FString Valid=Template.Replace(TEXT("%s"),TEXT("1")); FHorizonFriendsSnapshot S;
+    TestFalse(TEXT("Missing friends array rejected"),Parse(Valid.Replace(TEXT("\"friends\":"),TEXT("\"missingFriends\":")),S));
     TestTrue(TEXT("Public unknown profile parsed safely"),Parse(Valid,S));
     TestTrue(TEXT("Null last login remains unknown, never online"),S.Friends.Num()==1 && !S.Friends[0].bHasLastActiveAt && S.Friends[0].LastActiveAt.IsEmpty() && S.Friends[0].Display.Name.IsEmpty());
     for (const FString& Bad:{Valid.Replace(TEXT("\"lastActiveAt\":null"),TEXT("\"lastActiveAt\":\"\"")),Valid.Replace(TEXT("\"name\":null"),TEXT("\"name\":true")),Valid.Replace(TEXT("\"maxFriends\":20"),TEXT("\"maxFriends\":\"20\"")),Valid.Replace(TEXT("AAAAAAAAQACAAAAAAAAQCQ"),TEXT("AAAAAAAAQACAAAAAAAAQCR"))}) TestFalse(TEXT("Malformed date/type/noncanonical code rejected"),Parse(Bad,S));

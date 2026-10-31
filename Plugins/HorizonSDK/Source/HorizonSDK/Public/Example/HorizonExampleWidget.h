@@ -80,7 +80,7 @@ protected:
 
 private:
     bool bGiftV2Busy=false;
-    void DispatchGiftIntent(const struct FHorizonGiftCodeIntent& Intent,const FString& Slot);
+    void DispatchGiftIntent(const struct FHorizonGiftCodeIntent& Intent,const FString& SaveSlot);
 	// --- Self-constructed UI state ---
 	bool bDefaultUIBuilt = false;
 

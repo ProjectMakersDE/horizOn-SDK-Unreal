@@ -37,7 +37,7 @@ bool Properties(const TSharedPtr<FJsonValue>& V,TArray<FHorizonItemProperty>& Ou
 }
 bool Definition(const TSharedPtr<FJsonObject>& J,FHorizonItemDefinition& D)
 {
-    const TArray<TSharedPtr<FJsonValue>>* Rules;
+    const TArray<TSharedPtr<FJsonValue>>* Rules=nullptr;
     if(!ReadKey(J,TEXT("key"),D.Key)||!Text(J,TEXT("name"),D.Name,120)||D.Name.TrimStartAndEnd().IsEmpty()||!ReadKey(J,TEXT("type"),D.Type)||!ReadKey(J,TEXT("rarity"),D.Rarity)||!Bool(J,TEXT("active"),D.bActive)||!Properties(J->TryGetField(TEXT("baseProperties")),D.BaseProperties)||!J->TryGetArrayField(TEXT("propertyRules"),Rules)||Rules->Num()>16)return false;
     TSet<FString> Seen;for(auto V:*Rules)
     {

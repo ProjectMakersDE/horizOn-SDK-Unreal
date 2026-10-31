@@ -70,12 +70,12 @@ void AHorizonGroupsExample::ReadOwn(const FString& Project,const FString& User,c
         if(!Intent.IsEmpty()&&HorizonGroupExampleStorage::Valid(Stored,Project,User)&&HorizonGroupExampleStorage::Signature(Stored)==Intent&&Stored->SendSerial==Serial){bRefreshed=true;RefreshedIntent=Intent;RefreshedSerial=Serial;}
     }));
 }
-void AHorizonGroupsExample::StartAction(const FString& A,const FString& G,const FString& Target,int64 Expected,const FString& Request,const FString& Role,const FHorizonGroupMetadata& Metadata)
+void AHorizonGroupsExample::StartAction(const FString& A,const FString& G,const FString& Target,int64 Expected,const FString& Request,const FString& RequestedRole,const FHorizonGroupMetadata& Metadata)
 {
     auto* SDK=Session();if(!SDK||bSending||bRefreshing||(SnapshotContext!=SDK->GetHttpClient()->GetRequestContextEpoch()||SnapshotGeneration!=SDK->Groups->GetCacheGeneration()))return;const auto S=SDK->Groups->GetCurrentGroups();if(!S.bPresent)return;
     const FString User=S.UserId,Project=HorizonGroupExampleStorage::Project(SDK),Slot=HorizonGroupExampleStorage::Slot(Project,User);if(UGameplayStatics::DoesSaveGameExist(Slot,0))return;
     auto* P=Cast<UHorizonGroupPendingAction>(UGameplayStatics::CreateSaveGameObject(UHorizonGroupPendingAction::StaticClass()));
-    P->Project=Project;P->UserId=User;P->IntentId=FGuid::NewGuid().ToString(EGuidFormats::DigitsWithHyphens);P->Action=A;P->GroupId=G;P->TargetUserId=Target;P->ExpectedRevision=Expected;P->RequestId=Request;P->Role=Role;P->Metadata=Metadata;
+    P->Project=Project;P->UserId=User;P->IntentId=FGuid::NewGuid().ToString(EGuidFormats::DigitsWithHyphens);P->Action=A;P->GroupId=G;P->TargetUserId=Target;P->ExpectedRevision=Expected;P->RequestId=Request;P->Role=RequestedRole;P->Metadata=Metadata;
     if(!HorizonGroupExampleStorage::Valid(P,Project,User)){UE_LOG(LogTemp,Warning,TEXT("[GroupsExample] Invalid original tuple; nothing sent"));return;}
     if(A==TEXT("create")){if(S.Revision!=Expected)return;}else if(!GetGroup().bPresent||!GetGroup().Id.Equals(G,ESearchCase::IgnoreCase)||GetGroup().Revision!=Expected){UE_LOG(LogTemp,Warning,TEXT("[GroupsExample] Reviewed group revision changed; refresh explicitly"));return;}
     const auto PlayerRequest=[&](const FHorizonGroupPendingView& V){return V.GroupId.Equals(G,ESearchCase::IgnoreCase)&&V.RequestId==Request;};
