@@ -1,3 +1,10 @@
+## [1.10.5](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/compare/v1.10.4...v1.10.5) (2026-10-31)
+
+
+### Bug Fixes
+
+* **windows:** initialize JSON outputs and avoid inherited name conflicts ([497aac2](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/497aac2ff455b97e5e91da4cd9648dbe83804be2))
+
 ## [1.10.4](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/compare/v1.10.3...v1.10.4) (2026-10-30)
 
 
