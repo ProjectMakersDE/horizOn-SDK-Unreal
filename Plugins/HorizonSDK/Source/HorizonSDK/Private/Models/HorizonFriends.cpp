@@ -79,7 +79,7 @@ bool FHorizonFriendLookup::TryFromJson(const TSharedPtr<FJsonObject>& Json,FHori
 bool FHorizonFriendsSnapshot::TryFromJson(const TSharedPtr<FJsonObject>& Json,FHorizonFriendsSnapshot& Out)
 {
     using namespace HorizonFriendsJson;
-    FHorizonFriendsSnapshot S; const TSharedPtr<FJsonObject>* Limits; const TArray<TSharedPtr<FJsonValue>>* Rows;
+    FHorizonFriendsSnapshot S; const TSharedPtr<FJsonObject>* Limits; const TArray<TSharedPtr<FJsonValue>>* Rows=nullptr;
     if (!String(Json,TEXT("userId"),S.UserId,36) || !Uuid(S.UserId) || !Number(Json,TEXT("revision"),S.Revision) ||
         !String(Json,TEXT("friendCode"),S.FriendCode,24) || S.FriendCode!=FHorizonFriendLookup::FriendCodeFor(S.UserId) || !String(Json,TEXT("serverTime"),S.ServerTime,40) || !Time(S.ServerTime) ||
         !Json->TryGetObjectField(TEXT("limits"),Limits) || !Small(*Limits,TEXT("maxFriends"),S.Limits.MaxFriends,MAX_int32) ||

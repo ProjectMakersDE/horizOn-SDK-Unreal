@@ -66,7 +66,7 @@ bool Attachment(const TSharedPtr<FJsonValue>& Json,FHorizonInboxAttachment& Out)
 bool Entry(const TSharedPtr<FJsonValue>& Json,FHorizonInboxEntry& Out)
 {
     if (!Json || Json->Type!=EJson::Object) return false;
-    const auto Object=Json->AsObject(); const TSharedPtr<FJsonObject>* Parameters;
+    const auto Object=Json->AsObject(); const TSharedPtr<FJsonObject>* Parameters=nullptr;
     if (!String(Object,TEXT("id"),Out.Id,64) || !FHorizonInboxEntry::IsEntryId(Out.Id) || !String(Object,TEXT("kind"),Out.Kind,16) ||
         !Out.Id.StartsWith(Out.Kind+TEXT(":")) || !String(Object,TEXT("type"),Out.Type,32) || !Identifier(Out.Type,32) ||
         !String(Object,TEXT("reference"),Out.Reference,128,true) || !String(Object,TEXT("textKey"),Out.TextKey,128) ||

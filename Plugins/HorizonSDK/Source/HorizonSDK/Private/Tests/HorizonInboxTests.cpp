@@ -158,6 +158,8 @@ bool FHorizonInboxModelTest::RunTest(const FString& Parameters)
         if (Expected) TestEqual(TEXT("Safe integer preserved"),Snapshot.Revision,int64(9007199254740991LL));
     }
     const FString Valid=Template.Replace(TEXT("%s"),TEXT("1"));
+    for (const FString& Invalid:{Valid.Replace(TEXT("\"parameters\":{},"),TEXT("")),Valid.Replace(TEXT("\"parameters\":{}"),TEXT("\"parameters\":null")),Valid.Replace(TEXT("\"parameters\":{}"),TEXT("\"parameters\":[]"))})
+    { FHorizonInboxSnapshot Snapshot; TestFalse(TEXT("Missing or non-object parameters rejected"),Parse(Invalid,Snapshot)); }
     FHorizonInboxSnapshot LongPolling;
     TestTrue(TEXT("Full positive server int32 polling interval accepted"),Parse(Valid.Replace(TEXT("\"pollAfterSeconds\":30"),TEXT("\"pollAfterSeconds\":2147483647")),LongPolling));
     TestFalse(TEXT("Polling overflow rejected"),Parse(Valid.Replace(TEXT("\"pollAfterSeconds\":30"),TEXT("\"pollAfterSeconds\":2147483648")),LongPolling));

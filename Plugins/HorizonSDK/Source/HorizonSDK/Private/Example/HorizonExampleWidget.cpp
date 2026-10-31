@@ -139,8 +139,8 @@ void UHorizonExampleWidget::AddSectionHeader(UVerticalBox* Root, const FString& 
 	Font.TypefaceFontName = FName("Bold");
 	Header->SetFont(Font);
 
-	UVerticalBoxSlot* Slot = Root->AddChildToVerticalBox(Header);
-	Slot->SetPadding(FMargin(0.0f, 12.0f, 0.0f, 4.0f));
+	UVerticalBoxSlot* HeaderSlot = Root->AddChildToVerticalBox(Header);
+	HeaderSlot->SetPadding(FMargin(0.0f, 12.0f, 0.0f, 4.0f));
 }
 
 void UHorizonExampleWidget::AddRow(UVerticalBox* Root, const TArray<UWidget*>& Widgets)
@@ -163,8 +163,8 @@ void UHorizonExampleWidget::AddRow(UVerticalBox* Root, const TArray<UWidget*>& W
 		}
 	}
 
-	UVerticalBoxSlot* Slot = Root->AddChildToVerticalBox(Row);
-	Slot->SetPadding(FMargin(0.0f, 2.0f, 0.0f, 2.0f));
+	UVerticalBoxSlot* RowSlot = Root->AddChildToVerticalBox(Row);
+	RowSlot->SetPadding(FMargin(0.0f, 2.0f, 0.0f, 2.0f));
 }
 
 void UHorizonExampleWidget::BuildDefaultUI()
@@ -672,35 +672,35 @@ void UHorizonExampleWidget::TestRedeemCode(const FString& Code)
 {
     auto* SDK=GetSubsystem(); if (!SDK || !SDK->GiftCodes || !SDK->Auth || !SDK->Auth->IsSignedIn() || bGiftV2Busy) return;
     const FString User=SDK->Auth->GetCurrentUser().UserId,Project=FHorizonGiftCodeIntent::Fingerprint(SDK->GetHttpClient()->GetApiKey());
-    const FString Slot=TEXT("horizon-gift-widget-")+FMD5::HashAnsiString(*(Project+TEXT("|")+User));
-    if(UGameplayStatics::DoesSaveGameExist(Slot,0))
+    const FString SaveSlot=TEXT("horizon-gift-widget-")+FMD5::HashAnsiString(*(Project+TEXT("|")+User));
+    if(UGameplayStatics::DoesSaveGameExist(SaveSlot,0))
     {
-        auto* Saved=Cast<UHorizonGiftCodePendingRedeem>(UGameplayStatics::LoadGameFromSlot(Slot,0));
+        auto* Saved=Cast<UHorizonGiftCodePendingRedeem>(UGameplayStatics::LoadGameFromSlot(SaveSlot,0));
         if(!Saved || !Saved->Intent.IsValidFor(Project,User) || Saved->Intent.Code!=Code) { AppendOutput(TEXT("[Gift] Reconcile saved original intent before another code")); return; }
-        bGiftV2Busy=true; DispatchGiftIntent(Saved->Intent,Slot); return;
+        bGiftV2Busy=true; DispatchGiftIntent(Saved->Intent,SaveSlot); return;
     }
     bGiftV2Busy=true;
-    SDK->GiftCodes->PrepareRedemption(Code,FOnGiftCodePrepareComplete::CreateWeakLambda(this,[this,Project,User,Slot](bool Ok,const FHorizonGiftCodeIntent& Intent,const FString& Error,const FString&)
+    SDK->GiftCodes->PrepareRedemption(Code,FOnGiftCodePrepareComplete::CreateWeakLambda(this,[this,Project,User,SaveSlot](bool Ok,const FHorizonGiftCodeIntent& Intent,const FString& Error,const FString&)
     {
         auto* Current=GetSubsystem();
         if(!Ok || !Current || !Current->Auth || !Intent.IsValidFor(FHorizonGiftCodeIntent::Fingerprint(Current->GetHttpClient()->GetApiKey()),Current->Auth->GetCurrentUser().UserId)) { bGiftV2Busy=false; AppendOutput(TEXT("[Gift] Prepare stopped: ")+Error); return; }
-        if(UGameplayStatics::DoesSaveGameExist(Slot,0)) { bGiftV2Busy=false; return; }
+        if(UGameplayStatics::DoesSaveGameExist(SaveSlot,0)) { bGiftV2Busy=false; return; }
         auto* Saved=Cast<UHorizonGiftCodePendingRedeem>(UGameplayStatics::CreateSaveGameObject(UHorizonGiftCodePendingRedeem::StaticClass())); Saved->Intent=Intent;
-        if(!UGameplayStatics::SaveGameToSlot(Saved,Slot,0)) { bGiftV2Busy=false; return; }
-        auto* Check=Cast<UHorizonGiftCodePendingRedeem>(UGameplayStatics::LoadGameFromSlot(Slot,0));
+        if(!UGameplayStatics::SaveGameToSlot(Saved,SaveSlot,0)) { bGiftV2Busy=false; return; }
+        auto* Check=Cast<UHorizonGiftCodePendingRedeem>(UGameplayStatics::LoadGameFromSlot(SaveSlot,0));
         if(!Check || !Check->Intent.SameIdentity(Intent)) { bGiftV2Busy=false; return; }
-        DispatchGiftIntent(Intent,Slot);
+        DispatchGiftIntent(Intent,SaveSlot);
     }));
 }
-void UHorizonExampleWidget::DispatchGiftIntent(const FHorizonGiftCodeIntent& Intent,const FString& Slot)
+void UHorizonExampleWidget::DispatchGiftIntent(const FHorizonGiftCodeIntent& Intent,const FString& SaveSlot)
 {
     auto* SDK=GetSubsystem(); if(!SDK || !SDK->GiftCodes) { bGiftV2Busy=false; return; }
-    SDK->GiftCodes->RedeemPrepared(Intent,FOnGiftCodeRedeemResultComplete::CreateWeakLambda(this,[this,Intent,Slot](bool Ok,const FHorizonGiftCodeRedeemResult& Result,const FString& Error,const FString&)
+    SDK->GiftCodes->RedeemPrepared(Intent,FOnGiftCodeRedeemResultComplete::CreateWeakLambda(this,[this,Intent,SaveSlot](bool Ok,const FHorizonGiftCodeRedeemResult& Result,const FString& Error,const FString&)
     {
         bGiftV2Busy=false;
         if(!Ok) { AppendOutput(TEXT("[Gift] Original tuple retained for retry/reconciliation: ")+Error); return; }
-        auto* Saved=Cast<UHorizonGiftCodePendingRedeem>(UGameplayStatics::LoadGameFromSlot(Slot,0));
-        if(Saved && Saved->Intent.SameIdentity(Intent)) UGameplayStatics::DeleteGameInSlot(Slot,0);
+        auto* Saved=Cast<UHorizonGiftCodePendingRedeem>(UGameplayStatics::LoadGameFromSlot(SaveSlot,0));
+        if(Saved && Saved->Intent.SameIdentity(Intent)) UGameplayStatics::DeleteGameInSlot(SaveSlot,0);
         AppendOutput(FString::Printf(TEXT("[Gift] Accepted; alreadyApplied=%s; current state replaces balances"),Result.bAlreadyApplied?TEXT("true"):TEXT("false")));
     }));
 }
