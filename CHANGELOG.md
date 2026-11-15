@@ -1,3 +1,10 @@
+## [1.10.6](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/compare/v1.10.5...v1.10.6) (2026-11-15)
+
+
+### Bug Fixes
+
+* **matches:** handle the account open match limit ([4e1653d](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/4e1653d258a2b6ee1051b06b6addf34373a414bd))
+
 ## [1.10.5](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/compare/v1.10.4...v1.10.5) (2026-10-31)
 
 
