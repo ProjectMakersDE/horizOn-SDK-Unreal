@@ -1131,7 +1131,9 @@ and durable originals; result bytes retain their separate256-byte protocol bound
 All seven current limits are retained, including `SettlementMatches`,
 `HistoryRetentionSeconds` (zero allowed), `RankedSettlementSeconds` and
 `RetainedMatches` (zero allowed). Complete retained lists are not trimmed to current
-quotas. The technical32MiB response frame does not promise that every possible unpaged
+quotas. `CreateMatch` can fail with 422 `ACCOUNT_MATCH_LIMIT_REACHED` when the
+account's open matches are at the plan limit; join, turns, leave, report and
+cancel are never blocked by it. The technical32MiB response frame does not promise that every possible unpaged
 operator-sized ledger fits; projected ledger records contain no full state bytes. `bHasData` distinguishes invite-only metadata (`null`) from accepted
 empty state. Safe integer revisions and strength, false, nullable deadlines,
 Unicode and embedded NUL names are preserved. Snapshots retained after a
