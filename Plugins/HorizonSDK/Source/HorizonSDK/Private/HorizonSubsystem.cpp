@@ -8,6 +8,7 @@
 #include "Managers/HorizonGroupsManager.h"
 #include "Managers/HorizonItemsManager.h"
 #include "Managers/HorizonMarketplaceManager.h"
+#include "Managers/HorizonItemGiftsManager.h"
 #include "Managers/HorizonSharedObjectsManager.h"
 #include "Managers/HorizonMatchesManager.h"
 #include "Managers/HorizonChatManager.h"
@@ -61,6 +62,7 @@ void UHorizonSubsystem::Initialize(FSubsystemCollectionBase& Collection)
     Items = NewObject<UHorizonItemsManager>(this);
     Items->Initialize(HttpClient, Auth);
     Marketplace=NewObject<UHorizonMarketplaceManager>(this);Marketplace->Initialize(HttpClient,Auth);
+    ItemGifts=NewObject<UHorizonItemGiftsManager>(this);ItemGifts->Initialize(HttpClient,Auth);
     SharedObjects=NewObject<UHorizonSharedObjectsManager>(this);SharedObjects->Initialize(HttpClient,Auth);
 
 	// Create all managers

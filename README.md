@@ -27,6 +27,7 @@ Official Unreal Engine SDK for **horizOn** Backend-as-a-Service by [ProjectMaker
 | 🧑‍🎤 **Player Profile** | `UHorizonPlayerProfileManager` | Avatar, frame and badges per player, cosmetic unlocks, shown in leaderboards |
 | ✅ **Validated Actions** | `UHorizonValidatedActionsManager` | Server-checked runs: ticket with seed, validated submit with input log hash, rule codes, server-owned currency and loot, input log upload as evidence |
 | 📬 **Inbox** | `UHorizonInboxManager` | Explicit snapshots, read/remove actions and entry-bound reward claims with full balance snapshots |
+| 🎀 **Item Gifts** | `UHorizonItemGiftsManager` | Send one item instance privately through the inbox, optional fixed fee, decline, durable original send intent |
 | 👥 **Friends** | `UHorizonFriendsManager` | Explicit revision-bound social snapshots, exact public lookup and original request IDs |
 | 📊 **Statistics** | `UHorizonStatisticsManager` | Explicit atomic session batches with sum/max/min/last counters, optional UTC resets and safe retries |
 | 💬 **Feedback** | `UHorizonFeedbackManager` | Submit bug reports, feature requests, and general feedback |
@@ -1019,9 +1020,9 @@ Horizon->Inbox->Claim(UserId, OriginalEntryId,
 
 `Limits` exposes configurable `Targeted`, `Broadcasts`, `FreeTexts`, `FreeTextBytes` (UTF-8) and `FreeTextRetentionDays`. These govern new writes; retained entries remain readable after limits are lowered. Safe integer revisions may jump. Keep entry IDs opaque: a later event from the same source has a distinct identity, and actions keep the selected original ID.
 
-`Entry.TryGetSource(Source)` exposes typed Friends, Groups, Match and Market navigation references; current source state and actions stay with the source feature API. `Entry.TryGetFreeText(Text)` identifies plain free text. Render it with rich text disabled; other entries use localization `TextKey` and `Parameters`. The Blueprint library exposes `GetInboxSource`, `GetInboxFreeText` and `CanClaimInboxEntry`. Unknown custom/legacy message fields remain available.
+`Entry.TryGetSource(Source)` exposes typed Friends, Groups, Match, Market and item gift (`ItemGiftOffer` with the sender, `ItemGiftReturn` with the recipient) navigation references; current source state and actions stay with the source feature API. `Entry.TryGetFreeText(Text)` identifies plain free text. Render it with rich text disabled; other entries use localization `TextKey` and `Parameters`. The Blueprint library exposes `GetInboxSource`, `GetInboxFreeText` and `CanClaimInboxEntry`. Unknown custom/legacy message fields remain available.
 
-`Attachment.ItemReturn` contains `ListingId`, `InstanceId`, `ItemKey` and `bPresent`. `Entry.CanClaim()` includes item-only returns with empty `Values`. Claim `Items` contains authoritative item references; refresh inventory explicitly after a return, because these descriptors are not complete items. Unsupported valuable fields and malformed identities/numbers reject a response before either cache is updated. The client SDK provides no trusted publication route.
+`Attachment.ItemReturn` contains `ListingId`, `InstanceId`, `ItemKey` and `bPresent`. `Attachment.ItemGift` contains `GiftId`, `InstanceId`, `ItemKey`, `Direction` (`offer` or `return`) and `bPresent`. `Entry.CanClaim()` includes item-only returns and item gifts with empty `Values`. Claim `Items` contains authoritative item references; refresh inventory explicitly after a return, because these descriptors are not complete items. Unsupported valuable fields and malformed identities/numbers reject a response before either cache is updated. The client SDK provides no trusted publication route.
 
 Blueprint entry points are `RequestInbox`, `MarkEntryRead`, `RemoveEntry` and `ClaimEntry`; their result events expose the same typed models. The explicit `AHorizonInboxExample` actor preserves a pending claim before HTTP, scoped to the project and player, and blocks a different entry until the original is reconciled. New claims require an unclaimed valuable entry in the current authorized snapshot. `GetPendingClaimEntryId` recovers the original entry after a restart; `GetCurrentInbox` always reads the manager cache, so logout never leaves a second actor snapshot. It performs no automatic signup, polling or claims.
 
@@ -1371,3 +1372,58 @@ no result, item, reward or full state history and changes no server storage.
 Minimal Match revision watermarks remain across route/body changes and513 retained summaries; the context-wide server-time watermark remains monotone. Auth changes clear these small marks, while payload snapshots remain bounded.
 
 Groups responses aggregate independent BSON records and can duplicate a group in a mutation. A6MiB control-character name needs about36MiB JSON; the same mutation can exceed72MiB. Groups alone parses its already received body/fragments at their actual length, preserving strict field/grammar/depth checks. There is no derived32/96/192MiB aggregate product quota. Available engine/HTTP memory remains a technical client limit; a parse/transport failure must preserve the original for explicit recovery. Other feature frames and small payload caches are unchanged.
+
+## Item Gifts: private item gifts through the inbox
+
+`UHorizonSubsystem::ItemGifts` implements the six authenticated App routes under
+`/api/v1/app/item-gifts`: `GetConfig`, `GetState`, `SubmitPrepared` (send),
+`GetOperation`, `GetGift` and `Decline`. `PrepareSend` and `ValidOriginal` expose the
+validated `FHorizonItemGiftIntent` with exactly the seven fields `userId`,
+`operationId`, `issuedAt`, `recipientId`, `instanceId`, `expectedInventoryRevision` and
+`expectedConfigRevision`. C++ receives `FOnItemGiftComplete`. Blueprint `ReadConfig`,
+`ReadState`, `ReadGift`, `SubmitOriginal`, `LookupOriginal` and `DeclineGift` report
+the typed `FHorizonItemGiftResponse` through `OnResult`. Its `Kind` is `config`,
+`state`, `written`, `operation`, `point` or `declined`. `HasGift` marks the nullable
+gift of a replay. Empty strings stand for wire null, so `CurrencyKey` is empty for a
+free gift. No method creates a player, polls or claims.
+
+The recipient is addressed by player ID. Resolve a public friend code first with the
+Friends lookup and show the returned public profile before the player confirms. One
+send moves one unequipped item instance into escrow and charges the fixed fee of the
+project config in its Player Values currency. The fee is never refunded. The offer
+expires seven days after the send. `State.Sent` lists open gifts and pending returns,
+`State.History` recent terminal gifts and `State.Received` one bounded page of open
+offers, so the state route has no cursor.
+
+Claiming is not a gift route. The recipient claims the offer, and the sender claims a
+declined or expired return, with `Inbox->Claim(UserId, EntryId)` on the entry whose
+`Attachment.ItemGift` names the gift. `Decline(UserId, GiftId, ExpectedGiftRevision)`
+is for the recipient only and replays after a repeated call. Refresh Inventory and
+Player Values with their own reads after a send or claim. Never build an item locally
+from an inbox attachment.
+
+Create `UHorizonItemGiftsExample` for the game's gift screen and explicitly
+`Bind(Session, StableProjectId)` to the existing authenticated subsystem. Read config
+and inventory, then `ReviewSend(RecipientId, InstanceId)` and show `ReviewedFee` and
+`ReviewedCurrencyKey`. Only the player's explicit `ConfirmReviewedSend` prepares an
+operation UUID and server clock time and sends it. `UHorizonItemGiftsQuickstart`
+offers `ReadOneGift`, `SendReviewedGift` and `ClaimGift` on top of this sample.
+
+The sample persists the original send intent exactly like the Marketplace sample: one
+flushed and verified project and player scoped file under `Saved/SaveGames`, a
+system wide lease that outlives the screen UObject, the original UTF-8 JSON resent
+without normalization and without an automatic write retry. A changed player, session
+token or request context fences every later step. Known success stores only the gift
+ID, then reads current Inventory, Player Values and gift state, and only after all
+three succeed the original is removed. After a timeout, restart or `STATE_CONFLICT`
+use `RetryPending` (resend the identical body) or read-only `RecoverOriginalOperation`
+(`GET /operations/{operationId}`). Never generate a new operation ID or revision for
+the same intent. `OPERATION_NOT_FOUND` or `OPERATION_EXPIRED` does not prove that the
+send did not happen.
+
+`Tests/run_native_item_gifts_test.py` runs `Horizon.ItemGifts.StrictModels` and
+`Horizon.ItemGifts.NativeTransport` against the artificial loopback fixture
+`Tests/mock_item_gifts_server.py` (`HORIZON_ITEM_GIFTS_FIXTURE_URL`, port 20140): all
+six routes, an uncertain send recovered by operation lookup, a failed and a repeated
+refresh, a replay, a changed payload, a decline and its replay, and the return claimed
+through the Inbox. Local fixtures are not hosted backend or deployment evidence.

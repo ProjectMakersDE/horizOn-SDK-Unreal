@@ -8,7 +8,7 @@
 class FJsonObject;
 
 UENUM(BlueprintType)
-enum class EHorizonInboxSourceKind : uint8 { Unknown, FriendRequest, FriendAccepted, GroupInvitation, GroupRequest, GroupInvitationAccepted, GroupRequestAccepted, MatchTurn, MarketReturn };
+enum class EHorizonInboxSourceKind : uint8 { Unknown, FriendRequest, FriendAccepted, GroupInvitation, GroupRequest, GroupInvitationAccepted, GroupRequestAccepted, MatchTurn, MarketReturn, ItemGiftOffer, ItemGiftReturn };
 USTRUCT(BlueprintType)
 struct HORIZONSDK_API FHorizonInboxSource
 {
@@ -31,6 +31,18 @@ struct HORIZONSDK_API FHorizonInboxItemReturn
     UPROPERTY(BlueprintReadOnly, Category="horizOn|Inbox") FString ItemKey;
 };
 
+/** Item gift escrow reference. Direction "offer" is the recipient's gift, "return" the sender's original back. */
+USTRUCT(BlueprintType)
+struct HORIZONSDK_API FHorizonInboxItemGift
+{
+    GENERATED_BODY()
+    UPROPERTY(BlueprintReadOnly, Category="horizOn|Inbox") bool bPresent = false;
+    UPROPERTY(BlueprintReadOnly, Category="horizOn|Inbox") FString GiftId;
+    UPROPERTY(BlueprintReadOnly, Category="horizOn|Inbox") FString InstanceId;
+    UPROPERTY(BlueprintReadOnly, Category="horizOn|Inbox") FString ItemKey;
+    UPROPERTY(BlueprintReadOnly, Category="horizOn|Inbox") FString Direction;
+};
+
 USTRUCT(BlueprintType)
 struct HORIZONSDK_API FHorizonInboxAttachment
 {
@@ -38,7 +50,8 @@ struct HORIZONSDK_API FHorizonInboxAttachment
     UPROPERTY(BlueprintReadOnly, Category="horizOn|Inbox") bool bPresent = false;
     UPROPERTY(BlueprintReadOnly, Category="horizOn|Inbox") TArray<FHorizonPlayerValueAmount> Values;
     UPROPERTY(BlueprintReadOnly, Category="horizOn|Inbox") FHorizonInboxItemReturn ItemReturn;
-    bool HasReward() const { return !Values.IsEmpty() || ItemReturn.bPresent; }
+    UPROPERTY(BlueprintReadOnly, Category="horizOn|Inbox") FHorizonInboxItemGift ItemGift;
+    bool HasReward() const { return !Values.IsEmpty() || ItemReturn.bPresent || ItemGift.bPresent; }
 };
 USTRUCT(BlueprintType)
 struct HORIZONSDK_API FHorizonInboxEntry
