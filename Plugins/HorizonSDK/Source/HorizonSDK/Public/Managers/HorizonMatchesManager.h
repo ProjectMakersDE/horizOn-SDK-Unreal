@@ -68,12 +68,16 @@ public:
     UPROPERTY(BlueprintAssignable,Category="horizOn|Matches") FOnHorizonMatchReportResult OnMatchReportResult;
     UPROPERTY(BlueprintAssignable,Category="horizOn|Matches") FOnHorizonMatchRunResult OnMatchRunResult;
 private:
+#if WITH_DEV_AUTOMATION_TESTS
+    friend struct FRealtimeSocketV2Test;
+#endif
     UPROPERTY() UHorizonHttpClient* HttpClient=nullptr;
     UPROPERTY() UHorizonAuthManager* AuthManager=nullptr;
     UPROPERTY() UHorizonValidatedActionsManager* ValidatedActions=nullptr;
     UPROPERTY() UHorizonRealtimeManager* Realtime=nullptr;
     UFUNCTION() void OnRealtimeEvent(const FString& EventJson);
     UFUNCTION() void OnRealtimeTopic(const FString& Topic);
+    UFUNCTION() void OnRealtimeSubscribed(const FString& Topic);
     FString Identity,Scope,AdoptedRunId,AdoptedMatchId;
     int64 AdoptedFinalRevision=-1;
     FHorizonValidatedRun AdoptedOriginalRun;
@@ -93,7 +97,8 @@ private:
     void Sync();
     void ClearSnapshots();
     bool Accept(const FString& ServerTime,const TMap<FString,int64>& Versions={});
-    void Call(const FString& User,const FString& Route,const FString& Verb,const TSharedPtr<FJsonObject>& Body,int64 OriginalRevision,FOnHttpResponse Complete);
+    /** Frame: socket v2 match.action sent instead of HTTP while the realtime socket allows it. ReloadRoute: match read after an unknown outcome. */
+    void Call(const FString& User,const FString& Route,const FString& Verb,const TSharedPtr<FJsonObject>& Body,int64 OriginalRevision,FOnHttpResponse Complete,const TSharedPtr<FJsonObject>& Frame=nullptr,const FString& ReloadRoute=TEXT(""));
     void Action(const FString& User,const FString& MatchId,int64 OriginalRevision,const FString& Action,const TSharedPtr<FJsonObject>& Body,FOnMatchComplete Complete);
     static FHorizonNetworkResponse Error(const FString& Code);
 };
