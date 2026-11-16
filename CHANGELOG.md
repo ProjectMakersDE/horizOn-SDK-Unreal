@@ -1,3 +1,11 @@
+# [1.11.0](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/compare/v1.10.6...v1.11.0) (2026-11-16)
+
+
+### Features
+
+* **item-gifts:** add item gifts manager, durable send sample and inbox gift attachments (TASK-1140) ([e4b0389](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/e4b0389f5b5f918a2e9003da396758aa5f30b6a2))
+* **realtime:** send chat and match actions over socket v2 ([832a56c](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/832a56c2cdc9d5fb9a842836b6813af989c6913d))
+
 ## [1.10.6](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/compare/v1.10.5...v1.10.6) (2026-11-15)
 
 
