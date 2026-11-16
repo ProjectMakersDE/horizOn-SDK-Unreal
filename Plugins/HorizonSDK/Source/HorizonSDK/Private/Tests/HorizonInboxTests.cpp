@@ -206,6 +206,18 @@ bool FHorizonInboxModelTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Item-only return counts as claimable"),Parse(Market,ItemOnly) && ItemOnly.Entries[0].CanClaim() && ItemOnly.Entries[0].Attachment.Values.IsEmpty());
     for (const FString& Bad:{Market.Replace(TEXT("\"values\":[]"),TEXT("\"values\":[],\"unknownReward\":1")),Market.Replace(TEXT("\"itemKey\":\"sword\""),TEXT("\"itemKey\":\"sword\",\"unknownReward\":1")),Valid.Replace(TEXT("\"amount\":7"),TEXT("\"amount\":7,\"unknownReward\":1"))})
     { FHorizonInboxSnapshot Snapshot; TestFalse(TEXT("Unknown valuable fields refused"),Parse(Bad,Snapshot)); }
+    const FString Sender=TEXT("00000000-0000-4000-8000-000000001140");
+    const FString GiftAttachment=TEXT("{\"values\":[],\"itemGift\":{\"giftId\":\"")+User+TEXT("\",\"instanceId\":\"")+User+TEXT("\",\"itemKey\":\"sword\",\"direction\":\"offer\"}}");
+    const FString Offer=One(TEXT("item_gift"),TEXT("horizon.item_gifts.offer"),TEXT("{\"senderId\":\"")+Sender+TEXT("\"}"),GiftAttachment);
+    FHorizonInboxSnapshot GiftOffer; FHorizonInboxSource GiftSource;
+    TestTrue(TEXT("Item gift offer is a claimable attachment with its escrow reference"),Parse(Offer,GiftOffer) && GiftOffer.Entries[0].CanClaim() && GiftOffer.Entries[0].Attachment.ItemGift.bPresent && GiftOffer.Entries[0].Attachment.ItemGift.Direction==TEXT("offer") && GiftOffer.Entries[0].Attachment.ItemGift.ItemKey==TEXT("sword"));
+    TestTrue(TEXT("Item gift offer source names the gift and its sender"),GiftOffer.Entries.Num()==1 && GiftOffer.Entries[0].TryGetSource(GiftSource) && GiftSource.Kind==EHorizonInboxSourceKind::ItemGiftOffer && GiftSource.SourceId==User && GiftSource.UserId==Sender);
+    const FString GiftReturn=One(TEXT("item_gift_return"),TEXT("horizon.item_gifts.return"),TEXT("{\"recipientId\":\"")+Sender+TEXT("\",\"reason\":\"declined\"}"),GiftAttachment.Replace(TEXT("\"offer\""),TEXT("\"return\"")));
+    FHorizonInboxSnapshot GiftBack;
+    TestTrue(TEXT("Item gift return source names the recipient"),Parse(GiftReturn,GiftBack) && GiftBack.Entries[0].CanClaim() && GiftBack.Entries[0].TryGetSource(GiftSource) && GiftSource.Kind==EHorizonInboxSourceKind::ItemGiftReturn && GiftSource.UserId==Sender && GiftBack.Entries[0].Parameters.FindRef(TEXT("reason"))==TEXT("declined"));
+    for (const FString& Bad:{Offer.Replace(TEXT("\"direction\":\"offer\""),TEXT("\"direction\":\"gift\"")),Offer.Replace(TEXT("\"direction\":\"offer\""),TEXT("\"direction\":\"return\"")),Offer.Replace(TEXT("\"itemKey\":\"sword\""),TEXT("\"itemKey\":\"sword\",\"unknownReward\":1")),
+        Offer.Replace(TEXT("\"senderId\""),TEXT("\"recipientId\"")),Offer.Replace(TEXT("\"values\":[],"),*(TEXT("\"values\":[],\"itemReturn\":{\"listingId\":\"")+User+TEXT("\",\"instanceId\":\"")+User+TEXT("\",\"itemKey\":\"sword\"},")))})
+    { FHorizonInboxSnapshot Snapshot; TestFalse(TEXT("Malformed item gift attachment or source refused"),Parse(Bad,Snapshot)); }
     const FString Text=FString::ChrN(256,TCHAR(0x00e4));
     FString FreeText=One(TEXT("free_text"),TEXT("horizon.inbox.free_text"),TEXT("{\"text\":\"")+Text+TEXT("\"}"),TEXT("null")).Replace(TEXT("2026-10-16T00:00:00Z"),TEXT("2030-01-01T00:00:00Z"));
     FHorizonInboxSnapshot Plain; FString Decoded;
