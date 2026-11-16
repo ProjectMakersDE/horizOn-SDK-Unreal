@@ -15,11 +15,24 @@ template<typename D> bool Failed(const FHorizonNetworkResponse& R,const D& Done)
 template<typename D> void Bad(const D& Done,const FString& Code=TEXT("INVALID_REQUEST")){Done.ExecuteIfBound(false,{},Code,Code);}
 bool Denied(const FString& C){return C==TEXT("SESSION_REQUIRED")||C==TEXT("SESSION_FORBIDDEN")||C==TEXT("CHAT_NOT_AVAILABLE")||C==TEXT("CHANNEL_NOT_FOUND")||C==TEXT("CHAT_BANNED");}
 bool Same(const FHorizonChatMessage& A,const FHorizonChatMessage& B){return A.Id==B.Id&&A.ChannelId==B.ChannelId&&A.AuthorId==B.AuthorId&&HorizonChatWire::Exact(A.Text,B.Text)&&A.CreatedAt==B.CreatedAt&&A.ExpiresAt==B.ExpiresAt;}
+/** Sync response (HTTP or socket snapshot) merged with the known feed; empty code on success. */
+FString Merge(const FString& C,const FHorizonChatSynced& V,const FHorizonChatFeed& Old,const FString& Floor,FHorizonChatFeed& New)
+{
+    if((!Floor.IsEmpty()&&V.ServerTime<Floor)||(Old.bPresent&&V.Channel.Epoch==Old.Channel.Epoch&&V.Channel.Revision<Old.Channel.Revision))return TEXT("STALE_RESPONSE");
+    New.Channel=V.Channel;New.Moderation=V.Moderation;New.ServerTime=V.ServerTime;
+    for(const auto& Id:V.VisibleMessageIds)
+    {
+        const auto* Incoming=V.Messages.FindByPredicate([&](const FHorizonChatMessage& M){return M.Id==Id;});const auto* Cached=Old.bPresent&&Old.Channel.Epoch==V.Channel.Epoch?Old.Messages.FindByPredicate([&](const FHorizonChatMessage& M){return M.Id==Id;}):nullptr;
+        if((!Incoming&&!Cached)||(Incoming&&Cached&&!Same(*Incoming,*Cached)))return TEXT("INVALID_RESPONSE");const auto& M=Incoming?*Incoming:*Cached;
+        if(M.ChannelId!=C||(!New.Messages.IsEmpty()&&(M.CreatedAt<New.Messages.Last().CreatedAt||(M.CreatedAt==New.Messages.Last().CreatedAt&&M.Id<=New.Messages.Last().Id))))return TEXT("INVALID_RESPONSE");New.Messages.Add(M);
+    }
+    return TEXT("");
+}
 }
 void UHorizonChatManager::Initialize(UHorizonHttpClient* H,UHorizonAuthManager* A,UHorizonRealtimeManager* R)
 {
-    if(Realtime){Realtime->OnSubscribed.RemoveDynamic(this,&UHorizonChatManager::OnSubscribed);Realtime->OnResyncRequired.RemoveDynamic(this,&UHorizonChatManager::OnTopic);Realtime->OnEvent.RemoveDynamic(this,&UHorizonChatManager::OnRealtimeEvent);Realtime->OnConnectionError.RemoveDynamic(this,&UHorizonChatManager::OnRealtimeError);Realtime->OnSubscriptionError.RemoveDynamic(this,&UHorizonChatManager::OnSubscriptionError);}HttpClient=H;AuthManager=A;Realtime=R;
-    if(R){R->OnSubscribed.AddUniqueDynamic(this,&UHorizonChatManager::OnSubscribed);R->OnResyncRequired.AddUniqueDynamic(this,&UHorizonChatManager::OnTopic);R->OnEvent.AddUniqueDynamic(this,&UHorizonChatManager::OnRealtimeEvent);R->OnConnectionError.AddUniqueDynamic(this,&UHorizonChatManager::OnRealtimeError);R->OnSubscriptionError.AddUniqueDynamic(this,&UHorizonChatManager::OnSubscriptionError);}ClearCache();
+    if(Realtime){Realtime->BuildSync.Unbind();Realtime->OnSubscribed.RemoveDynamic(this,&UHorizonChatManager::OnSubscribed);Realtime->OnResyncRequired.RemoveDynamic(this,&UHorizonChatManager::OnTopic);Realtime->OnEvent.RemoveDynamic(this,&UHorizonChatManager::OnRealtimeEvent);Realtime->OnConnectionError.RemoveDynamic(this,&UHorizonChatManager::OnRealtimeError);Realtime->OnSubscriptionError.RemoveDynamic(this,&UHorizonChatManager::OnSubscriptionError);}HttpClient=H;AuthManager=A;Realtime=R;
+    if(R){R->BuildSync.BindUObject(this,&UHorizonChatManager::BuildSync);R->OnSubscribed.AddUniqueDynamic(this,&UHorizonChatManager::OnSubscribed);R->OnResyncRequired.AddUniqueDynamic(this,&UHorizonChatManager::OnTopic);R->OnEvent.AddUniqueDynamic(this,&UHorizonChatManager::OnRealtimeEvent);R->OnConnectionError.AddUniqueDynamic(this,&UHorizonChatManager::OnRealtimeError);R->OnSubscriptionError.AddUniqueDynamic(this,&UHorizonChatManager::OnSubscriptionError);}ClearCache();
 }
 FHorizonNetworkResponse UHorizonChatManager::Error(const FString& Code){FHorizonNetworkResponse R;R.ServerErrorCode=Code;R.ErrorMessage=Code;return R;}
 void UHorizonChatManager::SyncIdentity()
@@ -39,7 +52,7 @@ void UHorizonChatManager::ClearCache()
 {
     SyncIdentity();++Generation;Limits={};ResponseMetadata={};TMap<FString,FChannelState> Old=MoveTemp(Channels);Channels.Empty();for(const auto& Row:Old){if(Realtime)Realtime->Unsubscribe(HorizonChatRequest::Topic(Row.Key));for(const auto& D:Row.Value.Waiters)D.ExecuteIfBound(false,{},TEXT("STALE_RESPONSE"),TEXT("Cache cleared"));OnFeedChanged.Broadcast(Row.Key);}
 }
-void UHorizonChatManager::Call(const FString& U,const FString& Route,const TSharedPtr<FJsonObject>& B,bool Read,FOnHttpResponse Done)
+void UHorizonChatManager::Call(const FString& U,const FString& Route,const TSharedPtr<FJsonObject>& B,bool Read,FOnHttpResponse Done,const TSharedPtr<FJsonObject>& Frame)
 {
     const FString Failure=Validate(U);
     if(!Failure.IsEmpty()){Done.ExecuteIfBound(Error(Failure));return;}
@@ -80,6 +93,13 @@ void UHorizonChatManager::Call(const FString& U,const FString& Route,const TShar
         if(!HorizonChatWire::Parse(R.RawJsonBody,R.JsonData)){Done.ExecuteIfBound(Error(TEXT("INVALID_RESPONSE")));return;}
         Done.ExecuteIfBound(R);
     });
+    // Socket v2: same response mapping; an unknown outcome retries HTTP with the same operationId and issuedAt (idempotent).
+    if(Frame&&B&&!Read&&Realtime&&Realtime->SendRequest(Frame.ToSharedRef(),FOnHttpResponse::CreateWeakLambda(this,[this,C,BoundIdentity,B,Route,Callback](const FHorizonNetworkResponse& Response)
+    {
+        if(!UHorizonRealtimeManager::IsOutcomeUnknown(Response)){Callback.ExecuteIfBound(Response);return;}
+        SyncIdentity();if(Context!=C||Identity!=BoundIdentity){Callback.ExecuteIfBound(Response);return;}
+        HttpClient->JsonOnce(B.ToSharedRef(),Route,false,true,Callback);
+    })))return;
     if(!B)HttpClient->Get(Route,true,Callback);
     else if(Read)HttpClient->PostJsonRead(B.ToSharedRef(),Route,Callback);
     else HttpClient->JsonOnce(B.ToSharedRef(),Route,false,true,Callback);
@@ -143,23 +163,40 @@ void UHorizonChatManager::StartSync(const FString& C)
         if(S->Authority!=A){if(IsChannelSubscribed(C))StartSync(C);else FinishSync(C,false,{},TEXT("STALE_RESPONSE"),TEXT("Channel authority changed"));return;}
         if(!Realtime||!Realtime->IsSubscribed(HorizonChatRequest::Topic(C))||Realtime->GetConnectionGeneration()!=R){Hide(C,true);FinishSync(C,false,{},TEXT("STALE_RESPONSE"),TEXT("Subscription changed"));return;}
         FHorizonChatSynced V;FString Code=Response.bSuccess?TEXT(""):Response.GetErrorCodeString();if(Code.IsEmpty()&&(!FHorizonChatSynced::TryFromJson(Response.JsonData,V)||V.Channel.Id!=C))Code=TEXT("INVALID_RESPONSE");
-        if(Code.IsEmpty()&&((!S->ServerFloor.IsEmpty()&&V.ServerTime<S->ServerFloor)||(Old.bPresent&&V.Channel.Epoch==Old.Channel.Epoch&&V.Channel.Revision<Old.Channel.Revision)))Code=TEXT("STALE_RESPONSE");
-        FHorizonChatFeed New;New.Channel=V.Channel;New.Moderation=V.Moderation;New.ServerTime=V.ServerTime;
-        if(Code.IsEmpty())for(const auto& Id:V.VisibleMessageIds)
-        {
-            const auto* Incoming=V.Messages.FindByPredicate([&](const FHorizonChatMessage& M){return M.Id==Id;});const auto* Cached=Old.bPresent&&Old.Channel.Epoch==V.Channel.Epoch?Old.Messages.FindByPredicate([&](const FHorizonChatMessage& M){return M.Id==Id;}):nullptr;
-            if((!Incoming&&!Cached)||(Incoming&&Cached&&!HorizonChatRequest::Same(*Incoming,*Cached))){Code=TEXT("INVALID_RESPONSE");break;}const auto& M=Incoming?*Incoming:*Cached;
-            if(M.ChannelId!=C||(!New.Messages.IsEmpty()&&(M.CreatedAt<New.Messages.Last().CreatedAt||(M.CreatedAt==New.Messages.Last().CreatedAt&&M.Id<=New.Messages.Last().Id)))){Code=TEXT("INVALID_RESPONSE");break;}New.Messages.Add(M);
-        }
+        FHorizonChatFeed New;if(Code.IsEmpty())Code=HorizonChatRequest::Merge(C,V,Old,S->ServerFloor,New);
         if(!Code.IsEmpty())
         {
             Hide(C,true);FinishSync(C,false,{},Code,Response.ErrorMessage.IsEmpty()?Code:Response.ErrorMessage);if(HorizonChatRequest::Denied(Code))UnwatchChannel(C);return;
         }
-        New.bPresent=true;S->Feed=MoveTemp(New);S->Complete=true;S->ServerFloor=V.ServerTime;S->SynchronizedAt=FPlatformTime::Seconds();
+        New.bPresent=true;S->Feed=MoveTemp(New);S->Known=S->Feed;S->Complete=true;S->ServerFloor=V.ServerTime;S->SynchronizedAt=FPlatformTime::Seconds();
         if(S->Dirty){S->Visible=false;StartSync(C);return;}S->Visible=true;Archive(C,S->Feed.Messages,Captured);SyncIdentity();auto* Current=Channels.Find(C);if(G!=Generation||!Current||Current->Serial!=Serial||Current->Authority!=A)return;OnFeedChanged.Broadcast(C);SyncIdentity();Current=Channels.Find(C);if(G!=Generation||!Current||Current->Serial!=Serial||Current->Authority!=A)return;FinishSync(C,true,V,TEXT(""),TEXT(""));
     }));
 }
-void UHorizonChatManager::OnSubscribed(const FString& Topic){if(!Topic.StartsWith(TEXT("chat:")))return;const FString C=Topic.Mid(5);if(!Channels.Contains(C))return;Hide(C,true);/* The protocol sends SUBSCRIBED resync after its authorized ACK. */}
+void UHorizonChatManager::OnSubscribed(const FString& Topic)
+{
+    if(!Topic.StartsWith(TEXT("chat:")))return;const FString C=Topic.Mid(5);if(!Channels.Contains(C))return;
+    // Socket v2: a snapshot is the sync answer and no resync follows; an unusable one falls back to the HTTP sync.
+    FString Snapshot;if(Realtime&&Realtime->GetSnapshot(Topic,Snapshot)){if(!ApplySnapshot(C,Snapshot)){Hide(C,true);StartSync(C);}return;}
+    Hide(C,true);/* The protocol sends SUBSCRIBED resync after its authorized ACK. */
+}
+TSharedPtr<FJsonObject> UHorizonChatManager::BuildSync(const FString& Topic)
+{
+    const auto* S=Topic.StartsWith(TEXT("chat:"))?Channels.Find(Topic.Mid(5)):nullptr;if(!S)return nullptr;
+    auto Sync=MakeShared<FJsonObject>();TArray<TSharedPtr<FJsonValue>> Ids;
+    if(S->Known.bPresent){Sync->SetStringField(TEXT("epoch"),S->Known.Channel.Epoch);for(int32 N=FMath::Max(0,S->Known.Messages.Num()-20);N<S->Known.Messages.Num();++N)Ids.Add(MakeShared<FJsonValueString>(S->Known.Messages[N].Id));}
+    else Sync->SetField(TEXT("epoch"),MakeShared<FJsonValueNull>());
+    Sync->SetArrayField(TEXT("knownMessageIds"),Ids);return Sync;
+}
+bool UHorizonChatManager::ApplySnapshot(const FString& C,const FString& Json)
+{
+    auto* S=Channels.Find(C);TSharedPtr<FJsonObject> J;FHorizonChatSynced V;FHorizonChatFeed New;
+    if(!S||!Realtime||!HorizonChatWire::Parse(Json,J)||!FHorizonChatSynced::TryFromJson(J,V)||V.Channel.Id!=C||!HorizonChatRequest::Merge(C,V,S->Known,S->ServerFloor,New).IsEmpty())return false;
+    // A sync still in flight from before belongs to an older authority and restarts instead of hiding this feed.
+    const FString Captured=History?History->Capture(C):FString();++S->Authority;
+    New.bPresent=true;S->Feed=MoveTemp(New);S->Known=S->Feed;S->Complete=true;S->Visible=true;S->Dirty=false;S->ServerFloor=V.ServerTime;S->SynchronizedAt=FPlatformTime::Seconds();S->RealtimeGeneration=Realtime->GetConnectionGeneration();
+    const uint64 G=Generation,Serial=S->Serial;Archive(C,S->Feed.Messages,Captured);SyncIdentity();const auto* Current=Channels.Find(C);if(G!=Generation||!Current||Current->Serial!=Serial)return true;
+    OnFeedChanged.Broadcast(C);FinishSync(C,true,V,TEXT(""),TEXT(""));return true;
+}
 void UHorizonChatManager::OnTopic(const FString& Topic){if(!Topic.StartsWith(TEXT("chat:")))return;const FString C=Topic.Mid(5);if(!Channels.Contains(C))return;const bool Authorized=Realtime&&Realtime->IsSubscribed(Topic);Hide(C,!Authorized);if(Authorized)StartSync(C);}
 void UHorizonChatManager::OnRealtimeEvent(const FString& Json){TSharedPtr<FJsonObject> J;FString Topic,Type,Version;if(!HorizonChatWire::Parse(Json,J)||!J->TryGetStringField(TEXT("type"),Type)||Type!=TEXT("event")||!J->TryGetStringField(TEXT("topic"),Topic))return;auto V=J->TryGetField(TEXT("version"));if(V&&V->Type==EJson::Number&&V->TryGetString(Version)&&Version==TEXT("1"))OnTopic(Topic);}
 void UHorizonChatManager::OnSubscriptionError(const FString& Topic,const FString& Code){if(Topic.StartsWith(TEXT("chat:"))&&Code==TEXT("SUBSCRIPTION_FORBIDDEN"))UnwatchChannel(Topic.Mid(5));}
@@ -172,7 +209,8 @@ void UHorizonChatManager::SendMessage(const FString& U,const FString& C,const FS
 {
     if(!HorizonChatWire::Id(C)||!HorizonChatWire::Id(Id)||!HorizonChatWire::Time(At)||!HorizonChatWire::Text(Text)){HorizonChatRequest::Bad(D);return;}auto B=HorizonChatRequest::Body(U);B->SetStringField(TEXT("operationId"),Id);B->SetStringField(TEXT("issuedAt"),At);B->SetStringField(TEXT("text"),Text);
     SyncIdentity();const FString Captured=History?History->Capture(C):FString();
-    Call(U,HorizonChatRequest::Root+TEXT("/channels/")+C+TEXT("/messages"),B,false,FOnHttpResponse::CreateWeakLambda(this,[this,U,C,Id,At,Text,Captured,D](const FHorizonNetworkResponse& R){if(HorizonChatRequest::Failed(R,D))return;FHorizonChatSent V;if(!FHorizonChatSent::TryFromJson(R.JsonData,V)||V.Receipt.OperationId!=Id||V.Receipt.ChannelId!=C||V.Receipt.IssuedAt!=At){HorizonChatRequest::Bad(D,TEXT("INVALID_RESPONSE"));return;}FHorizonChatMessage M;M.Id=V.Receipt.MessageId;M.ChannelId=C;M.AuthorId=U;M.Text=Text;M.CreatedAt=V.Receipt.CreatedAt;M.ExpiresAt=V.Receipt.ExpiresAt;const uint64 WriteContext=Context;const FString WriteIdentity=Identity;Archive(C,{M},Captured);SyncIdentity();if(Context!=WriteContext||Identity!=WriteIdentity){HorizonChatRequest::Bad(D,TEXT("STALE_RESPONSE"));return;}D.ExecuteIfBound(true,V,TEXT(""),TEXT(""));}));
+    auto Frame=MakeShared<FJsonObject>();Frame->SetStringField(TEXT("type"),TEXT("chat.send"));Frame->SetStringField(TEXT("channelId"),C);Frame->SetStringField(TEXT("operationId"),Id);Frame->SetStringField(TEXT("issuedAt"),At);Frame->SetStringField(TEXT("text"),Text);
+    Call(U,HorizonChatRequest::Root+TEXT("/channels/")+C+TEXT("/messages"),B,false,FOnHttpResponse::CreateWeakLambda(this,[this,U,C,Id,At,Text,Captured,D](const FHorizonNetworkResponse& R){if(HorizonChatRequest::Failed(R,D))return;FHorizonChatSent V;if(!FHorizonChatSent::TryFromJson(R.JsonData,V)||V.Receipt.OperationId!=Id||V.Receipt.ChannelId!=C||V.Receipt.IssuedAt!=At){HorizonChatRequest::Bad(D,TEXT("INVALID_RESPONSE"));return;}FHorizonChatMessage M;M.Id=V.Receipt.MessageId;M.ChannelId=C;M.AuthorId=U;M.Text=Text;M.CreatedAt=V.Receipt.CreatedAt;M.ExpiresAt=V.Receipt.ExpiresAt;const uint64 WriteContext=Context;const FString WriteIdentity=Identity;Archive(C,{M},Captured);SyncIdentity();if(Context!=WriteContext||Identity!=WriteIdentity){HorizonChatRequest::Bad(D,TEXT("STALE_RESPONSE"));return;}D.ExecuteIfBound(true,V,TEXT(""),TEXT(""));}),Frame);
 }
 void UHorizonChatManager::GetOperation(const FString& U,const FString& Id,FOnChatOperationComplete D)
 {

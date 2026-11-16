@@ -44,7 +44,7 @@ bool UHorizonMatchesManager::Accept(const FString& Time,const TMap<FString,int64
     ServerMillis=Millis;for(const auto& V:Versions)RevisionFloors.Add(V.Key,V.Value);return true;
 }
 
-void UHorizonMatchesManager::Call(const FString& U,const FString& Route,const FString& Verb,const TSharedPtr<FJsonObject>& Body,int64 Revision,FOnHttpResponse Done)
+void UHorizonMatchesManager::Call(const FString& U,const FString& Route,const FString& Verb,const TSharedPtr<FJsonObject>& Body,int64 Revision,FOnHttpResponse Done,const TSharedPtr<FJsonObject>& Frame,const FString& ReloadRoute)
 {
     Sync();FString Failure;if(!HttpClient||!AuthManager||!AuthManager->IsSignedIn()||HttpClient->GetSessionToken().IsEmpty()||HttpClient->GetSessionToken()!=AuthManager->GetCurrentUser().AccessToken)Failure=TEXT("SESSION_REQUIRED");else if(U!=AuthManager->GetCurrentUser().UserId)Failure=TEXT("SESSION_FORBIDDEN");else if(!HorizonMatchesRequest::Uuid(U))Failure=TEXT("INVALID_REQUEST");else if(Busy)Failure=TEXT("REQUEST_IN_PROGRESS");if(!Failure.IsEmpty()){Done.ExecuteIfBound(Error(Failure));return;}
     FString Json;if(Body&&!HorizonLosslessJson::Object(Body.ToSharedRef(),Json)){Done.ExecuteIfBound(Error(TEXT("INVALID_REQUEST")));return;}
@@ -54,6 +54,23 @@ void UHorizonMatchesManager::Call(const FString& U,const FString& Route,const FS
         auto* S=Weak.Get();if(!S)return;S->Sync();if(S->Epoch!=E||S->Ticket!=T||S->Context!=C||S->Scope!=NewScope){Done.ExecuteIfBound(Error(TEXT("STALE_RESPONSE")));return;}S->Busy=false;
         if(!Response.bSuccess){Done.ExecuteIfBound(Response);return;}FHorizonNetworkResponse R=Response;if(R.RawJsonBody.IsEmpty()||!HorizonMatchesWire::Parse(R.RawJsonBody,R.JsonData)){Done.ExecuteIfBound(Error(TEXT("INVALID_RESPONSE")));return;}Done.ExecuteIfBound(R);
     });
+    // Socket v2: same response mapping. An unknown outcome retries HTTP with the same revision; a 409 then means
+    // the socket send landed, so the reloaded match at Revision+1 is the answer.
+    if(Frame&&Body&&Revision>=0&&Realtime&&Realtime->SendRequest(Frame.ToSharedRef(),FOnHttpResponse::CreateWeakLambda(this,[this,T,Body,Route,Verb,Revision,ReloadRoute,Complete](const FHorizonNetworkResponse& Response)
+    {
+        if(!UHorizonRealtimeManager::IsOutcomeUnknown(Response)){Complete.ExecuteIfBound(Response);return;}
+        Sync();if(Ticket!=T){Complete.ExecuteIfBound(Response);return;}
+        HttpClient->RevisionJsonOnce(Body,Route,Verb,Revision,FOnHttpResponse::CreateWeakLambda(this,[this,T,Revision,ReloadRoute,Complete](const FHorizonNetworkResponse& Retry)
+        {
+            Sync();if(Retry.StatusCode!=409||ReloadRoute.IsEmpty()||Ticket!=T){Complete.ExecuteIfBound(Retry);return;}
+            HttpClient->Get(ReloadRoute,true,FOnHttpResponse::CreateLambda([Retry,Revision,Complete](const FHorizonNetworkResponse& Reload)
+            {
+                TSharedPtr<FJsonObject> J;FHorizonMatchRead V;
+                const bool Landed=Reload.bSuccess&&HorizonMatchesWire::Parse(Reload.RawJsonBody,J)&&FHorizonMatchRead::TryFromJson(J,V)&&V.Match.Revision==Revision+1;
+                Complete.ExecuteIfBound(Landed?Reload:Retry);
+            }));
+        }));
+    })))return;
     if(Verb==TEXT("GET"))HttpClient->Get(Route,true,Complete);else if(Revision<0)HttpClient->JsonOnce(Body.ToSharedRef(),Route,false,true,Complete);else HttpClient->RevisionJsonOnce(Body,Route,Verb,Revision,Complete);
 }
 FHorizonMyMatches UHorizonMatchesManager::GetCurrentMatches(){Sync();return CurrentMatches;}
@@ -98,7 +115,9 @@ void UHorizonMatchesManager::CreateMatch(const FString& U,int64 Revision,const F
 void UHorizonMatchesManager::Action(const FString& U,const FString& Id,int64 Revision,const FString& ActionName,const TSharedPtr<FJsonObject>& B,FOnMatchComplete Done)
 {
     if(!HorizonMatchesRequest::Uuid(Id)||!HorizonMatchesRequest::Revision(Revision)){HorizonMatchesRequest::Invalid(Done);return;}
-    Call(U,HorizonMatchesRequest::Match(Id)+TEXT("/")+ActionName,TEXT("POST"),B,Revision,FOnHttpResponse::CreateWeakLambda(this,[this,U,Id,Revision,Done](const FHorizonNetworkResponse& R){if(HorizonMatchesRequest::Failed(R,Done))return;FHorizonMatchRead V;if(!FHorizonMatchRead::TryFromJson(R.JsonData,V)||!V.Match.Id.Equals(Id,ESearchCase::IgnoreCase)||V.Match.Revision!=Revision+1||!HorizonMatchesRequest::Visible(V.Match,U)){HorizonMatchesRequest::Bad(Done);return;}if(!Accept(V.ServerTime,{{HorizonMatchesRequest::MatchKey(V.Match.Id),V.Match.Revision}})){HorizonMatchesRequest::Stale(Done);return;}CurrentMatch=V;Done.ExecuteIfBound(true,V,TEXT(""),TEXT(""));}));
+    auto Frame=MakeShared<FJsonObject>(),Input=MakeShared<FJsonObject>();for(const auto& Field:B->Values)if(Field.Key!=TEXT("userId"))Input->SetField(Field.Key,Field.Value);
+    Frame->SetStringField(TEXT("type"),TEXT("match.action"));Frame->SetStringField(TEXT("matchId"),Id);Frame->SetStringField(TEXT("action"),ActionName);Frame->SetField(TEXT("revision"),MakeShared<FJsonValueNumberString>(LexToString(Revision)));Frame->SetObjectField(TEXT("input"),Input);
+    Call(U,HorizonMatchesRequest::Match(Id)+TEXT("/")+ActionName,TEXT("POST"),B,Revision,FOnHttpResponse::CreateWeakLambda(this,[this,U,Id,Revision,Done](const FHorizonNetworkResponse& R){if(HorizonMatchesRequest::Failed(R,Done))return;FHorizonMatchRead V;if(!FHorizonMatchRead::TryFromJson(R.JsonData,V)||!V.Match.Id.Equals(Id,ESearchCase::IgnoreCase)||V.Match.Revision!=Revision+1||!HorizonMatchesRequest::Visible(V.Match,U)){HorizonMatchesRequest::Bad(Done);return;}if(!Accept(V.ServerTime,{{HorizonMatchesRequest::MatchKey(V.Match.Id),V.Match.Revision}})){HorizonMatchesRequest::Stale(Done);return;}CurrentMatch=V;Done.ExecuteIfBound(true,V,TEXT(""),TEXT(""));}),Frame,HorizonMatchesRequest::Match(Id)+HorizonMatchesRequest::UserQuery(U));
 }
 void UHorizonMatchesManager::JoinMatch(const FString& U,const FString& Id,int64 R,FOnMatchComplete D){Action(U,Id,R,TEXT("join"),HorizonMatchesRequest::Body(U),D);}
 void UHorizonMatchesManager::DeclineInvite(const FString& U,const FString& Id,int64 R,FOnMatchComplete D){Action(U,Id,R,TEXT("decline"),HorizonMatchesRequest::Body(U),D);}
@@ -145,8 +164,8 @@ void UHorizonMatchesManager::StartRankedRun(const FString& U,const FString& Id,i
 
 void UHorizonMatchesManager::SetRealtime(UHorizonRealtimeManager* R)
 {
-    if(Realtime){Realtime->OnEvent.RemoveDynamic(this,&UHorizonMatchesManager::OnRealtimeEvent);Realtime->OnResyncRequired.RemoveDynamic(this,&UHorizonMatchesManager::OnRealtimeTopic);}Realtime=R;
-    if(R){R->OnEvent.AddUniqueDynamic(this,&UHorizonMatchesManager::OnRealtimeEvent);R->OnResyncRequired.AddUniqueDynamic(this,&UHorizonMatchesManager::OnRealtimeTopic);}
+    if(Realtime){Realtime->OnEvent.RemoveDynamic(this,&UHorizonMatchesManager::OnRealtimeEvent);Realtime->OnResyncRequired.RemoveDynamic(this,&UHorizonMatchesManager::OnRealtimeTopic);Realtime->OnSubscribed.RemoveDynamic(this,&UHorizonMatchesManager::OnRealtimeSubscribed);}Realtime=R;
+    if(R){R->OnEvent.AddUniqueDynamic(this,&UHorizonMatchesManager::OnRealtimeEvent);R->OnResyncRequired.AddUniqueDynamic(this,&UHorizonMatchesManager::OnRealtimeTopic);R->OnSubscribed.AddUniqueDynamic(this,&UHorizonMatchesManager::OnRealtimeSubscribed);}
 }
 void UHorizonMatchesManager::OnRealtimeTopic(const FString& Topic)
 {
@@ -156,4 +175,14 @@ void UHorizonMatchesManager::OnRealtimeEvent(const FString& EventJson)
 {
     TSharedPtr<FJsonObject> J;FString Type,Topic,Version;if(!HorizonMatchesWire::Parse(EventJson,J)||!J->TryGetStringField(TEXT("type"),Type)||Type!=TEXT("event")||!J->TryGetStringField(TEXT("topic"),Topic))return;
     const auto V=J->TryGetField(TEXT("version"));if(V&&V->Type==EJson::Number&&V->TryGetString(Version)&&Version==TEXT("1"))OnRealtimeTopic(Topic);
+}
+void UHorizonMatchesManager::OnRealtimeSubscribed(const FString& Topic)
+{
+    // Socket v2: the snapshot is the match read answer and no resync follows. An unusable one behaves like v1.
+    FString Json;if(!Realtime||!Topic.StartsWith(TEXT("matches:"),ESearchCase::CaseSensitive)||!Realtime->GetSnapshot(Topic,Json))return;
+    Sync();const FString U=AuthManager?AuthManager->GetCurrentUser().UserId:FString(),Id=Topic.Mid(8);TSharedPtr<FJsonObject> J;FHorizonMatchRead V;
+    if(!HorizonMatchesRequest::Uuid(Id)||!HorizonMatchesWire::Parse(Json,J)||!FHorizonMatchRead::TryFromJson(J,V)||!V.Match.Id.Equals(Id,ESearchCase::IgnoreCase)||!HorizonMatchesRequest::Visible(V.Match,U)||(!HorizonMatchesRequest::Contains(V.Match.ParticipantIds,U)&&!HorizonMatchesRequest::Contains(V.Match.InvitedIds,U))||(V.Match.bHasOwnRankedRunId&&(!V.Match.bHasFinalStateRevision||!SourceMatches(Id,V.Match.FinalStateRevision,V.Match.OwnRankedRunId))))
+    {Realtime->OnResyncRequired.Broadcast(Topic);return;}
+    if(!Accept(V.ServerTime,{{HorizonMatchesRequest::MatchKey(V.Match.Id),V.Match.Revision}}))return;
+    if(V.Match.bHasOwnRankedRunId)RememberSource(Id,V.Match.FinalStateRevision,V.Match.OwnRankedRunId);CurrentMatch=V;OnMatchReadResult.Broadcast(true,V,TEXT(""),TEXT(""));
 }

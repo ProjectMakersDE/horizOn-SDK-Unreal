@@ -66,11 +66,16 @@ public:
     virtual void BeginDestroy() override;
 private:
     friend struct FHorizonChatNative;
+#if WITH_DEV_AUTOMATION_TESTS
+    friend struct FRealtimeSocketV2Test;
+#endif
     struct FChannelState
     {
         bool Busy=false,Dirty=false,Visible=false,Complete=false;
         uint64 Serial=0,RealtimeGeneration=0,Authority=0;
         FHorizonChatFeed Feed;
+        /** Last complete feed, kept while hidden so a resubscription syncs only what was missed. */
+        FHorizonChatFeed Known;
         TArray<FOnChatSyncedComplete> Waiters;
         double SynchronizedAt=0;
         FString ServerFloor;
@@ -87,7 +92,10 @@ private:
     uint64 Context=0,Generation=0,NextSerial=0;
     void SyncIdentity();
     FString Validate(const FString& UserId);
-    void Call(const FString& UserId,const FString& Route,const TSharedPtr<FJsonObject>& Body,bool ReadOnly,FOnHttpResponse Complete);
+    /** Frame: socket v2 chat.send sent instead of HTTP while the realtime socket allows it. */
+    void Call(const FString& UserId,const FString& Route,const TSharedPtr<FJsonObject>& Body,bool ReadOnly,FOnHttpResponse Complete,const TSharedPtr<FJsonObject>& Frame=nullptr);
+    TSharedPtr<FJsonObject> BuildSync(const FString& Topic);
+    bool ApplySnapshot(const FString& ChannelId,const FString& Json);
     void StartSync(const FString& ChannelId);
     void Hide(const FString& ChannelId,bool Forget);
     void FinishSync(const FString& ChannelId,bool Success,const FHorizonChatSynced& Result,const FString& Code,const FString& Message);

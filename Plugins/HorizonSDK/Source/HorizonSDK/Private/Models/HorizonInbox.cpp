@@ -38,7 +38,7 @@ bool Attachment(const TSharedPtr<FJsonValue>& Json,FHorizonInboxAttachment& Out)
     if (Json->IsNull()) return true;
     if (Json->Type!=EJson::Object) return false;
     auto Object=Json->AsObject(); const TArray<TSharedPtr<FJsonValue>>* Values;
-    for (const auto& Pair:Object->Values) if (Pair.Key!=TEXT("values") && Pair.Key!=TEXT("itemReturn")) return false;
+    for (const auto& Pair:Object->Values) if (Pair.Key!=TEXT("values") && Pair.Key!=TEXT("itemReturn") && Pair.Key!=TEXT("itemGift")) return false;
     TArray<TSharedPtr<FJsonValue>> Empty;
     if (Object->HasField(TEXT("values"))) { if (!Object->TryGetArrayField(TEXT("values"),Values) || Values->Num()>8) return false; }
     else Values=&Empty;
@@ -60,6 +60,17 @@ bool Attachment(const TSharedPtr<FJsonValue>& Json,FHorizonInboxAttachment& Out)
         const FTCHARToUTF8 Key(*R.ItemKey,R.ItemKey.Len());
         if (!HorizonItemsContract::Key(std::string(Key.Get(),Key.Length()))) return false;
         R.bPresent=true;
+    }
+    auto Gift=Object->TryGetField(TEXT("itemGift"));
+    if (Gift && !Gift->IsNull())
+    {
+        if (Gift->Type!=EJson::Object || Out.ItemReturn.bPresent) return false;
+        const auto Item=Gift->AsObject(); auto& G=Out.ItemGift;
+        if (Item->Values.Num()!=4 || !String(Item,TEXT("giftId"),G.GiftId,36) || !Uuid(G.GiftId) || !String(Item,TEXT("instanceId"),G.InstanceId,36) || !Uuid(G.InstanceId) ||
+            !String(Item,TEXT("itemKey"),G.ItemKey,64) || !String(Item,TEXT("direction"),G.Direction,8) || (G.Direction!=TEXT("offer") && G.Direction!=TEXT("return"))) return false;
+        const FTCHARToUTF8 Key(*G.ItemKey,G.ItemKey.Len());
+        if (!HorizonItemsContract::Key(std::string(Key.Get(),Key.Length()))) return false;
+        G.bPresent=true;
     }
     Out.bPresent=true; return true;
 }
@@ -99,6 +110,8 @@ EHorizonInboxSourceKind FHorizonInboxEntry::SourceKind() const
     if (Pair==TEXT("group_accept-request:horizon.groups.accept-request")) return EHorizonInboxSourceKind::GroupRequestAccepted;
     if (Pair==TEXT("match_turn:horizon.matches.your_turn")) return EHorizonInboxSourceKind::MatchTurn;
     if (Pair==TEXT("marketplace:marketplace.item_return")) return EHorizonInboxSourceKind::MarketReturn;
+    if (Pair==TEXT("item_gift:horizon.item_gifts.offer")) return EHorizonInboxSourceKind::ItemGiftOffer;
+    if (Pair==TEXT("item_gift_return:horizon.item_gifts.return")) return EHorizonInboxSourceKind::ItemGiftReturn;
     return EHorizonInboxSourceKind::Unknown;
 }
 bool FHorizonInboxEntry::TryGetSource(FHorizonInboxSource& Out) const
@@ -120,6 +133,12 @@ bool FHorizonInboxEntry::TryGetSource(FHorizonInboxSource& Out) const
         for (TCHAR C:*Revision) if (C<'0' || C>'9') return false;
         if (!LexTryParseString(Value.Revision,**Revision) || Value.Revision<0 || Value.Revision>9007199254740991LL) return false;
         Value.bHasRevision=true;
+    }
+    else if (Value.Kind==EHorizonInboxSourceKind::ItemGiftOffer || Value.Kind==EHorizonInboxSourceKind::ItemGiftReturn)
+    {
+        // The gift itself is the source. UserId is the other player: the sender of an offer, the recipient of a return.
+        const bool Offer=Value.Kind==EHorizonInboxSourceKind::ItemGiftOffer; const auto& Gift=Attachment.ItemGift;
+        if (!Gift.bPresent || !Gift.GiftId.Equals(Reference,ESearchCase::IgnoreCase) || Gift.Direction!=(Offer?TEXT("offer"):TEXT("return")) || !ParameterId(Offer?TEXT("senderId"):TEXT("recipientId"),Value.UserId)) return false;
     }
     else if (!Attachment.ItemReturn.bPresent || !Attachment.ItemReturn.ListingId.Equals(Reference,ESearchCase::IgnoreCase)) return false;
     Value.bPresent=true; Out=MoveTemp(Value); return true;

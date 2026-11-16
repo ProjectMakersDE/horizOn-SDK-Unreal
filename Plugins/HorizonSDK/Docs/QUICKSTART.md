@@ -255,6 +255,37 @@ python3 Tests/run_native_items_test.py --engine '/path/to/UE_5.8' \
 This native HTTP proof is separate from a deployment or real-account acceptance.
 
 
+## Item Gifts (TASK-1140)
+
+`UHorizonSubsystem::ItemGifts` is `UHorizonItemGiftsManager`. Include
+`Managers/HorizonItemGiftsManager.h` and `Models/HorizonItemGifts.h`. A player sends one
+unequipped item instance to another player ID. The project may charge a fixed fee in a
+Player Values currency, which is never refunded. Persist the prepared original before
+the first call and resend exactly that original after uncertainty:
+
+```cpp
+Horizon->ItemGifts->GetConfig(UserId, FOnItemGiftComplete::CreateLambda(
+    [](bool bOk, const FHorizonItemGiftResponse& Config, const FString& Code, const FString&) {}));
+const FHorizonItemGiftIntent Original = UHorizonItemGiftsManager::PrepareSend(UserId,
+    OperationId, IssuedAt, RecipientId, InstanceId, InventoryRevision, Config.Config.Revision);
+Horizon->ItemGifts->SubmitPrepared(Original, FOnItemGiftComplete::CreateLambda(
+    [](bool bOk, const FHorizonItemGiftResponse& Sent, const FString& Code, const FString&) {}));
+```
+
+The recipient sees an Inbox entry of type `item_gift` with `Attachment.ItemGift` and
+claims it with `Horizon->Inbox->Claim(UserId, EntryId, ...)`, or declines it with
+`Horizon->ItemGifts->Decline(UserId, GiftId, GiftRevision, ...)`. A declined or expired
+gift returns to the sender as an `item_gift_return` entry, claimed the same way.
+`UHorizonItemGiftsExample` and `UHorizonItemGiftsQuickstart` contain the durable send
+flow. Native automation uses the strict artificial fixture on loopback 20140:
+
+```bash
+python3 Tests/run_native_item_gifts_test.py --engine '/path/to/UE_5.8' \
+  --host-project /absolute/path/to/independently-built/HostProject.uproject \
+  --report /absolute/path/to/fresh-report
+```
+
+
 ## Shared Objects (TASK-1012)
 
 `UHorizonSubsystem::SharedObjects` is `UHorizonSharedObjectsManager`. Include
