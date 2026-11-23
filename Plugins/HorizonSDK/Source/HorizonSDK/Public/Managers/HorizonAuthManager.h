@@ -97,6 +97,21 @@ public:
 	/** Verify the current session token is still valid server-side. */
 	void CheckAuth(FOnAuthComplete OnComplete);
 
+	// --- Link guest account ---
+
+	/**
+	 * Upgrade the signed-in guest (anonymous) account to email and password, keeping the same user ID.
+	 * Needs a signed-in guest. The server sends a verification email, so bIsEmailVerified stays false until verified.
+	 * OnComplete receives false and the server message on failure (e.g. email already taken, not a guest, weak password).
+	 */
+	void LinkEmail(const FString& Email, const FString& Password, FOnRequestComplete OnComplete);
+
+	/** Upgrade the signed-in guest account to Google, keeping the same user ID. */
+	void LinkGoogle(const FString& GoogleAuthCode, const FString& RedirectUri, FOnRequestComplete OnComplete);
+
+	/** Upgrade the signed-in guest account to Apple, keeping the same user ID. */
+	void LinkApple(const FString& IdentityToken, FOnRequestComplete OnComplete);
+
 	// --- State ---
 
 	/** Returns true if a user is currently signed in (has a valid user ID and token). */
@@ -149,6 +164,9 @@ private:
 
 	/** Common handler for all auth responses (signup / signin). */
 	void HandleAuthResponse(const FHorizonNetworkResponse& Response, FOnAuthComplete OnComplete);
+
+	/** Shared by LinkEmail / LinkGoogle / LinkApple: adds userId and sessionToken, posts to /link and updates the current user. */
+	void LinkAccount(TSharedRef<FJsonObject> Body, FOnRequestComplete OnComplete);
 
 	/** Persist the current session to disk via UHorizonSessionSave. */
 	void CacheSession();
