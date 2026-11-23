@@ -57,7 +57,7 @@ bool FHorizonPlayerValuesState::TryFromJson(const TSharedPtr<FJsonObject>& Json,
     if (Json->TryGetObjectField(TEXT("operation"), Operation))
     {
         Value.Operation.bPresent = true;
-        if (!(*Operation)->TryGetStringField(TEXT("operationId"), Value.Operation.OperationId) || !(*Operation)->TryGetBoolField(TEXT("replayed"), Value.Operation.bReplayed) || !Amounts(*Operation, TEXT("applied"), Value.Operation.Applied) || !FHorizonItemReference::TryArrayFromJson(*Operation,TEXT("items"),Value.Operation.Items)) return false;
+        if (!(*Operation)->TryGetStringField(TEXT("operationId"), Value.Operation.OperationId) || !(*Operation)->TryGetBoolField(TEXT("replayed"), Value.Operation.bReplayed) || !Amounts(*Operation, TEXT("applied"), Value.Operation.Applied) || !FHorizonItemReference::TryArrayFromJson(*Operation,TEXT("items"),Value.Operation.Items) || !FHorizonItemStackGrant::TryArrayFromJson(*Operation,TEXT("stacks"),Value.Operation.Stacks)) return false;
     }
     Value.bPresent = true; Out = MoveTemp(Value); return true;
 }

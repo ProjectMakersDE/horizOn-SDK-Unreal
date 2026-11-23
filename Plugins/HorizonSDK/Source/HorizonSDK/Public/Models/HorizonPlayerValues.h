@@ -46,6 +46,8 @@ struct HORIZONSDK_API FHorizonPlayerValuesOperation
     // Immediate fresh-operation deltas/references; compact replays return empty arrays.
     UPROPERTY(BlueprintReadOnly, Category="horizOn|PlayerValues") TArray<FHorizonPlayerValueAmount> Applied;
     UPROPERTY(BlueprintReadOnly, Category="horizOn|PlayerValues") TArray<FHorizonItemReference> Items;
+    // Stack grants: quantity added and the new stack total. Missing on old servers means empty.
+    UPROPERTY(BlueprintReadOnly, Category="horizOn|PlayerValues") TArray<FHorizonItemStackGrant> Stacks;
 };
 USTRUCT(BlueprintType)
 struct HORIZONSDK_API FHorizonPlayerValuesState
