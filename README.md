@@ -131,7 +131,7 @@ Horizon->Disconnect();
 
 ### Authentication
 
-Anonymous signup omits client tokens and stores the token issued by the server. It signs in with that token when signup returns no session. The deprecated token argument is ignored. Signup makes exactly one transport attempt: a lost response or HTTP error must be reconciled before any new identity is created. Use `SignInAnonymous` for an existing account. `RestoreAnonymousSession` reuses the cached token if its session has expired.
+Anonymous signup omits client tokens and stores the token issued by the server. It signs in with that token when signup returns no session. The deprecated token argument is ignored. Signup makes exactly one transport attempt: a lost response or HTTP error must be reconciled before any new identity is created. Use `SignInAnonymous` for an existing account. `RestoreAnonymousSession` reuses the cached token if its session has expired. `QuickSignInAnonymous` restores when `HasCachedAnonymousToken` is true and signs up only without a token; a failed restore never falls back to a new guest.
 
 `SignInWithApple` implements the native Apple sheet on iOS. On other platforms it reports `false` without opening a browser. Supply your own Apple authorization, redirect handling and identity-token integration, then call `SignInApple` or `SignUpApple`. Real Apple provider and iOS device acceptance remain separate from the SDK's automated checks.
 

@@ -378,6 +378,17 @@ void UHorizonAuthManager::RestoreAnonymousSession(FOnAuthComplete OnComplete)
 		));
 }
 
+void UHorizonAuthManager::QuickSignInAnonymous(const FString& DisplayName, FOnAuthComplete OnComplete)
+{
+	if (HasCachedAnonymousToken())
+	{
+		// A failed restore keeps the stored identity. No new guest as a fallback.
+		RestoreAnonymousSession(OnComplete);
+		return;
+	}
+	SignUpAnonymous(DisplayName, OnComplete);
+}
+
 void UHorizonAuthManager::RestoreSession(FOnAuthComplete OnComplete)
 {
 	RestoreAnonymousSession(OnComplete);
