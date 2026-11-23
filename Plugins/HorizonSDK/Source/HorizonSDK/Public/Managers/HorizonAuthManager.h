@@ -90,6 +90,14 @@ public:
 	/** Restore a previous anonymous session from disk and verify with the server. */
 	void RestoreAnonymousSession(FOnAuthComplete OnComplete);
 
+	/**
+	 * Guest start: restores the stored guest when a cached anonymous token exists, otherwise
+	 * creates a new guest. A failed restore (network error, timeout) never creates another
+	 * player as a fallback, because the progress of the stored guest would be orphaned.
+	 * Creating a new guest after a failed restore is an explicit decision of the game.
+	 */
+	void QuickSignInAnonymous(const FString& DisplayName, FOnAuthComplete OnComplete);
+
 	/** Restore a previous session from disk and verify with the server. */
 	UE_DEPRECATED(5.5, "Use RestoreAnonymousSession instead.")
 	void RestoreSession(FOnAuthComplete OnComplete);
