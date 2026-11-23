@@ -442,6 +442,143 @@ void UHorizonAuthManager::CheckAuth(FOnAuthComplete OnComplete)
 }
 
 // ============================================================
+// Link guest account
+// ============================================================
+
+void UHorizonAuthManager::LinkEmail(const FString& Email, const FString& Password, FOnRequestComplete OnComplete)
+{
+	TSharedRef<FJsonObject> Body = MakeShared<FJsonObject>();
+	Body->SetStringField(TEXT("type"), TEXT("EMAIL"));
+	if (!Email.IsEmpty())
+	{
+		Body->SetStringField(TEXT("email"), Email);
+	}
+	if (!Password.IsEmpty())
+	{
+		Body->SetStringField(TEXT("password"), Password);
+	}
+
+	LinkAccount(Body, OnComplete);
+}
+
+void UHorizonAuthManager::LinkGoogle(const FString& GoogleAuthCode, const FString& RedirectUri, FOnRequestComplete OnComplete)
+{
+	TSharedRef<FJsonObject> Body = MakeShared<FJsonObject>();
+	Body->SetStringField(TEXT("type"), TEXT("GOOGLE"));
+	if (!GoogleAuthCode.IsEmpty())
+	{
+		Body->SetStringField(TEXT("googleAuthorizationCode"), GoogleAuthCode);
+	}
+	if (!RedirectUri.IsEmpty())
+	{
+		Body->SetStringField(TEXT("googleRedirectUri"), RedirectUri);
+	}
+
+	LinkAccount(Body, OnComplete);
+}
+
+void UHorizonAuthManager::LinkApple(const FString& IdentityToken, FOnRequestComplete OnComplete)
+{
+	TSharedRef<FJsonObject> Body = MakeShared<FJsonObject>();
+	Body->SetStringField(TEXT("type"), TEXT("APPLE"));
+	if (!IdentityToken.IsEmpty())
+	{
+		Body->SetStringField(TEXT("appleIdentityToken"), IdentityToken);
+	}
+
+	LinkAccount(Body, OnComplete);
+}
+
+void UHorizonAuthManager::LinkAccount(TSharedRef<FJsonObject> Body, FOnRequestComplete OnComplete)
+{
+	if (!CurrentUser.IsValid())
+	{
+		UE_LOG(LogHorizonSDK, Warning, TEXT("Link account failed: no signed-in user."));
+		OnComplete.ExecuteIfBound(false, TEXT("Not signed in."));
+		return;
+	}
+
+	Body->SetStringField(TEXT("userId"), CurrentUser.UserId);
+	Body->SetStringField(TEXT("sessionToken"), CurrentUser.AccessToken);
+
+	TWeakObjectPtr<UHorizonAuthManager> WeakSelf(this);
+	FOnRequestComplete CapturedOnComplete = OnComplete;
+
+	HttpClient->PostJson(Body, TEXT("api/v1/app/user-management/link"), false,
+		FOnHttpResponse::CreateLambda(
+			[WeakSelf, CapturedOnComplete](const FHorizonNetworkResponse& Response)
+			{
+				UHorizonAuthManager* Self = WeakSelf.Get();
+				if (!Self)
+				{
+					return;
+				}
+
+				if (!Response.bSuccess)
+				{
+					UE_LOG(LogHorizonSDK, Warning, TEXT("Link account failed: %s"), *Response.ErrorMessage);
+					CapturedOnComplete.ExecuteIfBound(false, Response.ErrorMessage);
+					return;
+				}
+
+				// The link response carries no token: the current session token keeps working.
+				// The server deleted the guest anonymous token, so drop the local copy too.
+				FHorizonUserData& User = Self->CurrentUser;
+				User.bIsAnonymous = false;
+				User.AnonymousToken.Empty();
+				User.Email.Empty();
+				User.AppleUserId.Empty();
+				User.bIsPrivateRelayEmail = false;
+				User.bIsEmailVerified = false;
+
+				if (Response.JsonData.IsValid())
+				{
+					const TSharedPtr<FJsonObject>& Json = Response.JsonData;
+					FString StringValue;
+					if (Json->TryGetStringField(TEXT("email"), StringValue))
+					{
+						User.Email = StringValue;
+					}
+					bool bFlag = false;
+					if (Json->TryGetBoolField(TEXT("isVerified"), bFlag))
+					{
+						User.bIsEmailVerified = bFlag;
+					}
+					if (Json->TryGetBoolField(TEXT("isPrivateRelayEmail"), bFlag))
+					{
+						User.bIsPrivateRelayEmail = bFlag;
+					}
+					if (Json->TryGetStringField(TEXT("appleUserId"), StringValue))
+					{
+						User.AppleUserId = StringValue;
+					}
+
+					if (!User.AppleUserId.IsEmpty())
+					{
+						User.AuthType = EHorizonAuthType::Apple;
+					}
+					else if (Json->TryGetStringField(TEXT("googleId"), StringValue) && !StringValue.IsEmpty())
+					{
+						User.AuthType = EHorizonAuthType::Google;
+					}
+					else
+					{
+						User.AuthType = EHorizonAuthType::Email;
+					}
+				}
+				else
+				{
+					User.AuthType = EHorizonAuthType::Email;
+				}
+
+				Self->CacheSession();
+				UE_LOG(LogHorizonSDK, Log, TEXT("Guest account linked: %s"), *User.UserId);
+				CapturedOnComplete.ExecuteIfBound(true, TEXT(""));
+			}
+		));
+}
+
+// ============================================================
 // State
 // ============================================================
 

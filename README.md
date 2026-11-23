@@ -148,6 +148,12 @@ Horizon->Auth->SignUpEmail(TEXT("user@example.com"), TEXT("password"), TEXT("Dis
 Horizon->Auth->SignInEmail(TEXT("user@example.com"), TEXT("password"),
     FOnAuthComplete::CreateLambda([](bool bSuccess) { }));
 
+// Upgrade a signed-in guest to email, Google or Apple, keeping the same user ID.
+// Email sends a verification mail (bIsEmailVerified stays false until confirmed).
+Horizon->Auth->LinkEmail(TEXT("user@example.com"), TEXT("password"),
+    FOnRequestComplete::CreateLambda([](bool bSuccess, const FString& Error) { }));
+// Horizon->Auth->LinkGoogle(Code, RedirectUri, ...); Horizon->Auth->LinkApple(IdentityToken, ...);
+
 // Apple sign-in through the native iOS sheet
 Horizon->Auth->SignInWithApple(FOnAuthComplete::CreateLambda([](bool bSuccess)
 {
