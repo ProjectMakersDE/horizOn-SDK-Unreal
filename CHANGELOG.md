@@ -1,3 +1,15 @@
+# [1.12.0](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/compare/v1.11.0...v1.12.0) (2026-11-23)
+
+
+### Bug Fixes
+
+* **branding:** new horizOn plugin icon (TASK-1146) ([945c6e7](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/945c6e7cea8a974be3a49c282810efdbfd11e54d))
+
+
+### Features
+
+* **auth:** QuickSignInAnonymous restores a stored guest and never falls back to a new one (TASK-1150) ([d34e720](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/d34e720abfa981132f718aef67f28039d62e8273))
+
 # [1.11.0](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/compare/v1.10.6...v1.11.0) (2026-11-16)
 
 
