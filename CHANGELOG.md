@@ -1,3 +1,10 @@
+## [1.13.1](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/compare/v1.13.0...v1.13.1) (2026-11-23)
+
+
+### Bug Fixes
+
+* run SDK CI on the local proxmox runners and test Unity only on release ([7d1159e](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/7d1159e0fdb26140c4bf25be530ef6f05fcce40e))
+
 # [1.13.0](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/compare/v1.12.0...v1.13.0) (2026-11-23)
 
 
