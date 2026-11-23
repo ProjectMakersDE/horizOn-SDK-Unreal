@@ -1,3 +1,10 @@
+# [1.13.0](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/compare/v1.12.0...v1.13.0) (2026-11-23)
+
+
+### Features
+
+* **auth:** link a guest account to email, Google or Apple ([cc4caca](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/cc4caca10eddf39fc0cba3b4b23a4aac8babb1d7))
+
 # [1.12.0](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/compare/v1.11.0...v1.12.0) (2026-11-23)
 
 
