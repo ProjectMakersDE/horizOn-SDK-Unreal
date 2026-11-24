@@ -72,6 +72,15 @@ void UHorizonItemsManager::Mutate(const FString& U,const FString& Id,int64 Revis
     else if(Action==TEXT("equip"))B->SetBoolField(TEXT("equipped"),Equipped);
     Call(U,HorizonItemsRequest::Root+TEXT("/")+Action,B,FOnHttpResponse::CreateWeakLambda(this,[this,U,Done](const FHorizonNetworkResponse& R){ReceiveInventory(U,R,Done);}));
 }
+void UHorizonItemsManager::MutateStack(const FString& U,const FString& Key,int64 Revision,const FString& Action,bool Equipped,int64 Count,FOnInventoryComplete Done)
+{
+    if(!HorizonItemsRequest::Key(Key)||Revision<0||Revision>HorizonItemsContract::MaxSafe||(Action==TEXT("discard")&&(Count<1||Count>999999))){Done.ExecuteIfBound(false,{},TEXT("INVALID_REQUEST"),TEXT("Original stack key, safe revision and count 1 to 999999 required"));return;}
+    auto B=MakeShared<FJsonObject>();B->SetStringField(TEXT("userId"),U);B->SetStringField(TEXT("itemKey"),Key);B->SetField(TEXT("expectedRevision"),MakeShared<FJsonValueNumberString>(LexToString(Revision)));
+    if(Action==TEXT("equip"))B->SetBoolField(TEXT("equipped"),Equipped);else B->SetField(TEXT("count"),MakeShared<FJsonValueNumberString>(LexToString(Count)));
+    Call(U,HorizonItemsRequest::Root+TEXT("/")+Action,B,FOnHttpResponse::CreateWeakLambda(this,[this,U,Done](const FHorizonNetworkResponse& R){ReceiveInventory(U,R,Done);}));
+}
+void UHorizonItemsManager::SetStackEquipped(const FString& U,const FString& K,int64 R,bool B,FOnInventoryComplete Done){MutateStack(U,K,R,TEXT("equip"),B,1,Done);}
+void UHorizonItemsManager::DiscardStack(const FString& U,const FString& K,int64 R,FOnInventoryComplete Done,int64 C){MutateStack(U,K,R,TEXT("discard"),false,C,Done);}
 void UHorizonItemsManager::AdjustProperties(const FString& U,const FString& I,int64 R,const TArray<FHorizonItemPropertyDelta>& C,FOnInventoryComplete Done){Mutate(U,I,R,TEXT("adjust"),C,false,Done);}
 void UHorizonItemsManager::SetEquipped(const FString& U,const FString& I,int64 R,bool B,FOnInventoryComplete Done){Mutate(U,I,R,TEXT("equip"),{},B,Done);}
 void UHorizonItemsManager::DiscardItem(const FString& U,const FString& I,int64 R,FOnInventoryComplete Done){Mutate(U,I,R,TEXT("discard"),{},false,Done);}
@@ -81,3 +90,5 @@ void UHorizonItemsManager::RequestCatalog(const FString& U,const FString& A,int3
 void UHorizonItemsManager::AdjustItemProperties(const FString& U,const FString& I,int64 R,const TArray<FHorizonItemPropertyDelta>& C){AdjustProperties(U,I,R,C,InventoryEvent());}
 void UHorizonItemsManager::EquipItem(const FString& U,const FString& I,int64 R,bool B){SetEquipped(U,I,R,B,InventoryEvent());}
 void UHorizonItemsManager::DiscardInventoryItem(const FString& U,const FString& I,int64 R){DiscardItem(U,I,R,InventoryEvent());}
+void UHorizonItemsManager::EquipStack(const FString& U,const FString& K,int64 R,bool B){SetStackEquipped(U,K,R,B,InventoryEvent());}
+void UHorizonItemsManager::DiscardInventoryStack(const FString& U,const FString& K,int64 R,int64 C){DiscardStack(U,K,R,InventoryEvent(),C);}

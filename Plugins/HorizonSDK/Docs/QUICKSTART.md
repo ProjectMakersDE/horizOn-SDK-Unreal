@@ -183,7 +183,7 @@ Horizon->Items->SetEquipped(UserId, OriginalInstanceId, OriginalRevision, true,
                                          const FString& Code, const FString& Message) {}));
 ```
 
-The five methods are `GetInventory(UserId, Callback)`,
+The five instance and catalog methods are `GetInventory(UserId, Callback)`,
 `GetCatalog(UserId, Callback, AfterKey="", Limit=50, CatalogRevision=-1)`,
 `AdjustProperties(UserId, InstanceId, ExpectedRevision, Changes, Callback)`,
 `SetEquipped(UserId, InstanceId, ExpectedRevision, Equipped, Callback)` and
@@ -193,6 +193,27 @@ The five methods are `GetInventory(UserId, Callback)`,
 Use native `BindUObject`/`CreateUObject`, not `BindDynamic`, for those callbacks.
 A cursor continuation always requires its original catalog revision. Each call
 loads one bounded page; there is no automatic page fetch, mutation, grant or poll.
+
+Stack items (TASK-1152). A catalog definition carries `Mode` (`"unique"` or
+`"stack"`, `"unique"` when an old server omits it) and, for stacks, `MaxStack`
+(1 to 999999, `bHasMaxStack`). A stack template has no property rules; its values
+are always the template's `BaseProperties`. `FHorizonInventorySnapshot::Stacks`
+lists one `FHorizonItemStack` (`ItemKey`, `Count`, `bEquipped`) per stack template,
+and `Limits.Stacks` is the number of stack slots per player (`Limits.Inventory`
+counts unique instances only). Both are empty or 0 on servers without stacks.
+Stacks are addressed by template key, never by instance ID:
+`SetStackEquipped(UserId, ItemKey, ExpectedRevision, Equipped, Callback)` and
+`DiscardStack(UserId, ItemKey, ExpectedRevision, Callback, Count=1)`. Count is
+1 to 999999; a stack that reaches 0 is removed. Blueprint manager methods
+`EquipStack` and `DiscardInventoryStack` and async nodes `SetStackEquipped` and
+`DiscardStack` expose the same calls. Instance methods are unchanged and
+`AdjustProperties` stays unique only.
+
+Stack error codes arrive unchanged in `ErrorCode`: `STACK_LIMIT_REACHED` (stack
+full at `MaxStack` or no free stack slot), `ITEM_STACK_TOO_SMALL` (discard count
+larger than the stack), `ITEM_MODE_LOCKED` (template mode change, or stack
+creation while stacks are switched off) and `ITEM_NOT_TRADABLE` (stack items
+cannot be listed on the marketplace or gifted).
 
 `FHorizonItemProperty` is a typed array entry (`Key`, `Type`, `IntegerValue`,
 `BooleanValue`, `StringValue`). Types are `EHorizonItemPropertyType::Integer`,
@@ -205,7 +226,7 @@ Archived definitions and retained inventories above a downgraded limit remain
 readable. Instances and purchase references never imply that an archived or
 already discarded/transferred item should be recreated.
 
-All three inventory writes make one transport attempt. Persist the exact
+All inventory writes, stack writes included, make one transport attempt. Persist the exact
 instance, revision and mutation payload before sending. On uncertainty, retain
 that tuple; never silently substitute a newer revision. `ClearCache` invalidates
 late replies while retaining revision/time floors. Session, project and host
@@ -217,7 +238,9 @@ and activate once: `GetInventory`, `GetCatalog`, `AdjustProperties`,
 
 Player-value offers add `FHorizonPlayerValueOffer::ItemRewards`
 (`ItemKey`, `Quantity`); operation receipts add
-`FHorizonPlayerValuesState::Operation.Items` (`InstanceId`, `ItemKey`). Missing
+`FHorizonPlayerValuesState::Operation.Items` (`InstanceId`, `ItemKey`, unique
+items only) and `Operation.Stacks` (`ItemKey`, `Quantity`, `Count`, where `Count`
+is the new stack total). Missing
 fields in old responses mean empty arrays. Existing purchase IDs and callbacks
 remain compatible. A successful receipt must match the submitted operation ID.
 Use the full returned balances and explicitly read inventory afterward. Never

@@ -18,12 +18,14 @@ public:
     UFUNCTION(BlueprintCallable,meta=(BlueprintInternalUseOnly="true",WorldContext="WorldContextObject"),Category="horizOn|Items") static UHorizonAsync_ItemsInventory* AdjustProperties(const UObject* WorldContextObject,const FString& InstanceId,int64 ExpectedRevision,const TArray<FHorizonItemPropertyDelta>& Changes);
     UFUNCTION(BlueprintCallable,meta=(BlueprintInternalUseOnly="true",WorldContext="WorldContextObject"),Category="horizOn|Items") static UHorizonAsync_ItemsInventory* SetEquipped(const UObject* WorldContextObject,const FString& InstanceId,int64 ExpectedRevision,bool Equipped);
     UFUNCTION(BlueprintCallable,meta=(BlueprintInternalUseOnly="true",WorldContext="WorldContextObject"),Category="horizOn|Items") static UHorizonAsync_ItemsInventory* DiscardItem(const UObject* WorldContextObject,const FString& InstanceId,int64 ExpectedRevision);
+    UFUNCTION(BlueprintCallable,meta=(BlueprintInternalUseOnly="true",WorldContext="WorldContextObject"),Category="horizOn|Items") static UHorizonAsync_ItemsInventory* SetStackEquipped(const UObject* WorldContextObject,const FString& ItemKey,int64 ExpectedRevision,bool Equipped);
+    UFUNCTION(BlueprintCallable,meta=(BlueprintInternalUseOnly="true",WorldContext="WorldContextObject"),Category="horizOn|Items") static UHorizonAsync_ItemsInventory* DiscardStack(const UObject* WorldContextObject,const FString& ItemKey,int64 ExpectedRevision,int64 Count=1);
     virtual void Activate() override;
 private:
-    static UHorizonAsync_ItemsInventory* Create(const UObject* World,const FString& Action,const FString& Instance,int64 Revision,const TArray<FHorizonItemPropertyDelta>& Changes,bool Equipped);
+    static UHorizonAsync_ItemsInventory* Create(const UObject* World,const FString& Action,const FString& Instance,int64 Revision,const TArray<FHorizonItemPropertyDelta>& Changes,bool Equipped,int64 Count=1);
     TWeakObjectPtr<const UObject> WorldContext;
     FString User,Action,Instance;uint64 Context=0;
-    int64 Revision=0;bool Equipped=false,bActivated=false;
+    int64 Revision=0,Count=1;bool Equipped=false,bActivated=false;
     TArray<FHorizonItemPropertyDelta> Changes;
     void Complete(bool Ok,const FHorizonInventorySnapshot& S,const FString& C,const FString& M);
 };

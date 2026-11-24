@@ -144,6 +144,21 @@ bool FHorizonItemsModelsTest::RunTest(const FString&)
  TestTrue(TEXT("Definition with empty property rules accepted"),ParseCatalog(Definition));
  for(const FString& Bad:{Definition.Replace(TEXT(",\"propertyRules\":[]"),TEXT("")),Definition.Replace(TEXT("\"propertyRules\":[]"),TEXT("\"propertyRules\":null")),Definition.Replace(TEXT("\"propertyRules\":[]"),TEXT("\"propertyRules\":{}"))})TestFalse(TEXT("Missing or non-array property rules rejected"),ParseCatalog(Bad));
  for(const FString& Bad:{FString(TEXT("0")),FString(TEXT("2147483648")),FString(TEXT("1.0")),FString(TEXT("1e3")),FString(TEXT("9007199254740992"))})TestFalse(TEXT("Configured quota remains exact positive Int32"),Parse(Raw.Replace(TEXT("\"catalog\":20"),*(FString(TEXT("\"catalog\":"))+Bad))));
+ // Stacks (TASK-1152): additive snapshot field, stack slot limit and stack template definitions.
+ const FString Stacked=Raw.Replace(TEXT("\"receipts\":10}"),TEXT("\"receipts\":10,\"stacks\":25},\"stacks\":[__STACKS__]"));
+ {TSharedPtr<FJsonObject> J;FHorizonInventorySnapshot V;TestTrue(TEXT("Stack snapshot parses"),HorizonItemsWire::Parse(Stacked.Replace(TEXT("__STACKS__"),TEXT(R"S({"itemKey":"potion","count":12,"equipped":true})S")),J)&&FHorizonInventorySnapshot::TryFromJson(J,V));
+  TestEqual(TEXT("Stack count"),V.Stacks.Num()==1?V.Stacks[0].Count:int64(-1),int64(12));TestTrue(TEXT("Stack equipped"),V.Stacks.Num()==1&&V.Stacks[0].bEquipped);TestEqual(TEXT("Stack slots"),V.Limits.Stacks,25);}
+ TestTrue(TEXT("Old server without stacks parses"),Parse(Raw));
+ for(const TCHAR* Bad:{TEXT(R"S({"itemKey":"potion","count":0,"equipped":false})S"),TEXT(R"S({"itemKey":"potion","count":1000000,"equipped":false})S"),TEXT(R"S({"itemKey":"potion","count":1,"equipped":false},{"itemKey":"potion","count":2,"equipped":false})S"),TEXT(R"S({"itemKey":"potion","count":1})S"),TEXT(R"S({"itemKey":"Potion","count":1,"equipped":false})S")})
+  TestFalse(TEXT("Malformed stack rejected"),Parse(Stacked.Replace(TEXT("__STACKS__"),Bad)));
+ const FString StackDef=Catalog.Replace(TEXT("\"definitions\":[]"),TEXT(R"DEF("definitions":[{"key":"potion","name":"Potion","type":"consumable","rarity":"common","active":true,"baseProperties":{"heal":25},"propertyRules":[],"mode":"stack","maxStack":99}])DEF"));
+ {TSharedPtr<FJsonObject> J;FHorizonItemCatalogPage V;TestTrue(TEXT("Stack definition parses"),HorizonItemsWire::Parse(StackDef,J)&&FHorizonItemCatalogPage::TryFromJson(J,V));
+  TestTrue(TEXT("Stack mode and maxStack read"),V.Definitions.Num()==1&&V.Definitions[0].Mode==TEXT("stack")&&V.Definitions[0].MaxStack==99&&V.Definitions[0].bHasMaxStack);}
+ for(const FString& Bad:{StackDef.Replace(TEXT(",\"maxStack\":99"),TEXT("")),StackDef.Replace(TEXT("\"maxStack\":99"),TEXT("\"maxStack\":0")),StackDef.Replace(TEXT("\"mode\":\"stack\""),TEXT("\"mode\":\"bundle\"")),StackDef.Replace(TEXT("\"mode\":\"stack\""),TEXT("\"mode\":\"unique\"")),
+  StackDef.Replace(TEXT("\"propertyRules\":[]"),TEXT(R"R("propertyRules":[{"key":"heal","min":0,"max":100,"maxChangePerCall":1}])R"))})TestFalse(TEXT("Invalid stack definition rejected"),ParseCatalog(Bad));
+ {TArray<FHorizonItemStackGrant> G;TSharedPtr<FJsonObject> J;
+  TestTrue(TEXT("Stack grants parse"),HorizonItemsWire::Parse(TEXT(R"G({"stacks":[{"itemKey":"potion","quantity":2,"count":7}]})G"),J)&&FHorizonItemStackGrant::TryArrayFromJson(J,TEXT("stacks"),G)&&G.Num()==1&&G[0].Count==7);
+  TestFalse(TEXT("Grant count below quantity rejected"),HorizonItemsWire::Parse(TEXT(R"G({"stacks":[{"itemKey":"potion","quantity":3,"count":2}]})G"),J)&&FHorizonItemStackGrant::TryArrayFromJson(J,TEXT("stacks"),G));}
  return true;
 }
 #endif

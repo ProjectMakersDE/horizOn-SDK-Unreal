@@ -1089,11 +1089,14 @@ same original through server policy rejection. Group revision floors stay for th
 auth context, including group257 and later; auth changes clear them. Several responses
 can grow this local revision map beyond one frame, independently of database storage.
 
-Items: `Items` exposes five typed inventory/catalog methods and Blueprint async
+Items: `Items` exposes seven typed inventory/catalog methods and Blueprint async
 nodes. Property integers, Unicode/NUL strings, purchase item rewards and retained
 instance data stay lossless. `AHorizonItemsExample` persists original actions
 and never replaces an uncertain purchase ID. See [the quickstart](Plugins/HorizonSDK/Docs/QUICKSTART.md#items-task-1011)
 for single-attempt CAS writes, explicit receipt recovery and the remaining GET-to-POST price window.
+Stack items (TASK-1152) add `Stacks` to the inventory snapshot, `Mode`/`MaxStack` to catalog
+definitions, `Limits.Stacks`, `Operation.Stacks` on purchases and `SetStackEquipped`/`DiscardStack`
+by item key; see the quickstart for the new error codes.
 
 Item limits are current positive Int32 operator configuration, with no old 5000/150/50 tariff
 clamps. A lower current limit does not hide retained inventory or catalog totals. Catalog total

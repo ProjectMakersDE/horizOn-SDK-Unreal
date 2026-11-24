@@ -18,8 +18,12 @@ bool ReadRevision(const TSharedPtr<FJsonObject>& J,const TCHAR* K,int64& N){retu
 bool Small(const TSharedPtr<FJsonObject>& J,const TCHAR* K,int32& N,int32 Max,bool Zero=false){int64 V;if(!ReadRevision(J,K,V)||V>Max||(!Zero&&V==0))return false;N=int32(V);return true;}
 bool Bool(const TSharedPtr<FJsonObject>& J,const TCHAR* K,bool& B){auto V=J?J->TryGetField(K):nullptr;return V&&V->Type==EJson::Boolean&&V->TryGetBool(B);}
 bool Time(const TSharedPtr<FJsonObject>& J,const TCHAR* K,FString& S){FDateTime T;return Text(J,K,S,40)&&FDateTime::ParseIso8601(*S,T);}
+// Stack fields are additive: absent (old server) or null means not sent.
+bool Absent(const TSharedPtr<FJsonObject>& J,const TCHAR* K){auto V=J?J->TryGetField(K):nullptr;return !V||V->IsNull();}
+constexpr int64 MaxStackLimit=999999;
+bool StackCount(const TSharedPtr<FJsonObject>& J,const TCHAR* K,int64& N){return Number(J,K,N)&&N>=1&&N<=MaxStackLimit;}
 // Operator quotas are positive Int32 values, independent of retained inventory size.
-bool ReadLimits(const TSharedPtr<FJsonObject>& J,FHorizonItemLimits& L){const TSharedPtr<FJsonObject>* O;return J&&J->TryGetObjectField(TEXT("limits"),O)&&Small(*O,TEXT("catalog"),L.Catalog,MAX_int32)&&Small(*O,TEXT("inventory"),L.Inventory,MAX_int32)&&Small(*O,TEXT("receipts"),L.Receipts,MAX_int32);}
+bool ReadLimits(const TSharedPtr<FJsonObject>& J,FHorizonItemLimits& L){const TSharedPtr<FJsonObject>* O;return J&&J->TryGetObjectField(TEXT("limits"),O)&&Small(*O,TEXT("catalog"),L.Catalog,MAX_int32)&&Small(*O,TEXT("inventory"),L.Inventory,MAX_int32)&&Small(*O,TEXT("receipts"),L.Receipts,MAX_int32)&&(Absent(*O,TEXT("stacks"))||Small(*O,TEXT("stacks"),L.Stacks,MAX_int32,true));}
 bool Properties(const TSharedPtr<FJsonValue>& V,TArray<FHorizonItemProperty>& Out)
 {
     if(!V||V->Type!=EJson::Object)return false;FString Raw;
@@ -46,7 +50,13 @@ bool Definition(const TSharedPtr<FJsonObject>& J,FHorizonItemDefinition& D)
         const auto* Base=D.BaseProperties.FindByPredicate([&](const FHorizonItemProperty& P){return P.Key==R.Key;});if(!Base||Base->Type!=EHorizonItemPropertyType::Integer||Base->IntegerValue<R.Min||Base->IntegerValue>R.Max)return false;
         Seen.Add(R.Key);D.PropertyRules.Add(R);
     }
-    FString Json;return HorizonLosslessJson::Object(J.ToSharedRef(),Json)&&FTCHARToUTF8(*Json,Json.Len()).Length()<=2048;
+    // A stack template has a maxStack and no property rules; a unique template has no maxStack.
+    if(!Absent(J,TEXT("mode"))&&(!Text(J,TEXT("mode"),D.Mode,16)||(!D.Mode.Equals(TEXT("unique"),ESearchCase::CaseSensitive)&&!D.Mode.Equals(TEXT("stack"),ESearchCase::CaseSensitive))))return false;
+    const bool bStack=D.Mode.Equals(TEXT("stack"),ESearchCase::CaseSensitive);D.bHasMaxStack=!Absent(J,TEXT("maxStack"));
+    if((D.bHasMaxStack&&!StackCount(J,TEXT("maxStack"),D.MaxStack))||(bStack?(!D.bHasMaxStack||!D.PropertyRules.IsEmpty()):D.bHasMaxStack))return false;
+    // The server bounds a unique template without mode/maxStack, so the size check leaves them out too.
+    TSharedRef<FJsonObject> Sized=J.ToSharedRef();if(!bStack){Sized=MakeShared<FJsonObject>();Sized->Values=J->Values;Sized->RemoveField(TEXT("mode"));Sized->RemoveField(TEXT("maxStack"));}
+    FString Json;return HorizonLosslessJson::Object(Sized,Json)&&FTCHARToUTF8(*Json,Json.Len()).Length()<=2048;
 }
 }
 bool FHorizonItemInstance::TryFromJson(const TSharedPtr<FJsonObject>& J,FHorizonItemInstance& Out)
@@ -64,6 +74,16 @@ bool FHorizonInventorySnapshot::TryFromJson(const TSharedPtr<FJsonObject>& J,FHo
         if(!V||V->Type!=EJson::Object)return false;auto O=V->AsObject();FHorizonItemInstance I;
         if(!FHorizonItemInstance::TryFromJson(O,I)||Seen.Contains(I.InstanceId.ToLower()))return false;
         Seen.Add(I.InstanceId.ToLower());S.Instances.Add(I);
+    }
+    if(!Absent(J,TEXT("stacks")))
+    {
+        const TArray<TSharedPtr<FJsonValue>>* StackRows;if(!J->TryGetArrayField(TEXT("stacks"),StackRows))return false;TSet<FString> Keys;
+        for(auto V:*StackRows)
+        {
+            if(!V||V->Type!=EJson::Object)return false;auto O=V->AsObject();FHorizonItemStack K;
+            if(!ReadKey(O,TEXT("itemKey"),K.ItemKey)||Keys.Contains(K.ItemKey)||!StackCount(O,TEXT("count"),K.Count)||!Bool(O,TEXT("equipped"),K.bEquipped))return false;
+            Keys.Add(K.ItemKey);S.Stacks.Add(K);
+        }
     }S.bPresent=true;Out=MoveTemp(S);return true;
 }
 bool FHorizonItemCatalogPage::TryFromJson(const TSharedPtr<FJsonObject>& J,FHorizonItemCatalogPage& Out)
@@ -80,6 +100,12 @@ bool FHorizonItemReward::TryArrayFromJson(const TSharedPtr<FJsonObject>& J,const
     using namespace HorizonItemsJson;auto Value=J?J->TryGetField(Field):nullptr;if(!Value)return true;if(Value->Type!=EJson::Array||Value->AsArray().Num()>4)return false;
     TArray<FHorizonItemReward> Rows;TSet<FString> Keys;int32 Total=0;
     for(auto V:Value->AsArray()){FHorizonItemReward R;if(!V||V->Type!=EJson::Object||!ReadKey(V->AsObject(),TEXT("itemKey"),R.ItemKey)||Keys.Contains(R.ItemKey)||!Small(V->AsObject(),TEXT("quantity"),R.Quantity,4))return false;Keys.Add(R.ItemKey);Total+=R.Quantity;Rows.Add(R);}if(Total>4)return false;Out=MoveTemp(Rows);return true;
+}
+bool FHorizonItemStackGrant::TryArrayFromJson(const TSharedPtr<FJsonObject>& J,const TCHAR* Field,TArray<FHorizonItemStackGrant>& Out)
+{
+    using namespace HorizonItemsJson;auto Value=J?J->TryGetField(Field):nullptr;if(!Value||Value->IsNull())return true;if(Value->Type!=EJson::Array||Value->AsArray().Num()>4)return false;
+    TArray<FHorizonItemStackGrant> Rows;TSet<FString> Keys;int32 Total=0;
+    for(auto V:Value->AsArray()){FHorizonItemStackGrant R;if(!V||V->Type!=EJson::Object||!ReadKey(V->AsObject(),TEXT("itemKey"),R.ItemKey)||Keys.Contains(R.ItemKey)||!Small(V->AsObject(),TEXT("quantity"),R.Quantity,4)||!StackCount(V->AsObject(),TEXT("count"),R.Count)||R.Count<R.Quantity)return false;Keys.Add(R.ItemKey);Total+=R.Quantity;Rows.Add(R);}if(Total>4)return false;Out=MoveTemp(Rows);return true;
 }
 bool FHorizonItemReference::TryArrayFromJson(const TSharedPtr<FJsonObject>& J,const TCHAR* Field,TArray<FHorizonItemReference>& Out)
 {
