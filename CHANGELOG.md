@@ -1,3 +1,15 @@
+# [1.14.0](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/compare/v1.13.1...v1.14.0) (2026-11-24)
+
+
+### Bug Fixes
+
+* **items:** native stack model automation tests (TASK-1152) ([ebcb4c7](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/ebcb4c791642a4dc2037c04d4f952b0242bff3e3))
+
+
+### Features
+
+* **items:** stack inventory, equip and discard (TASK-1152) ([5dca18b](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/commit/5dca18b93d10deb5218cd7c78e51cb6ccef6c0e1))
+
 ## [1.13.1](https://github.com/ProjectMakersDE/horizOn-SDK-Unreal/compare/v1.13.0...v1.13.1) (2026-11-23)
 
 
