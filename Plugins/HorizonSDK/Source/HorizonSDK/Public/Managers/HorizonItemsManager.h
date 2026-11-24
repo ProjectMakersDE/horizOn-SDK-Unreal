@@ -21,6 +21,9 @@ public:
     void AdjustProperties(const FString& UserId,const FString& InstanceId,int64 ExpectedRevision,const TArray<FHorizonItemPropertyDelta>& Changes,FOnInventoryComplete Complete);
     void SetEquipped(const FString& UserId,const FString& InstanceId,int64 ExpectedRevision,bool bEquipped,FOnInventoryComplete Complete);
     void DiscardItem(const FString& UserId,const FString& InstanceId,int64 ExpectedRevision,FOnInventoryComplete Complete);
+    /** Stack items are addressed by their template key. Count is 1 to 999999; more than the stack holds fails with ITEM_STACK_TOO_SMALL. */
+    void SetStackEquipped(const FString& UserId,const FString& ItemKey,int64 ExpectedRevision,bool bEquipped,FOnInventoryComplete Complete);
+    void DiscardStack(const FString& UserId,const FString& ItemKey,int64 ExpectedRevision,FOnInventoryComplete Complete,int64 Count=1);
     UFUNCTION(BlueprintPure,Category="horizOn|Items") FHorizonInventorySnapshot GetCurrentInventory();
     UFUNCTION(BlueprintPure,Category="horizOn|Items") FHorizonItemCatalogPage GetCurrentCatalog();
     UFUNCTION(BlueprintCallable,Category="horizOn|Items") void ClearCache();
@@ -31,6 +34,9 @@ public:
     UFUNCTION(BlueprintCallable,Category="horizOn|Items") void EquipItem(const FString& UserId,const FString& InstanceId,int64 ExpectedRevision,bool bEquipped);
     /** Destructive removal; only invoke from an explicit reviewed player action. */
     UFUNCTION(BlueprintCallable,Category="horizOn|Items") void DiscardInventoryItem(const FString& UserId,const FString& InstanceId,int64 ExpectedRevision);
+    UFUNCTION(BlueprintCallable,Category="horizOn|Items") void EquipStack(const FString& UserId,const FString& ItemKey,int64 ExpectedRevision,bool bEquipped);
+    /** Destructive removal of Count stack items; only invoke from an explicit reviewed player action. */
+    UFUNCTION(BlueprintCallable,Category="horizOn|Items") void DiscardInventoryStack(const FString& UserId,const FString& ItemKey,int64 ExpectedRevision,int64 Count=1);
     UPROPERTY(BlueprintAssignable,Category="horizOn|Items") FOnHorizonInventoryResult OnInventoryResult;
     UPROPERTY(BlueprintAssignable,Category="horizOn|Items") FOnHorizonItemCatalogResult OnCatalogResult;
 private:
@@ -46,6 +52,7 @@ private:
     void Call(const FString& User,const FString& Route,const TSharedPtr<FJsonObject>& Body,FOnHttpResponse Complete);
     void ReceiveInventory(const FString& User,const FHorizonNetworkResponse& Response,FOnInventoryComplete Complete);
     void Mutate(const FString& User,const FString& Instance,int64 Revision,const FString& Action,const TArray<FHorizonItemPropertyDelta>& Changes,bool Equipped,FOnInventoryComplete Complete);
+    void MutateStack(const FString& User,const FString& ItemKey,int64 Revision,const FString& Action,bool Equipped,int64 Count,FOnInventoryComplete Complete);
     FOnInventoryComplete InventoryEvent();
     static FHorizonNetworkResponse Error(const FString& Code);
 };
